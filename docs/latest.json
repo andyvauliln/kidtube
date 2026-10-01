@@ -1,8 +1,8 @@
 {
-  "version": "0.3.1",
+  "version": "0.4.0",
   "id": "mpgpgldgfogdipaaaobleoppocmhlidp",
-  "crxUrl": "https://andyvauliln.github.io/kidtube/kidtube-0.3.1.crx",
-  "zipUrl": "https://andyvauliln.github.io/kidtube/kidtube-0.3.1.zip",
+  "crxUrl": "https://andyvauliln.github.io/kidtube/kidtube-0.4.0.crx",
+  "zipUrl": "https://andyvauliln.github.io/kidtube/kidtube-0.4.0.zip",
   "quizTypes": [
     "text",
     "choice",

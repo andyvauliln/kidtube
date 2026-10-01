@@ -29,7 +29,7 @@ test('intro on: tapping a video opens the talking friend first, then the video',
   await send({ type: 'open', videoId: A });
   assert.equal(fake.nav.updates.at(-1), `ext://ui/talk.html?mode=intro&v=${A}`);
   const t = await send({ type: 'talk', videoId: A, mode: 'intro' });
-  assert.match(t.lines[0].text, /Let's watch/);
+  assert.match(t.lines[0].text, /going to watch/);
   assert.equal(t.voice.pitch, 1.9);
   await send({ type: 'talkDone', videoId: A });
   assert.equal(fake.nav.updates.at(-1), `https://m.youtube.com/watch?v=${A}`);

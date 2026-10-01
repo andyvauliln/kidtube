@@ -22,11 +22,11 @@ const svg = $('buddy');
 let flap = null;
 function talking(on) {
   document.body.classList.toggle('talking', on);
-  const mouth = svg.isConnected ? $('mouth') : null;
+  const mouth = $('friend').querySelector('#mouth');
   clearInterval(flap);
   if (!mouth) return;
-  if (on) flap = setInterval(() => mouth.setAttribute('ry', String(3 + Math.random() * 11)), 110);
-  else mouth.setAttribute('ry', '3');
+  if (on) flap = setInterval(() => { mouth.style.transform = `scaleY(${(0.5 + Math.random() * 1.8).toFixed(2)})`; }, 110);
+  else mouth.style.transform = 'scaleY(.5)';
 }
 
 async function speak(line) {
@@ -36,8 +36,23 @@ async function speak(line) {
   try { await say(line, script.voice); } finally { talking(false); }
 }
 
+// A character drawn as SVG (from the private data repo) is put into the page so its #mouth can move.
+function inlineSvg(text) {
+  const doc = new DOMParser().parseFromString(text, 'image/svg+xml');
+  const root = doc.documentElement;
+  if (root.nodeName !== 'svg' || doc.querySelector('parsererror')) return null;
+  root.querySelectorAll('script, foreignObject, iframe').forEach((n) => n.remove());
+  for (const n of [root, ...root.querySelectorAll('*')]) {
+    for (const a of [...n.attributes]) if (/^on/i.test(a.name) || /^\s*javascript:/i.test(a.value)) n.removeAttribute(a.name);
+  }
+  root.id = 'buddy';
+  return document.importNode(root, true);
+}
+
 function setupFriend() {
-  if (script.imageUrl) {
+  const custom = script.svg && inlineSvg(script.svg);
+  if (custom) svg.replaceWith(custom);
+  else if (script.imageUrl) {
     const img = Object.assign(document.createElement('img'), { src: script.imageUrl, alt: '' });
     img.onerror = () => img.replaceWith(svg);
     svg.replaceWith(img);
@@ -167,6 +182,7 @@ async function run() {
       : next === 'stopForToday' ? 'That’s all for today. Let’s try again tomorrow. Bye bye!'
       : allGood ? 'You did great! Now pick the next video.' : 'Good job trying! Now pick the next video.' });
   }
+  if (mode === 'outro' && script.catchphrase) await speak({ text: script.catchphrase });
   finish();
 }
 

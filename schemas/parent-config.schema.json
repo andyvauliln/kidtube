@@ -265,8 +265,8 @@
             "string",
             "null"
           ],
-          "pattern": "^(https://.+)?$",
-          "description": "\"\" = the built-in character"
+          "pattern": "^(https://.+|repo:[A-Za-z0-9_./-]+\\.(svg|png|jpg|jpeg|webp|gif))?$",
+          "description": "\"\" = built-in character; https://\u2026 = a picture; repo:characters/x.svg = a file in the private data repo (an SVG with an element id=\"mouth\" gets a moving mouth)"
         },
         "voice": {
           "type": [
@@ -299,6 +299,14 @@
               "maximum": 2
             }
           }
+        },
+        "catchphrase": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 60,
+          "description": "said at the start of the intro and the end of the outro"
         }
       }
     }

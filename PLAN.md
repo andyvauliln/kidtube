@@ -185,6 +185,10 @@ Rules:
 - `blocked.target`: `video` | `channel` | `shorts` | `ad` | `external` | `search`. Lets the agent see what he keeps trying to reach.
 - Writer: queue the event in the outbox, then GET the file (sha), merge by `eventId`, PUT. On a 409, retry up to 3 times with backoff. When offline, it stays in the outbox until the next poll or Update.
 
+### 3.3b `transcripts/<videoId>.json` (tablet writes; agent reads)
+
+YouTube refuses transcripts to cloud servers (the agent's and this repo's CI included), so the tablet fetches them from the home internet: the watch page → the player API (Android client) → the caption track (English, hand-made before automatic) → `"[m:ss] words"` lines of about 20 s. Up to 12 per sync, each video once; a failure is retried after a day. The file also carries title, channel, length and the description, and `available:false` when the video has no captions (then the agent works from title and description). Schema: `schemas/transcript.schema.json`.
+
 ### 3.4 `memory.json` (agent-owned; tablet never reads it)
 
 ```json

@@ -3,6 +3,7 @@ import { mergeConfig } from './lib/merge.js';
 import { lockReason, nextOpening, localParts } from './lib/time.js';
 import { visibleVideos } from './lib/queue.js';
 import { classifyUrl, homeUrl, watchUrl } from './lib/url.js';
+import { parseCaptions, captionsToText } from './lib/captions.js';
 
 const SITE_RULE_ID = 100;
 const POLL_MINUTES = 15;
@@ -25,7 +26,7 @@ async function loadBundled() {
 // seen: title/channel of videos he opened, for the parent's list after the queue has moved on.
 // parentPass: one tab where a parent watches a video without the kid's rules.
 // pendingTalk: the talking friend's screen he is on (before or after a video).
-const KEYS = ['settings', 'data', 'watched', 'today', 'session', 'outbox', 'syncStatus', 'localConfig', 'seen', 'parentPass', 'pendingTalk', 'quizTurn'];
+const KEYS = ['settings', 'data', 'watched', 'today', 'session', 'outbox', 'syncStatus', 'localConfig', 'seen', 'parentPass', 'pendingTalk', 'quizTurn', 'transcripts', 'character'];
 let chain = Promise.resolve();
 function withState(fn) {
   const run = chain.then(async () => {
@@ -217,12 +218,19 @@ async function handle(msg, sender) {
         const v = videoInfo(s, queue, msg.videoId);
         const name = p.name || 'Zippy';
         const lines = [];
-        if (msg.mode === 'intro') lines.push(v.intro ?? { text: `Hi! I'm ${name}. Let's watch: ${v.title}!` });
-        else if (p.outro) lines.push(v.outro ?? { text: `That was: ${v.title}. Well done for watching!` });
+        const hasQuiz = !!config.quiz?.enabled;
+        if (msg.mode === 'intro') {
+          if (p.catchphrase) lines.push({ text: p.catchphrase });
+          lines.push(v.intro ?? { text: `Hi! I'm ${name}! Now we're going to watch: ${v.title}. ${hasQuiz ? 'Watch carefully, because at the end I will ask you a question!' : 'Let’s find out something new!'}` });
+        } else if (p.outro) {
+          lines.push(v.outro ?? { text: `That was: ${v.title}. Well done for watching it all!` });
+        }
         const items = msg.mode === 'outro' ? (t?.quizIds ?? []).map((quizId) => ({ quizId, ...config.quiz.items[quizId] })).filter((i) => i.prompt) : [];
         const { quizTypes } = await loadBundled();
+        const ch = s.character && p.imageUrl === `repo:${s.character.path}` ? s.character : null;
         return {
-          name, imageUrl: p.imageUrl || '', voice: p.voice ?? {}, title: v.title, lines,
+          name, imageUrl: ch?.src ?? (p.imageUrl?.startsWith('https://') ? p.imageUrl : ''), svg: ch?.svg ?? '',
+          catchphrase: p.catchphrase ?? '', voice: p.voice ?? {}, title: v.title, lines,
           items: items.map((i) => ({ ...i, supported: quizTypes.includes(i.type) })),
           maxAttempts: config.quiz?.maxAttempts ?? 3, onFail: config.quiz?.onFail ?? 'continue',
         };
@@ -388,6 +396,11 @@ async function handle(msg, sender) {
           playedMinutesToday: Math.round(todayPlayed(s, config) / 60),
           maxMinutesPerDay: config.time?.maxMinutesPerDay,
           outbox: s.outbox.length,
+          transcripts: {
+            total: queue.videos.length,
+            uploaded: queue.videos.filter((v) => s.transcripts?.[v.videoId]?.status === 'uploaded').length,
+            missing: queue.videos.filter((v) => s.transcripts?.[v.videoId]?.available === false).length,
+          },
           recent: Object.entries(s.watched).sort((a, b) => b[1].localeCompare(a[1])).slice(0, 10).map(([videoId, at]) => {
             const v = videoInfo(s, queue, videoId);
             return {
@@ -501,6 +514,10 @@ async function doSync() {
   const rules = await uploadLocalConfig();
   if (rules.saved === 'tablet' && token) report('Rules: ', rules.error.replace(/^Saved on this tablet\. GitHub: /, ''));
   try { await flushOutbox(repo, token); } catch (e) { if (token) report('Saving what he watched: ', String(e.message ?? e)); }
+  if (token) {
+    try { await uploadTranscripts(repo, token); } catch (e) { report('Transcripts: ', String(e.message ?? e)); }
+    try { await loadCharacter(repo, token); } catch (e) { report('Talking friend picture: ', String(e.message ?? e)); }
+  }
   status.errors = [...new Set(status.errors)];
   await withState((s) => { s.syncStatus = status; });
   return status;
@@ -591,6 +608,94 @@ async function flushOutbox(repo, token) {
     }
   }
   await withState((s) => { s.outbox = s.outbox.filter((e) => !sent.has(e.eventId)); });
+}
+
+// --- transcripts --------------------------------------------------------------------------
+// YouTube refuses transcripts to cloud servers, so the tablet (on the home internet) fetches them
+// and puts them in the data repo as transcripts/<videoId>.json. The agent writes the talking
+// friend's intro, summary and questions from them.
+
+const TRANSCRIPTS_PER_SYNC = 12;
+const RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
+
+export async function fetchTranscript(videoId) {
+  const page = await fetch(`https://www.youtube.com/watch?v=${videoId}&hl=en`, { credentials: 'include' });
+  const html = await page.text();
+  const key = html.match(/"INNERTUBE_API_KEY":\s*"([A-Za-z0-9_-]+)"/)?.[1];
+  if (!key) throw new Error('YouTube page without player data');
+  const res = await fetch(`https://www.youtube.com/youtubei/v1/player?key=${key}`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, credentials: 'include',
+    body: JSON.stringify({ context: { client: { clientName: 'ANDROID', clientVersion: '20.10.38', hl: 'en' } }, videoId }),
+  });
+  const pr = await res.json();
+  const d = pr?.videoDetails ?? {};
+  const file = {
+    schemaVersion: 1, videoId, title: d.title ?? '', channelTitle: d.author ?? '',
+    durationSeconds: Number(d.lengthSeconds) || 0, description: (d.shortDescription ?? '').slice(0, 5000),
+    fetchedAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), available: false, lang: null, kind: null, text: '',
+  };
+  const tracks = pr?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [];
+  const en = (t) => t.languageCode?.startsWith('en');
+  const track = tracks.find((t) => en(t) && t.kind !== 'asr') ?? tracks.find(en) ?? tracks.find((t) => t.kind !== 'asr') ?? tracks[0];
+  if (track) {
+    const xml = await (await fetch(track.baseUrl.replace('&fmt=srv3', ''), { credentials: 'include' })).text();
+    const text = captionsToText(parseCaptions(xml));
+    if (text) Object.assign(file, { available: true, lang: track.languageCode, kind: track.kind === 'asr' ? 'auto' : 'manual', text: text.slice(0, 60000) });
+  }
+  return file;
+}
+
+async function uploadTranscripts(repo, token) {
+  const { transcripts = {}, data = {} } = await chrome.storage.local.get(['transcripts', 'data']);
+  const queue = data.queue ?? (await loadBundled()).queue;
+  const due = queue.videos.map((v) => v.videoId).filter((id) => {
+    const t = transcripts[id];
+    return !t || (t.status === 'error' && Date.now() - t.at > RETRY_AFTER_MS);
+  }).slice(0, TRANSCRIPTS_PER_SYNC);
+  const done = {};
+  for (const id of due) {
+    const path = `transcripts/${id}.json`;
+    try {
+      if (await getRepoFile(repo, token, path)) { done[id] = { status: 'uploaded', at: Date.now() }; continue; }
+      const file = await fetchTranscript(id);
+      await putRepoFile(repo, token, path, file, null, `transcript ${id}`);
+      done[id] = { status: 'uploaded', at: Date.now(), available: file.available };
+    } catch (e) {
+      done[id] = { status: 'error', at: Date.now(), error: String(e.message ?? e).slice(0, 200) };
+    }
+  }
+  if (due.length) await withState((s) => { s.transcripts = { ...(s.transcripts ?? {}), ...done }; });
+  const failed = Object.values(done).filter((d) => d.status === 'error');
+  if (failed.length) throw new Error(`${failed.length} of ${due.length} could not be fetched (${failed[0].error}); will retry tomorrow.`);
+}
+
+// --- the talking friend's picture from the private data repo ("repo:characters/x.svg") --------
+
+async function loadCharacter(repo, token) {
+  const { data = {}, localConfig, character } = await chrome.storage.local.get(['data', 'localConfig', 'character']);
+  const { config } = await effective({ data, localConfig });
+  const ref = config.presenter?.imageUrl ?? '';
+  if (!ref.startsWith('repo:')) { if (character) await withState((s) => { s.character = null; }); return; }
+  const path = ref.slice(5);
+  const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+    headers: { ...ghHeaders(token), ...(character?.path === path && character.etag ? { 'If-None-Match': character.etag } : {}) }, cache: 'no-store',
+  });
+  if (r.status === 304) return;
+  if (!r.ok) throw new Error(await explainHttp(r.status, repo, token, path));
+  const etag = r.headers.get('etag');
+  if (path.endsWith('.svg')) {
+    const svg = await r.text();
+    return withState((s) => { s.character = { path, etag, svg: svg.slice(0, 300000) }; });
+  }
+  const bytes = new Uint8Array(await r.arrayBuffer());
+  const type = path.endsWith('.png') ? 'image/png' : path.endsWith('.webp') ? 'image/webp' : path.endsWith('.gif') ? 'image/gif' : 'image/jpeg';
+  return withState((s) => { s.character = { path, etag, src: `data:${type};base64,${bytesToBase64(bytes.subarray(0, 2_000_000))}` }; });
+}
+
+function bytesToBase64(bytes) {
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
 }
 
 function toBase64(text) {

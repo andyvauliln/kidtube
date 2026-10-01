@@ -30,6 +30,7 @@ export function kindOf(path) {
   if (name === 'queue.json') return 'queue';
   if (name === 'memory.json') return 'memory';
   if (/^\d{4}-\d{2}-\d{2}\.json$/.test(name)) return 'activity';
+  if (basename(dirname(path)) === 'transcripts' && /^[A-Za-z0-9_-]{11}\.json$/.test(name)) return 'transcript';
   return null;
 }
 
@@ -136,7 +137,7 @@ function readJson(path) {
 // Returns [{ path, errors: [] }]. Errors starting with "warning:" don't fail the run.
 export function validateFile(path, ctx = {}) {
   const kind = kindOf(path);
-  if (!kind) return { path, errors: [`unknown file kind (expected parent-config.json, queue.json, memory.json, default-config.json or YYYY-MM-DD.json)`] };
+  if (!kind) return { path, errors: [`unknown file kind (expected parent-config.json, queue.json, memory.json, default-config.json, YYYY-MM-DD.json or transcripts/<videoId>.json)`] };
   const { data, error } = readJson(path);
   if (error) return { path, errors: [error] };
   const errors = schemaErrors(kind, data);
@@ -144,6 +145,7 @@ export function validateFile(path, ctx = {}) {
   if (kind === 'parent-config' || kind === 'default-config') errors.push(...checkConfig(data));
   if (kind === 'queue') errors.push(...checkQueue(data, ctx.effectiveConfig));
   if (kind === 'activity') errors.push(...checkActivity(data, path));
+  if (kind === 'transcript' && `${data.videoId}.json` !== basename(path)) errors.push(`/videoId ${data.videoId} does not match file name ${basename(path)}`);
   return { path, kind, data, errors };
 }
 
@@ -181,6 +183,8 @@ export function validateDataDir(dir) {
   }
 
   results.push(...activityResults);
+  const trDir = join(dir, 'transcripts');
+  if (existsSync(trDir)) results.push(...readdirSync(trDir).filter((f) => f.endsWith('.json')).sort().map((f) => validateFile(join(trDir, f))));
   return results;
 }
 

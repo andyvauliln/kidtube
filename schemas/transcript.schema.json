@@ -1,0 +1,60 @@
+{
+  "$id": "transcript.schema.json",
+  "title": "transcripts/<videoId>.json (the tablet writes; the agent reads)",
+  "type": "object",
+  "required": [
+    "schemaVersion",
+    "videoId",
+    "fetchedAt",
+    "available",
+    "text"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "videoId": {
+      "$ref": "common.schema.json#/$defs/videoId"
+    },
+    "title": {
+      "type": "string"
+    },
+    "channelTitle": {
+      "type": "string"
+    },
+    "durationSeconds": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 5000
+    },
+    "fetchedAt": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "available": {
+      "type": "boolean",
+      "description": "false = the video has no captions; use title and description"
+    },
+    "lang": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "kind": {
+      "enum": [
+        "manual",
+        "auto",
+        null
+      ]
+    },
+    "text": {
+      "type": "string",
+      "maxLength": 60000,
+      "description": "\"[m:ss] words\" lines, about 20 s each"
+    }
+  }
+}

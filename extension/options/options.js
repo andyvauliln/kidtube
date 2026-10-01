@@ -60,6 +60,7 @@ async function renderStatus() {
     ['Last sync', st.sync?.at ? new Date(st.sync.at).toLocaleString() : 'never'],
     ['List updated', st.queueUpdatedAt ? new Date(st.queueUpdatedAt).toLocaleString() : '—'],
     ['Waiting to upload', `${st.outbox} events`],
+    ['Transcripts on GitHub', `${st.transcripts.uploaded} of ${st.transcripts.total} videos${st.transcripts.missing ? ` (${st.transcripts.missing} without captions)` : ''}`],
   ];
   $('status').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', k), el('dd', v)]));
   for (const e of st.sync?.errors ?? []) $('status').append(el('dt', 'Problem'), el('dd', e, 'err'));
@@ -186,6 +187,7 @@ async function renderRules() {
   $('friendName').value = p.name ?? 'Zippy';
   $('pitch').value = p.voice?.pitch ?? 1.9;
   $('friendImage').value = p.imageUrl ?? '';
+  $('catchphrase').value = p.catchphrase ?? '';
   voiceLang = p.voice?.lang || 'en-US';
   $('rulesOut').textContent = pending ? 'Some rules are saved on this tablet only and will go to GitHub on the next sync.' : '';
 }
@@ -227,11 +229,14 @@ function readRules() {
       intro: $('intro').checked, outro: $('outro').checked,
       name: $('friendName').value.trim() || 'Zippy',
       imageUrl: $('friendImage').value.trim(),
+      catchphrase: $('catchphrase').value.trim(),
       voice: { pitch: Number($('pitch').value) },
     },
     quiz: { enabled: $('quizOn').checked, onFail: $('onFail').value, maxAttempts: int('maxAttempts', 1, 10) },
   };
-  if (patch.presenter.imageUrl && !/^https:\/\/\S+$/.test(patch.presenter.imageUrl)) errors.push('The picture must be a link starting with https://');
+  if (patch.presenter.imageUrl && !/^(https:\/\/\S+|repo:[A-Za-z0-9_./-]+\.(svg|png|jpg|jpeg|webp|gif))$/.test(patch.presenter.imageUrl)) {
+    errors.push('The picture must be a link starting with https:// or a repo file like repo:characters/friend.svg');
+  }
   if (patch.maxVideoDurationSeconds && patch.minVideoDurationSeconds > patch.maxVideoDurationSeconds) errors.push('The shortest video is longer than the longest.');
   return { patch, errors };
 }

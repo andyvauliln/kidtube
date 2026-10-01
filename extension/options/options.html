@@ -129,7 +129,9 @@
         <div><label for="friendName">Name</label><input id="friendName" maxlength="30"></div>
         <div><label for="pitch">Voice: low ↔ squeaky</label><input id="pitch" type="range" min="0.5" max="2" step="0.1"></div>
       </div>
-      <label for="friendImage">Picture (optional link to an image, https://…)</label>
+      <label for="catchphrase">Catchphrase (said at the start and the end)</label>
+      <input id="catchphrase" maxlength="60" placeholder="Pika pika!">
+      <label for="friendImage">Picture: a link (https://…) or a file in the data repo (repo:characters/name.svg)</label>
       <input id="friendImage" placeholder="empty = the built-in cloud friend">
       <button id="tryVoice">🔊 Try the voice</button>
       <button id="tryMic">🎤 Try the microphone</button>
