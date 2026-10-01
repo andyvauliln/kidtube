@@ -220,6 +220,85 @@
               }
             ]
           }
+        },
+        "onFail": {
+          "enum": [
+            "continue",
+            "rewatch",
+            "stopForToday",
+            null
+          ],
+          "description": "after maxAttempts wrong answers: continue = next video, rewatch = the same video once more (once a day), stopForToday = no more videos until tomorrow or a parent resets today"
+        }
+      }
+    },
+    "presenter": {
+      "type": [
+        "object",
+        "null"
+      ],
+      "additionalProperties": false,
+      "description": "the talking friend before and after each video",
+      "properties": {
+        "intro": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "outro": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "name": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "minLength": 1,
+          "maxLength": 30
+        },
+        "imageUrl": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^(https://.+)?$",
+          "description": "\"\" = the built-in character"
+        },
+        "voice": {
+          "type": [
+            "object",
+            "null"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "lang": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "pattern": "^[a-z]{2,3}(-[A-Za-z0-9]{2,8})*$"
+            },
+            "pitch": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0,
+              "maximum": 2
+            },
+            "rate": {
+              "type": [
+                "number",
+                "null"
+              ],
+              "minimum": 0.5,
+              "maximum": 2
+            }
+          }
         }
       }
     }

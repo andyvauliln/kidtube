@@ -2,9 +2,42 @@
   "schemaVersion": 1,
   "updatedAt": "2026-10-01T12:00:00Z",
   "videos": [
-    { "videoId": "AAAAAAAAAA1", "title": "Fractions with blocks", "channelId": "UCaaaaaaaaaaaaaaaaaaaaaa", "channelTitle": "Math Blocks", "durationSeconds": 360,
-      "thumbnailUrl": "https://i.ytimg.com/vi/AAAAAAAAAA1/mqdefault.jpg", "addedAt": "2026-10-01T12:00:00Z", "quizIds": ["pick-6"], "note": "Follow-up to the blocks video he liked" },
-    { "videoId": "AAAAAAAAAA2", "title": "Counting to ten", "channelId": "UCaaaaaaaaaaaaaaaaaaaaaa", "durationSeconds": 240, "addedAt": "2026-10-01T12:00:00Z" },
-    { "videoId": "AAAAAAAAAA3", "title": "Sounds of numbers", "channelId": "UCaaaaaaaaaaaaaaaaaaaaaa", "durationSeconds": 300, "addedAt": "2026-10-01T12:00:00Z", "quizIds": ["hear-number"] }
+    {
+      "videoId": "AAAAAAAAAA1",
+      "title": "Fractions with blocks",
+      "channelId": "UCaaaaaaaaaaaaaaaaaaaaaa",
+      "channelTitle": "Math Blocks",
+      "durationSeconds": 360,
+      "thumbnailUrl": "https://i.ytimg.com/vi/AAAAAAAAAA1/mqdefault.jpg",
+      "addedAt": "2026-10-01T12:00:00Z",
+      "quizIds": [
+        "pick-6",
+        "spider-legs"
+      ],
+      "note": "Follow-up to the blocks video he liked",
+      "intro": {
+        "text": "Hi! Today we meet some amazing animals."
+      },
+      "outro": {
+        "text": "Today we learned how animals find food."
+      }
+    },
+    {
+      "videoId": "AAAAAAAAAA2",
+      "title": "Counting to ten",
+      "channelId": "UCaaaaaaaaaaaaaaaaaaaaaa",
+      "durationSeconds": 240,
+      "addedAt": "2026-10-01T12:00:00Z"
+    },
+    {
+      "videoId": "AAAAAAAAAA3",
+      "title": "Sounds of numbers",
+      "channelId": "UCaaaaaaaaaaaaaaaaaaaaaa",
+      "durationSeconds": 300,
+      "addedAt": "2026-10-01T12:00:00Z",
+      "quizIds": [
+        "hear-number"
+      ]
+    }
   ]
 }

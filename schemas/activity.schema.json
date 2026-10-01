@@ -167,6 +167,14 @@
                     "type": "string",
                     "maxLength": 200
                   }
+                },
+                "answeredBy": {
+                  "enum": [
+                    "typed",
+                    "tapped",
+                    "spoken"
+                  ],
+                  "description": "spoken = the microphone worked; typed after asking for voice = it did not"
                 }
               }
             }

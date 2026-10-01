@@ -19,8 +19,9 @@ export function card(v, onTap, { small = false } = {}) {
 }
 
 export function renderLock(root, lock) {
-  const when = lock.opens ? `See you ${lock.opens.day} at ${lock.opens.at}` : 'See you later';
-  const [icon, title] = lock.reason === 'dailyCap' ? ['🌙', 'That’s all for today'] : ['⏰', 'Videos are sleeping'];
+  const when = lock.reason === 'stopped' ? 'Let’s try again tomorrow' : lock.opens ? `See you ${lock.opens.day} at ${lock.opens.at}` : 'See you later';
+  const [icon, title] = lock.reason === 'dailyCap' ? ['🌙', 'That’s all for today']
+    : lock.reason === 'stopped' ? ['🌟', 'Good work today'] : ['⏰', 'Videos are sleeping'];
   root.innerHTML = `<div class="center" style="background:#efeaff"><div><div class="big">${icon}</div><h1>${title}</h1><p></p></div></div>`;
   root.querySelector('p').textContent = when;
 }

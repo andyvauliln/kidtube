@@ -1,0 +1,78 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KidTube</title>
+<link rel="stylesheet" href="ui.css">
+<style>
+  body { background: radial-gradient(circle at 50% 30%, #fff3d6, #ffe0b3); overflow: hidden; }
+  .stage { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; }
+  @media (orientation: landscape) { .stage { flex-direction: row; } .side { max-width: 55%; } }
+  .friend { width: min(52vw, 46vh, 340px); aspect-ratio: 1; position: relative; animation: bob 2.4s ease-in-out infinite; }
+  .friend svg, .friend img { width: 100%; height: 100%; object-fit: contain; display: block; }
+  .talking .friend { animation: bob .45s ease-in-out infinite; }
+  .talking .friend img { animation: squash .22s ease-in-out infinite alternate; }
+  @keyframes bob { 50% { transform: translateY(-10px); } }
+  @keyframes squash { to { transform: scale(1.04, .96); } }
+  #mouth { transition: ry .08s; }
+  .wave #armR { animation: wave .5s ease-in-out 3; transform-origin: 160px 128px; }
+  @keyframes wave { 50% { transform: rotate(-35deg); } }
+  .side { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; max-width: 640px; }
+  .bubble { background: #fff; border-radius: 22px; padding: 16px 20px; font-size: 24px; line-height: 1.3; text-align: center;
+    box-shadow: 0 4px 0 #0000000f, 0 8px 22px #0000001a; min-height: 1em; max-height: 36vh; overflow: auto; }
+  .bubble:empty { visibility: hidden; }
+  .answers { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
+  .answers button, .go { border: 0; border-radius: 18px; background: #fff; font: inherit; font-size: 26px; padding: 14px 24px; min-width: 96px;
+    box-shadow: 0 4px 0 #0000001f; color: var(--ink); }
+  .answers button:active, .go:active { transform: translateY(2px); box-shadow: 0 2px 0 #0000001f; }
+  .go, .answers button.ok { background: var(--accent); color: #fff; }
+  .answers input { font: inherit; font-size: 26px; padding: 12px 16px; border-radius: 16px; border: 2px solid #e5d6c0; width: 220px; text-align: center; }
+  .mic { width: 110px; height: 110px; border-radius: 50%; font-size: 52px; background: #fff; }
+  .mic.on { background: #ff5252; animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 0 0 18px #ff525233; } }
+  .heard { color: var(--muted); font-size: 18px; min-height: 1.2em; }
+  .start { position: fixed; inset: 0; display: grid; place-items: end center; padding-bottom: 8vh; background: transparent; border: 0; font: inherit; }
+  .start span { background: var(--accent); color: #fff; font-size: 28px; padding: 14px 28px; border-radius: 30px; box-shadow: 0 4px 0 #0000002a; }
+  .parent { position: fixed; right: 10px; bottom: 10px; background: transparent; border: 0; font-size: 20px; opacity: .35; }
+  .pinbox { position: fixed; inset: 0; background: #0008; display: grid; place-items: center; }
+  .pinbox div { background: #fff; border-radius: 16px; padding: 20px; text-align: center; }
+  .pinbox input { font-size: 26px; width: 180px; text-align: center; letter-spacing: 6px; padding: 8px; }
+  .pinbox p { font-size: 15px; }
+  [hidden] { display: none !important; }
+</style>
+<body>
+  <div class="stage" id="stage">
+    <div class="friend" id="friend">
+      <svg id="buddy" viewBox="0 0 200 200" aria-hidden="true">
+        <!-- Zippy: an original character, a little cloud that carries a spark -->
+        <path d="M100 8 L88 40 L102 40 L92 66 L120 30 L106 30 Z" fill="#ffd23f" stroke="#e0a800" stroke-width="3" stroke-linejoin="round"/>
+        <g id="armL"><ellipse cx="38" cy="132" rx="16" ry="11" fill="#7cc6ff"/></g>
+        <g id="armR"><ellipse cx="162" cy="128" rx="16" ry="11" fill="#7cc6ff"/></g>
+        <path d="M45 170 C18 170 14 132 40 124 C34 92 70 70 96 84 C110 60 152 64 156 98 C186 98 192 140 168 150 C176 172 150 180 140 170 Z"
+          fill="#9ed8ff" stroke="#5aaee8" stroke-width="4" stroke-linejoin="round"/>
+        <ellipse cx="102" cy="140" rx="44" ry="24" fill="#d7f0ff"/>
+        <g id="eyes">
+          <ellipse cx="80" cy="112" rx="11" ry="14" fill="#1d2b3a"/><ellipse cx="124" cy="112" rx="11" ry="14" fill="#1d2b3a"/>
+          <circle cx="84" cy="106" r="4" fill="#fff"/><circle cx="128" cy="106" r="4" fill="#fff"/>
+        </g>
+        <ellipse cx="62" cy="132" rx="9" ry="6" fill="#ffb3c7"/><ellipse cx="142" cy="132" rx="9" ry="6" fill="#ffb3c7"/>
+        <ellipse id="mouth" cx="102" cy="138" rx="12" ry="3" fill="#7a2d3a"/>
+      </svg>
+    </div>
+    <div class="side">
+      <div class="bubble" id="bubble"></div>
+      <div class="answers" id="answers"></div>
+      <div class="heard" id="heard"></div>
+    </div>
+  </div>
+  <button class="start" id="start"><span id="startText">👆 Tap to start</span></button>
+  <button class="parent" id="parent" title="Parent">🔒</button>
+  <div class="pinbox" id="pinbox" hidden><div>
+    <p>Parent PIN to skip</p>
+    <input id="pin" type="password" inputmode="numeric" maxlength="8" autocomplete="off">
+    <p id="pinErr"></p>
+    <button class="go" id="pinOk">Skip</button> <button class="go" id="pinCancel" style="background:#eee;color:#333">Back</button>
+  </div></div>
+  <script type="module" src="talk.js"></script>
+</body>
+</html>

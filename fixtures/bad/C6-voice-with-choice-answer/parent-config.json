@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-10-01T00:00:00Z",
+  "quiz": {
+    "items": {
+      "spider-legs": { "type": "voice", "prompt": "How many legs does a spider have?", "answer": { "kind": "choice", "options": ["6", "8"], "correct": "8" } }
+    }
+  }
+}

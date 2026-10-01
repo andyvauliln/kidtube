@@ -44,6 +44,18 @@
     "maxAttempts": 3,
     "itemsPerVideo": 1,
     "defaultIds": [],
-    "items": {}
+    "items": {},
+    "onFail": "continue"
+  },
+  "presenter": {
+    "intro": false,
+    "outro": false,
+    "name": "Zippy",
+    "imageUrl": "",
+    "voice": {
+      "lang": "en-US",
+      "pitch": 1.9,
+      "rate": 1.05
+    }
   }
 }

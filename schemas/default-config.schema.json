@@ -24,6 +24,7 @@
     "queueSize",
     "time",
     "blockedChannelIds",
-    "quiz"
+    "quiz",
+    "presenter"
   ]
 }

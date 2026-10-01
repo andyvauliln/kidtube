@@ -18,7 +18,11 @@ export function installFakeChrome() {
       set: async (obj) => { for (const [k, v] of Object.entries(obj)) store[k] = structuredClone(v); },
       remove: async (k) => { delete store[k]; },
     } },
-    tabs: { onUpdated: on('tabUpdated'), onRemoved: on('tabRemoved'), update: async (id, { url }) => { nav.updates.push(url); } },
+    tabs: {
+      onUpdated: on('tabUpdated'), onRemoved: on('tabRemoved'),
+      update: async (id, { url }) => { nav.updates.push(url); },
+      create: async ({ url }) => { nav.created = [...(nav.created ?? []), url]; return { id: 99 }; },
+    },
     alarms: { create: () => {}, onAlarm: on('alarm') },
     declarativeNetRequest: { updateDynamicRules: async (r) => { fake.rules = r.addRules; } },
   };

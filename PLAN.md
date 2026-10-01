@@ -115,6 +115,9 @@ Rules:
 - Text marking: NFKC, trim, collapse spaces, lowercase. If both the answer and the accepted value parse as numbers (`,` counts as a decimal point), they are compared as numbers, so `6` = `6.0` = `6,0`.
 - `choice.correct` must be one of `options`. Options are shuffled on screen.
 - An unknown `type` shows "This tablet needs an update". It counts neither as pass nor as fail and does not block. It is logged as `quiz` with `result:"unsupported"`.
+- `voice` questions: the friend reads the question, the microphone opens, and the answer counts when one of `accept` is heard as whole words ("um it's eight" matches `eight`; number words and digits are the same). Without a working microphone he types instead, and the event says `answeredBy:"typed"`.
+- `quiz.onFail` (after `maxAttempts` wrong answers): `continue` (default) = next video; `rewatch` = the same video once more, at most once a day per video; `stopForToday` = lock screen "Let's try again tomorrow" until midnight, or until a parent presses Reset today's minutes. A parent can always skip questions with the PIN (`skippedByParent`).
+- `presenter` (the talking friend): `intro` = speaks before each video, `outro` = speaks after it (the video's `outro.text`, what we learned), then asks the questions if `quiz.enabled`. `name`, `imageUrl` (`""` = built-in character), `voice: {lang, pitch 0–2, rate}`. The tablet speaks with the browser's own text-to-speech; an `audioUrl` on a line plays a recording instead.
 
 ### 3.2 `queue.json` (agent writes)
 
@@ -133,7 +136,9 @@ Rules:
       "addedAt": "2026-10-01T12:00:00Z",
       "quizIds": ["add-3-3"],
       "allowRewatch": false,
-      "note": "Follow-up to the blocks video he liked"
+      "note": "Follow-up to the blocks video he liked",
+      "intro": { "text": "Hi! Today we build fractions with blocks. Watch how one block becomes two halves!" },
+      "outro": { "text": "Today we learned that two halves make one whole. Let's see what you remember!" }
     }
   ]
 }
@@ -144,6 +149,7 @@ Rules:
 - Shown = in queue, **not** in the local watched set (unless `allowRewatch`), channel not blocked, duration between min and max, not a Short. At most `queueSize`.
 - "Watched" means `endReason` is `ended`, or `watchedSeconds >= minSecondsBeforeLeave`. Stored locally by `videoId` and reported in activity.
 - `note` is for the parent's view only. The kid doesn't see it.
+- `intro` / `outro` are what the talking friend says (max 600 chars, short sentences, for a young child). Optional: without them the friend says a short generic hello and "well done". `audioUrl` = a recording to play instead of the tablet's voice.
 
 ### 3.3 `activity/YYYY-MM-DD.json` (tablet writes; agent read-only)
 
@@ -241,6 +247,8 @@ kidtube-data/                    (private)
 - **End**: if `ended`, or he leaves after the lock: quiz iframe (if enabled) → home. The watched card disappears.
 - **Daily cap reached during a video**: the video pauses and the lock screen shows. The leave lock never extends the day.
 - **Quiz screen**: one item at a time, large type, a replay button for audio, the on-screen keyboard for text (`inputmode="numeric"` when every accepted value is a number), and a gentle wrong-answer animation.
+- **Talking friend** (`ui/talk.html`, its own extension page, so it gets the microphone and isn't covered by YouTube): tap a card → friend says the intro → the video. Video ends → friend says the outro → questions (spoken, tapped or typed) → home, the same video again, or "see you tomorrow" depending on `quiz.onFail`. The kid taps the friend once to start, because browsers only let a page speak after a tap.
+- **Parent view of a video**: the parent page lists recently watched videos with picture, title, channel and length. Tapping the picture opens that video in a new tab for the parent: no covers, skipping allowed, nothing counted for the kid. The pass covers that one video in that one tab for an hour and ends as soon as the tab goes anywhere else.
 
 ---
 
@@ -269,14 +277,16 @@ kidtube-data/                    (private)
 - [ ] Manual script: clicking a channel, a related video, the logo, `/shorts/x`, an outside URL in the address bar, the back button, or an end-screen card always lands on home or does nothing, and logs `blocked`
 - [ ] A queue item from a blocked channel never appears, even if the agent left it in
 
-**M4: Quizzes.** Registry, `text` / `choice` / `audio`, the marker, maxAttempts, PIN skip, unsupported type, quiz events, generated `quiz-types.json`.
+**M4: Quizzes and the talking friend.** _Status: built in 0.3.0 (talk page, voice/text/choice/audio questions, `mark.js`, onFail, PIN skip, quiz events, parent view of a video). Logic tested in node; on-tablet check of speech and microphone in Quetta pending._ Registry, `text` / `choice` / `audio`, the marker, maxAttempts, PIN skip, unsupported type, quiz events, generated `quiz-types.json`.
 - [ ] Unit tests for `mark.js`: `" 6 "`, `6.0`, `6,0`, `SIX`, NFKC full-width `６`
 - [ ] Unknown type → "needs update" screen, doesn't block, logged `unsupported`
+- [ ] Quetta: the friend speaks after one tap; "Try the microphone" on the parent page hears words; a `voice` question accepts a spoken answer; with the microphone refused, he can type instead
+- [ ] onFail `rewatch` and `stopForToday` behave as in §3.1 (tests/talk.test.mjs covers the logic)
 
 **M5: Release pipeline.** `pack.mjs`, `release.yml` (signing key as a secret), Pages, `updates.xml`, `latest.json`, options-page fallback button.
 - [ ] Tag `v1.0.1`, and the tablet's Update installs it (or shows "Install v1.0.1 →" if M0 found that requestUpdateCheck doesn't work)
 
-**M6: Agent workspace.** `agent/README.md` (connect, the two repos, schedule daily at 20:00 local, run validate before commit, code only through PRs), `agent/PROMPT.md` (focus, good and bad examples, parent comments win over inferred taste, keep `queueSize` unwatched and valid, use only `device.quizTypes`, update `memory.processedThrough` and `journal`).
+**M6: Agent workspace.** `agent/README.md` (connect, the two repos, schedule daily at 20:00 local, run validate before commit, code only through PRs), `agent/PROMPT.md` (focus, good and bad examples, parent comments win over inferred taste, keep `queueSize` unwatched and valid, use only `device.quizTypes`, update `memory.processedThrough` and `journal`; for each new video write `intro` and `outro` texts in short sentences a 5-year-old understands, and 1–2 questions whose answers are said in the video, as `voice` items with several `accept` variants such as `["eight", "8"]`; use the video's transcript when it can get one, never guess facts the video doesn't say).
 - [ ] Dry run: hand the agent a fixture day of activity. It writes a valid queue of 10 new videos, a memory update, and no code changes.
 
 **M7: Ads (behind `blockAds`).** DNR ad list, removal of banners and overlays, auto-Skip, cover over an unskippable pre-roll.
@@ -295,4 +305,6 @@ kidtube-data/                    (private)
 
 - Quetta's extension support is the foundation. M0 decides it before anything else is built.
 - YouTube DOM and anti-adblock changes. Mitigation: `videoDetails` checks rather than DOM scraping where possible, and ads behind a flag.
+- Speech in Quetta: text-to-speech and speech recognition come from the browser and Android. If recognition is missing or the microphone is refused, questions fall back to typing and the activity log shows `answeredBy:"typed"`, so the agent can switch to `choice` questions.
+- The talking friend is an original character. Branded characters (and imitations of their voices) are not shipped in the public repo; a parent can point `presenter.imageUrl` at a picture of their own choosing.
 - The device clock can be changed by the kid. Mitigation: compare against the GitHub API `Date` header on each sync, and lock if they are more than 10 min apart.

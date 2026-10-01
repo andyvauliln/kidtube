@@ -93,12 +93,21 @@
   }
 
   // allowSkip off: no jumping forward and no speed above 1x. Going back is fine.
-  let allowSkip = false, maxReached = 0;
+  // parentMode: a parent opened this video from the parent page; no covers, no counting, skipping allowed.
+  let allowSkip = false, maxReached = 0, parentMode = false;
   async function loadRules() {
     const st = await ask({ type: 'state' });
     if (!st?.rules) return;
     allowSkip = st.rules.allowSkip;
+    parentMode = !!st.parent;
     document.documentElement.classList.toggle('kidtube-noskip', !allowSkip);
+    if (page === 'watch') route();
+  }
+
+  function showParentView() {
+    [...COVERS, 'strip', 'lock', 'home'].forEach(drop);
+    document.documentElement.classList.remove('kidtube-on');
+    place(frame('badge', 'ui/badge.html'), 8, 8, 230, 40);
   }
   function guardSkipping(v) {
     v.addEventListener('timeupdate', () => {
@@ -118,9 +127,12 @@
     const vid = u.pathname === '/watch' ? u.searchParams.get('v') : null;
     if (vid) {
       if (page !== 'watch' || vid !== videoId) { page = 'watch'; videoId = vid; drop('home'); drop('lock'); played = 0; maxReached = 0; loadRules(); }
+      if (parentMode) return showParentView();
+      document.documentElement.classList.add('kidtube-on');
+      drop('badge');
       layoutWatch();
     } else {
-      if (page !== 'home') { page = 'home'; videoId = null; }
+      if (page !== 'home') { page = 'home'; videoId = null; parentMode = false; document.documentElement.classList.add('kidtube-on'); drop('badge'); }
       showHome();
       silenceVideos();
     }
@@ -132,7 +144,7 @@
     route();
     const now = performance.now(), dt = (now - last) / 1000;
     last = now;
-    if (page !== 'watch' || frames.lock) return;
+    if (page !== 'watch' || frames.lock || parentMode) return;
     const v = player();
     if (!v) return;
     if (!hooked.has(v)) {
@@ -165,9 +177,9 @@
   };
   for (const t of ['click', 'auxclick']) document.addEventListener(t, swallow, true);
 
-  addEventListener('resize', () => (page === 'watch' ? layoutWatch() : page === 'home' && showHome()));
-  chrome.storage.onChanged.addListener((ch) => { if (ch.data || ch.localConfig) loadRules(); });
+  addEventListener('resize', () => (page === 'watch' ? route() : page === 'home' && showHome()));
+  chrome.storage.onChanged.addListener((ch) => { if (ch.data || ch.localConfig || ch.parentPass) loadRules(); });
   loadRules();
-  document.addEventListener('fullscreenchange', () => page === 'watch' && layoutWatch());
+  document.addEventListener('fullscreenchange', () => page === 'watch' && route());
   route();
 })();

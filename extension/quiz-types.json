@@ -1,1 +1,6 @@
-[]
+[
+  "text",
+  "choice",
+  "audio",
+  "voice"
+]

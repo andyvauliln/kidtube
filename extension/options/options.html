@@ -21,9 +21,16 @@
   dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 15px; }
   dt { color: var(--muted); }
   dd { margin: 0; word-break: break-word; }
-  .row { border-top: 1px solid var(--line); padding: 10px 0; }
+  .row { border-top: 1px solid var(--line); padding: 12px 0; display: grid; grid-template-columns: 160px 1fr; gap: 12px; align-items: start; }
   .row:first-child { border-top: 0; }
-  .row button { padding: 6px 12px; margin-top: 6px; }
+  .row button { padding: 6px 12px; margin: 6px 6px 0 0; }
+  .row .thumb { position: relative; border: 0; padding: 0; margin: 0; border-radius: 10px; overflow: hidden; background: #000; display: block; width: 100%; }
+  .row .thumb img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; }
+  .row .thumb span { position: absolute; inset: 0; display: grid; place-items: center; font-size: 34px; color: #fff; text-shadow: 0 2px 6px #000a; }
+  .row .title { font-weight: 600; }
+  @media (max-width: 480px) { .row { grid-template-columns: 1fr; } }
+  select { width: 100%; font: inherit; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+  input[type=range] { padding: 0; }
   .pin { font-size: 28px; letter-spacing: 8px; text-align: center; }
   .rules label.check { display: flex; align-items: center; gap: 10px; color: var(--ink); font-size: 16px; margin: 12px 0 0; }
   .rules label.check input { width: auto; transform: scale(1.3); }
@@ -103,13 +110,38 @@
       <label for="channels">Blocked channels (channel ids starting with UC, one per line)</label>
       <textarea id="channels" placeholder="UC…"></textarea>
 
+      <h2 style="margin-top:20px">Talking friend</h2>
+      <label class="check"><input type="checkbox" id="intro"> Says hello before each video</label>
+      <label class="check"><input type="checkbox" id="outro"> Says what we learned after each video</label>
+      <label class="check"><input type="checkbox" id="quizOn"> Asks questions after the video</label>
+      <p class="hint">The agent writes the words and the questions for each video. Without them the friend says a short hello and “well done”.</p>
+      <div class="two">
+        <div><label for="onFail">After <span id="attemptsLabel">3</span> wrong answers</label>
+          <select id="onFail">
+            <option value="continue">he goes on to the next video</option>
+            <option value="rewatch">he watches the same video again (once a day)</option>
+            <option value="stopForToday">no more videos today</option>
+          </select></div>
+        <div><label for="maxAttempts">Tries per question</label><input id="maxAttempts" type="number" min="1" max="10" inputmode="numeric"></div>
+      </div>
+      <p class="hint">“No more videos today” can be undone with Reset today’s minutes.</p>
+      <div class="two">
+        <div><label for="friendName">Name</label><input id="friendName" maxlength="30"></div>
+        <div><label for="pitch">Voice: low ↔ squeaky</label><input id="pitch" type="range" min="0.5" max="2" step="0.1"></div>
+      </div>
+      <label for="friendImage">Picture (optional link to an image, https://…)</label>
+      <input id="friendImage" placeholder="empty = the built-in cloud friend">
+      <button id="tryVoice">🔊 Try the voice</button>
+      <button id="tryMic">🎤 Try the microphone</button>
+      <p id="micOut" class="hint">Press “Try the microphone” once and allow it, so the questions can hear him.</p>
+
       <button class="primary" id="saveRules">Save rules</button>
       <p id="rulesOut" class="muted"></p>
     </section>
 
     <section>
       <h2>Recently watched</h2>
-      <p class="muted">Your thumbs and comments go to the agent.</p>
+      <p class="muted">Tap a picture to watch it yourself (skipping allowed, doesn’t count for him). Your thumbs and comments go to the agent.</p>
       <div id="recent"></div>
     </section>
 

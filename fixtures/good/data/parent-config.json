@@ -5,18 +5,91 @@
   "timezone": "Europe/Moscow",
   "time": {
     "allowed": [
-      { "days": ["mon", "tue", "wed", "thu", "fri"], "from": "16:00", "to": "18:30" },
-      { "days": ["sat", "sun"], "from": "10:00", "to": "18:30" }
+      {
+        "days": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri"
+        ],
+        "from": "16:00",
+        "to": "18:30"
+      },
+      {
+        "days": [
+          "sat",
+          "sun"
+        ],
+        "from": "10:00",
+        "to": "18:30"
+      }
     ]
   },
   "queueSize": 3,
   "quiz": {
     "enabled": true,
-    "defaultIds": ["add-3-3"],
+    "defaultIds": [
+      "add-3-3"
+    ],
     "items": {
-      "add-3-3": { "type": "text", "prompt": "How much is 3 + 3?", "answer": { "kind": "text", "accept": ["6", "six"] } },
-      "pick-6": { "type": "choice", "prompt": "Which is 3 + 3?", "answer": { "kind": "choice", "options": ["5", "6", "7"], "correct": "6" } },
-      "hear-number": { "type": "audio", "prompt": "What number did you hear?", "audioUrl": "https://example.github.io/kidtube/audio/six.mp3", "answer": { "kind": "text", "accept": ["6"] } }
+      "add-3-3": {
+        "type": "text",
+        "prompt": "How much is 3 + 3?",
+        "answer": {
+          "kind": "text",
+          "accept": [
+            "6",
+            "six"
+          ]
+        }
+      },
+      "pick-6": {
+        "type": "choice",
+        "prompt": "Which is 3 + 3?",
+        "answer": {
+          "kind": "choice",
+          "options": [
+            "5",
+            "6",
+            "7"
+          ],
+          "correct": "6"
+        }
+      },
+      "hear-number": {
+        "type": "audio",
+        "prompt": "What number did you hear?",
+        "audioUrl": "https://example.github.io/kidtube/audio/six.mp3",
+        "answer": {
+          "kind": "text",
+          "accept": [
+            "6"
+          ]
+        }
+      },
+      "spider-legs": {
+        "type": "voice",
+        "prompt": "How many legs does a spider have?",
+        "answer": {
+          "kind": "text",
+          "accept": [
+            "eight",
+            "8"
+          ]
+        }
+      }
+    },
+    "onFail": "rewatch"
+  },
+  "presenter": {
+    "intro": true,
+    "outro": true,
+    "name": "Zippy",
+    "voice": {
+      "lang": "en-US",
+      "pitch": 1.9,
+      "rate": 1.05
     }
   }
 }

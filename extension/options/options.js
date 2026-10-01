@@ -1,14 +1,8 @@
+import { hashPin, checkPin } from '../lib/pin.js';
+import { say, listen } from '../ui/voice.js';
+
 const $ = (id) => document.getElementById(id);
 const send = (msg) => chrome.runtime.sendMessage(msg);
-
-// --- PIN: PBKDF2 hash with a salt, 5 wrong tries = 1 minute wait (PLAN.md C22) -------------
-
-async function hashPin(pin, saltB64) {
-  const salt = Uint8Array.from(atob(saltB64), (c) => c.charCodeAt(0));
-  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
-  const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', hash: 'SHA-256', salt, iterations: 150000 }, key, 256);
-  return btoa(String.fromCharCode(...new Uint8Array(bits)));
-}
 
 async function getSettings() {
   return (await chrome.storage.local.get('settings')).settings ?? {};
@@ -38,18 +32,10 @@ $('pinGo').addEventListener('click', async () => {
     await patchSettings({ pinSalt: salt, pinHash: await hashPin(pin, salt), pinFails: 0 });
     return unlock();
   }
-  const s = await getSettings();
-  if (s.pinLockedUntil && Date.now() < s.pinLockedUntil) {
-    return ($('pinErr').textContent = `Too many tries. Wait ${Math.ceil((s.pinLockedUntil - Date.now()) / 1000)} s.`);
-  }
-  if ((await hashPin(pin, s.pinSalt)) === s.pinHash) {
-    await patchSettings({ pinFails: 0, pinLockedUntil: 0 });
-    return unlock();
-  }
-  const fails = (s.pinFails ?? 0) + 1;
-  await patchSettings({ pinFails: fails, pinLockedUntil: fails >= 5 ? Date.now() + 60000 : 0 });
+  const r = await checkPin(pin);
+  if (r.ok) return unlock();
   $('pin').value = '';
-  $('pinErr').textContent = fails >= 5 ? 'Too many tries. Wait 1 minute.' : 'Wrong PIN.';
+  $('pinErr').textContent = r.error;
 });
 $('pin').addEventListener('keydown', (e) => e.key === 'Enter' && !settingPin && $('pinGo').click());
 
@@ -83,7 +69,15 @@ async function renderStatus() {
 
 function row(r) {
   const d = el('div', '', 'row');
-  d.append(el('div', r.title), el('div', new Date(r.at).toLocaleString(), 'muted'));
+  const thumb = el('button', '', 'thumb');
+  thumb.title = 'Watch it yourself';
+  const img = Object.assign(document.createElement('img'), { src: r.thumbnailUrl, alt: '', loading: 'lazy' });
+  thumb.append(img, el('span', '▶'));
+  thumb.onclick = () => send({ type: 'parentWatch', videoId: r.videoId });
+  const info = el('div', '');
+  const meta = [r.channelTitle, r.durationSeconds ? `${Math.round(r.durationSeconds / 60)} min` : '', `watched ${new Date(r.at).toLocaleString()}`].filter(Boolean).join(' · ');
+  info.append(el('div', r.title, 'title'), el('div', meta, 'muted'));
+  d.append(thumb, info);
   const up = el('button', '👍'), down = el('button', '👎'), say = el('button', 'Comment');
   up.onclick = () => note(r.videoId, { liked: true }, d);
   down.onclick = () => note(r.videoId, { liked: false }, d);
@@ -91,7 +85,7 @@ function row(r) {
     const text = prompt(`Comment for the agent about “${r.title}”`);
     if (text) note(r.videoId, { comment: text }, d);
   };
-  d.append(up, down, say);
+  info.append(up, down, say);
   return d;
 }
 
@@ -182,6 +176,17 @@ async function renderRules() {
   $('blockSites').checked = !!c.blockOutboundLinks;
   $('sites').value = (c.allowedSiteDomains ?? []).join('\n');
   $('channels').value = (c.blockedChannelIds ?? []).join('\n');
+  const p = c.presenter ?? {};
+  $('intro').checked = !!p.intro;
+  $('outro').checked = !!p.outro;
+  $('quizOn').checked = !!c.quiz?.enabled;
+  $('onFail').value = c.quiz?.onFail ?? 'continue';
+  $('maxAttempts').value = c.quiz?.maxAttempts ?? 3;
+  $('attemptsLabel').textContent = $('maxAttempts').value;
+  $('friendName').value = p.name ?? 'Zippy';
+  $('pitch').value = p.voice?.pitch ?? 1.9;
+  $('friendImage').value = p.imageUrl ?? '';
+  voiceLang = p.voice?.lang || 'en-US';
   $('rulesOut').textContent = pending ? 'Some rules are saved on this tablet only and will go to GitHub on the next sync.' : '';
 }
 
@@ -218,7 +223,15 @@ function readRules() {
     blockOutboundLinks: $('blockSites').checked,
     allowedSiteDomains: sites.length ? sites : ['youtube.com'],
     blockedChannelIds: channels,
+    presenter: {
+      intro: $('intro').checked, outro: $('outro').checked,
+      name: $('friendName').value.trim() || 'Zippy',
+      imageUrl: $('friendImage').value.trim(),
+      voice: { pitch: Number($('pitch').value) },
+    },
+    quiz: { enabled: $('quizOn').checked, onFail: $('onFail').value, maxAttempts: int('maxAttempts', 1, 10) },
   };
+  if (patch.presenter.imageUrl && !/^https:\/\/\S+$/.test(patch.presenter.imageUrl)) errors.push('The picture must be a link starting with https://');
   if (patch.maxVideoDurationSeconds && patch.minVideoDurationSeconds > patch.maxVideoDurationSeconds) errors.push('The shortest video is longer than the longest.');
   return { patch, errors };
 }
@@ -236,5 +249,39 @@ $('saveRules').addEventListener('click', async () => {
   } finally {
     $('saveRules').disabled = false;
     renderStatus();
+  }
+});
+
+// --- Talking friend: try the voice and the microphone ------------------------------------------
+
+let voiceLang = 'en-US';
+$('maxAttempts').addEventListener('input', () => { $('attemptsLabel').textContent = $('maxAttempts').value || '3'; });
+
+$('tryVoice').addEventListener('click', () => {
+  const name = $('friendName').value.trim() || 'Zippy';
+  say({ text: `Hi! I'm ${name}. Let's watch a video and learn something new!` }, { lang: voiceLang, pitch: Number($('pitch').value), rate: 1.05 });
+});
+
+// Allowing the microphone here also allows it on the friend's screen (same extension).
+$('tryMic').addEventListener('click', async () => {
+  $('micOut').className = 'hint';
+  $('micOut').textContent = 'Say something…';
+  try {
+    const stream = await navigator.mediaDevices?.getUserMedia({ audio: true });
+    stream?.getTracks().forEach((t) => t.stop());
+  } catch (e) {
+    $('micOut').className = 'err';
+    $('micOut').textContent = `The microphone is blocked (${e.name}). Allow it for KidTube in the browser's site settings. Until then he answers by typing.`;
+    return;
+  }
+  const heard = await listen(voiceLang);
+  if (heard === null) {
+    $('micOut').className = 'err';
+    $('micOut').textContent = 'The microphone works, but this browser has no speech recognition. He will answer by typing.';
+  } else if (!heard.length) {
+    $('micOut').textContent = 'Didn’t hear anything. Try again a bit louder.';
+  } else {
+    $('micOut').className = 'ok';
+    $('micOut').textContent = `Works ✓ I heard: “${heard[0]}”`;
   }
 });

@@ -10,11 +10,11 @@ const DEFAULT_REPO = 'andyvauliln/kidtube-data';
 const LATEST_URL = 'https://andyvauliln.github.io/kidtube/latest.json';
 const INSTALL_PAGE = 'https://andyvauliln.github.io/kidtube/';
 
-let bundled; // { config, queue }
+let bundled; // { config, queue, quizTypes }
 async function loadBundled() {
   if (!bundled) {
-    const [config, queue] = await Promise.all(['default-config.json', 'default-queue.json'].map((f) => fetch(chrome.runtime.getURL(f)).then((r) => r.json())));
-    bundled = { config, queue };
+    const [config, queue, quizTypes] = await Promise.all(['default-config.json', 'default-queue.json', 'quiz-types.json'].map((f) => fetch(chrome.runtime.getURL(f)).then((r) => r.json())));
+    bundled = { config, queue, quizTypes };
   }
   return bundled;
 }
@@ -22,12 +22,15 @@ async function loadBundled() {
 // --- storage: everything persistent, writes serialized so ticks don't race --------------
 
 // localConfig: rules saved on the parent page that haven't reached GitHub yet.
-const KEYS = ['settings', 'data', 'watched', 'today', 'session', 'outbox', 'syncStatus', 'localConfig'];
+// seen: title/channel of videos he opened, for the parent's list after the queue has moved on.
+// parentPass: one tab where a parent watches a video without the kid's rules.
+// pendingTalk: the talking friend's screen he is on (before or after a video).
+const KEYS = ['settings', 'data', 'watched', 'today', 'session', 'outbox', 'syncStatus', 'localConfig', 'seen', 'parentPass', 'pendingTalk', 'quizTurn'];
 let chain = Promise.resolve();
 function withState(fn) {
   const run = chain.then(async () => {
     const s = await chrome.storage.local.get(KEYS);
-    s.settings ??= {}; s.data ??= {}; s.watched ??= {}; s.outbox ??= []; s.syncStatus ??= {};
+    s.settings ??= {}; s.data ??= {}; s.watched ??= {}; s.outbox ??= []; s.syncStatus ??= {}; s.seen ??= {};
     const before = Object.fromEntries(KEYS.map((k) => [k, JSON.stringify(s[k] ?? null)]));
     const result = await fn(s);
     // Only write what changed: the options page writes settings on its own.
@@ -50,6 +53,20 @@ function todayPlayed(s, cfg, now = new Date()) {
   const date = localParts(now, cfg.timezone).date;
   if (s.today?.date !== date) s.today = { date, playedSeconds: 0 };
   return s.today.playedSeconds;
+}
+
+// Why he can't watch now: hours, daily cap, or "stop for today" after a quiz.
+function lockNow(s, cfg, now = new Date()) {
+  return lockReason(cfg, now, todayPlayed(s, cfg, now)) ?? (s.today?.stopped ? 'stopped' : null);
+}
+
+function parentTab(s, tabId) {
+  return tabId != null && s.parentPass?.tabId === tabId && s.parentPass.until > Date.now();
+}
+
+function videoInfo(s, queue, videoId) {
+  const v = queue.videos.find((x) => x.videoId === videoId);
+  return { videoId, ...(s.seen?.[videoId] ?? {}), ...(v ?? {}), title: v?.title ?? s.seen?.[videoId]?.title ?? 'this video' };
 }
 
 function newEvent(type, fields) {
@@ -78,11 +95,12 @@ function markWatchedIfCounts(s, cfg) {
 
 // --- the view any screen asks for ----------------------------------------------------------
 
-async function viewState(s) {
+async function viewState(s, tabId) {
   const { config, queue } = await effective(s);
   const now = new Date();
   const played = todayPlayed(s, config, now);
-  const reason = lockReason(config, now, played);
+  const reason = lockNow(s, config, now);
+  const parent = parentTab(s, tabId);
   const ses = s.session;
   const min = config.minSecondsBeforeLeave ?? 0;
   return {
@@ -90,7 +108,8 @@ async function viewState(s) {
     lock: reason ? { reason, opens: nextOpening(config, now) } : null,
     minutesLeft: config.time?.maxMinutesPerDay ? Math.max(0, Math.ceil(config.time.maxMinutesPerDay - played / 60)) : null,
     session: ses ? { videoId: ses.videoId, secondsUntilUnlock: ses.ended ? 0 : Math.max(0, Math.ceil(min - ses.playedSeconds)) } : null,
-    rules: { allowSkip: !!config.allowSkip },
+    rules: { allowSkip: parent || !!config.allowSkip },
+    parent,
   };
 }
 
@@ -107,8 +126,18 @@ const BLOCK_TARGET = { shorts: 'shorts', search: 'search', channel: 'channel', o
 async function guard(s, tabId, href) {
   const c = classifyUrl(href);
   if (c.kind === 'internal' || c.kind === 'external') return null; // external sites: DNR allowlist
+  // A parent watching from the parent page: that one video in that one tab, no kid rules.
+  const pass = s.parentPass;
+  if (pass) {
+    if (pass.until < Date.now()) s.parentPass = null;
+    else if (pass.tabId == null && c.kind === 'watch' && c.videoId === pass.videoId) { pass.tabId = tabId; return null; }
+    else if (pass.tabId === tabId) {
+      if (c.kind === 'watch' && c.videoId === pass.videoId) return null;
+      s.parentPass = null;
+    }
+  }
   const { config, queue } = await effective(s);
-  const locked = lockReason(config, new Date(), todayPlayed(s, config));
+  const locked = lockNow(s, config);
   const ses = s.session;
   const backToSession = ses && !sessionUnlocked(s, config) && !locked ? watchUrl(c.host, ses.videoId) : null;
 
@@ -124,6 +153,11 @@ async function guard(s, tabId, href) {
     if (backToSession) return backToSession;
     if (ses) { markWatchedIfCounts(s, config); endSession(s, ses.ended ? 'ended' : 'leftAfterLock'); }
     const item = queue.videos.find((v) => v.videoId === c.videoId);
+    if (item) {
+      delete s.seen[c.videoId];
+      s.seen[c.videoId] = { title: item.title, channelTitle: item.channelTitle, durationSeconds: item.durationSeconds, thumbnailUrl: item.thumbnailUrl };
+      for (const old of Object.keys(s.seen).slice(0, -60)) delete s.seen[old];
+    }
     s.session = { tabId, videoId: c.videoId, playedSeconds: 0, ended: false, startedAt: Date.now(), durationSeconds: item?.durationSeconds };
     return null;
   }
@@ -143,6 +177,7 @@ chrome.tabs.onUpdated.addListener((tabId, info) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   withState(async (s) => {
+    if (s.parentPass?.tabId === tabId) s.parentPass = null;
     if (s.session?.tabId !== tabId) return;
     const { config } = await effective(s);
     markWatchedIfCounts(s, config);
@@ -157,17 +192,88 @@ async function handle(msg, sender) {
   const host = sender.tab?.url ? new URL(sender.tab.url).hostname : 'm.youtube.com';
   switch (msg.type) {
     case 'state':
-      return withState(viewState);
+      return withState((s) => viewState(s, tabId));
 
     case 'open':
       return withState(async (s) => {
         const { config, queue } = await effective(s);
-        if (lockReason(config, new Date(), todayPlayed(s, config))) return { ok: false };
+        if (lockNow(s, config)) return { ok: false };
         if (s.session && s.session.videoId !== msg.videoId && !sessionUnlocked(s, config)) return { ok: false };
         if (!isOpenable(msg.videoId, queue, config, s)) return { ok: false };
+        if (config.presenter?.intro) {
+          s.pendingTalk = { mode: 'intro', videoId: msg.videoId, host };
+          if (await openTalk(tabId, 'intro', msg.videoId)) return { ok: true };
+          s.pendingTalk = null;
+        }
         await chrome.tabs.update(tabId, { url: watchUrl(host, msg.videoId) });
         return { ok: true };
       });
+
+    case 'talk': // what the talking friend says and asks
+      return withState(async (s) => {
+        const { config, queue } = await effective(s);
+        const t = s.pendingTalk?.videoId === msg.videoId ? s.pendingTalk : null;
+        const p = config.presenter ?? {};
+        const v = videoInfo(s, queue, msg.videoId);
+        const name = p.name || 'Zippy';
+        const lines = [];
+        if (msg.mode === 'intro') lines.push(v.intro ?? { text: `Hi! I'm ${name}. Let's watch: ${v.title}!` });
+        else if (p.outro) lines.push(v.outro ?? { text: `That was: ${v.title}. Well done for watching!` });
+        const items = msg.mode === 'outro' ? (t?.quizIds ?? []).map((quizId) => ({ quizId, ...config.quiz.items[quizId] })).filter((i) => i.prompt) : [];
+        const { quizTypes } = await loadBundled();
+        return {
+          name, imageUrl: p.imageUrl || '', voice: p.voice ?? {}, title: v.title, lines,
+          items: items.map((i) => ({ ...i, supported: quizTypes.includes(i.type) })),
+          maxAttempts: config.quiz?.maxAttempts ?? 3, onFail: config.quiz?.onFail ?? 'continue',
+        };
+      });
+
+    case 'quizResults':
+      return withState(async (s) => {
+        const { config } = await effective(s);
+        todayPlayed(s, config);
+        const t = s.pendingTalk;
+        if (!t || t.mode !== 'outro' || t.videoId !== msg.videoId) return { next: 'home' };
+        let failed = false;
+        for (const r of [].concat(msg.results ?? []).slice(0, 10)) {
+          if (!t.quizIds.includes(r.quizId) || !['passed', 'failed', 'skippedByParent', 'unsupported'].includes(r.result)) continue;
+          failed ||= r.result === 'failed';
+          s.outbox.push(newEvent('quiz', {
+            videoId: t.videoId, quizId: r.quizId, result: r.result, attempts: Math.max(0, Math.min(10, r.attempts | 0)),
+            answers: [].concat(r.answers ?? []).slice(0, 10).map((a) => String(a).slice(0, 200)),
+            ...(['typed', 'tapped', 'spoken'].includes(r.answeredBy) ? { answeredBy: r.answeredBy } : {}),
+          }));
+        }
+        const onFail = config.quiz?.onFail ?? 'continue';
+        t.next = !failed ? 'home'
+          : onFail === 'rewatch' && !(s.today.rewatched ?? []).includes(t.videoId) ? 'rewatch'
+          : onFail === 'stopForToday' ? 'stopForToday' : 'home';
+        return { next: t.next };
+      });
+
+    case 'talkDone':
+      return withState(async (s) => {
+        const t = s.pendingTalk;
+        s.pendingTalk = null;
+        if (!t || t.videoId !== msg.videoId) return chrome.tabs.update(tabId, { url: homeUrl() });
+        let url = homeUrl(t.host);
+        if (t.mode === 'intro') url = watchUrl(t.host, t.videoId);
+        else if (t.next === 'rewatch') {
+          s.today.rewatched = [...(s.today.rewatched ?? []), t.videoId];
+          delete s.watched[t.videoId];
+          url = watchUrl(t.host, t.videoId);
+        } else if (t.next === 'stopForToday') s.today.stopped = true;
+        await chrome.tabs.update(tabId, { url });
+      });
+
+    case 'parentWatch': // from the parent page: watch any listed or watched video, skipping allowed
+      if (!/^[A-Za-z0-9_-]{11}$/.test(msg.videoId ?? '')) return { ok: false };
+      await withState((s) => { s.parentPass = { videoId: msg.videoId, tabId: null, until: Date.now() + 60 * 60 * 1000 }; });
+      {
+        const tab = await chrome.tabs.create({ url: watchUrl('m.youtube.com', msg.videoId) });
+        await withState((s) => { if (s.parentPass?.videoId === msg.videoId) s.parentPass.tabId ??= tab.id; });
+      }
+      return { ok: true };
 
     case 'goHome':
       return withState(async (s) => {
@@ -179,6 +285,7 @@ async function handle(msg, sender) {
 
     case 'tick':
       return withState(async (s) => {
+        if (parentTab(s, tabId)) return { action: 'none' }; // a parent watching doesn't count
         const { config } = await effective(s);
         const ses = s.session;
         const seconds = Math.min(Math.max(Number(msg.seconds) || 0, 0), 15);
@@ -212,6 +319,13 @@ async function handle(msg, sender) {
         const { config } = await effective(s);
         markWatchedIfCounts(s, config);
         endSession(s, 'ended');
+        // The talking friend says what we learned and asks the questions, if they are on.
+        const quizIds = config.quiz?.enabled ? pickQuiz(s, config, msg.videoId) : [];
+        if (config.presenter?.outro || quizIds.length) {
+          s.pendingTalk = { mode: 'outro', videoId: msg.videoId, host, quizIds };
+          if (await openTalk(tabId, 'outro', msg.videoId)) return;
+          s.pendingTalk = null;
+        }
         await chrome.tabs.update(tabId, { url: homeUrl(host) });
       });
 
@@ -270,11 +384,39 @@ async function handle(msg, sender) {
           playedMinutesToday: Math.round(todayPlayed(s, config) / 60),
           maxMinutesPerDay: config.time?.maxMinutesPerDay,
           outbox: s.outbox.length,
-          recent: Object.entries(s.watched).sort((a, b) => b[1].localeCompare(a[1])).slice(0, 10).map(([videoId, at]) => ({
-            videoId, at, title: queue.videos.find((v) => v.videoId === videoId)?.title ?? videoId,
-          })),
+          recent: Object.entries(s.watched).sort((a, b) => b[1].localeCompare(a[1])).slice(0, 10).map(([videoId, at]) => {
+            const v = videoInfo(s, queue, videoId);
+            return {
+              videoId, at, title: v.title, channelTitle: v.channelTitle ?? '', durationSeconds: v.durationSeconds ?? null,
+              thumbnailUrl: v.thumbnailUrl || `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`,
+            };
+          }),
         };
       });
+  }
+}
+
+// The video's own questions, else the next ones from quiz.defaultIds in turn.
+function pickQuiz(s, config, videoId) {
+  const items = config.quiz?.items ?? {};
+  const queue = s.data.queue ?? bundled.queue;
+  const own = (queue.videos.find((v) => v.videoId === videoId)?.quizIds ?? []).filter((id) => items[id]);
+  if (own.length) return own.slice(0, 5);
+  const pool = (config.quiz?.defaultIds ?? []).filter((id) => items[id]);
+  if (!pool.length) return [];
+  const n = Math.min(config.quiz.itemsPerVideo ?? 1, pool.length);
+  const start = s.quizTurn ?? 0;
+  s.quizTurn = (start + n) % pool.length;
+  return Array.from({ length: n }, (_, i) => pool[(start + i) % pool.length]);
+}
+
+// The talking friend has its own page; the tab goes there and comes back when it is done.
+async function openTalk(tabId, mode, videoId) {
+  try {
+    await chrome.tabs.update(tabId, { url: chrome.runtime.getURL(`ui/talk.html?mode=${mode}&v=${videoId}`) });
+    return true;
+  } catch {
+    return false;
   }
 }
 
@@ -435,7 +577,7 @@ async function flushOutbox(repo, token) {
       file.events.push(...events.filter((e) => !have.has(e.eventId)));
       file.events.sort((a, b) => a.at.localeCompare(b.at));
       file.device = {
-        deviceId, extensionVersion: chrome.runtime.getManifest().version, quizTypes: [],
+        deviceId, extensionVersion: chrome.runtime.getManifest().version, quizTypes: (await loadBundled()).quizTypes,
         ...(config.updatedAt ? { configUpdatedAt: config.updatedAt } : {}),
         ...(queue.updatedAt ? { queueUpdatedAt: queue.updatedAt } : {}),
         lastSyncAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
