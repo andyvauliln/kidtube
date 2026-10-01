@@ -363,6 +363,10 @@ async function handle(msg, sender) {
     case 'resetToday':
       return withState((s) => { s.today = null; });
 
+    case 'openSettings': // the gear on the kid's screens; the page itself asks for the PIN
+      try { await chrome.runtime.openOptionsPage(); } catch { await chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') }); }
+      return { ok: true };
+
     case 'sync':
       return sync();
 

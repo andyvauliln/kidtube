@@ -12,6 +12,7 @@ export function installFakeChrome() {
       getURL: (p) => `ext://${p}`, getManifest: () => ({ version: '0.1.0' }),
       onMessage: on('message'), onInstalled: on('installed'), onStartup: on('startup'), onUpdateAvailable: on('updateAvailable'),
       requestUpdateCheck: (cb) => cb('throttled'), reload: () => {},
+      openOptionsPage: async () => { throw new Error('not here'); },
     },
     storage: { local: {
       get: async (keys) => Object.fromEntries([].concat(keys).filter((k) => k in store).map((k) => [k, structuredClone(store[k])])),

@@ -17,6 +17,14 @@ async function draw() {
   root.replaceChildren(grid);
 }
 
+// Parent settings: a small gear in the corner. The settings page asks for the PIN.
+const gear = document.createElement('button');
+gear.className = 'gear';
+gear.textContent = '⚙️';
+gear.title = 'Parent settings';
+gear.addEventListener('click', () => chrome.runtime.sendMessage({ type: 'openSettings' }));
+document.body.append(gear);
+
 draw();
 setInterval(draw, 30000);
 chrome.storage.onChanged.addListener((c) => { if (c.data || c.watched || c.today) draw(); });

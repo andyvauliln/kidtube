@@ -123,3 +123,8 @@ test('parent watch: any video in its own tab, skipping allowed, no counting, end
   assert.equal(await navigate('https://m.youtube.com/watch?v=aaaaaaaaaaa', 99), 'https://m.youtube.com/', 'leaving the video ends the pass');
   assert.equal(fake.store.parentPass, null);
 });
+
+test('the gear opens the parent settings page', async () => {
+  await send({ type: 'openSettings' });
+  assert.equal(fake.nav.created.at(-1), 'ext://options/options.html');
+});

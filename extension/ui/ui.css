@@ -13,3 +13,5 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 .big { font-size: 64px; line-height: 1; }
 h1 { font-size: 28px; margin: 16px 0 8px; }
 p { margin: 4px 0; color: var(--muted); font-weight: 500; font-size: 18px; }
+.gear { position: fixed; right: 12px; bottom: 12px; width: 44px; height: 44px; border: 0; border-radius: 50%; background: #ffffffcc;
+  font-size: 22px; opacity: .55; box-shadow: 0 2px 6px #0002; z-index: 10; }

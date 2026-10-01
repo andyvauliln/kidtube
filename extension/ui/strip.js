@@ -6,6 +6,7 @@ const wait = document.getElementById('wait');
 let shown = '';
 
 home.addEventListener('click', () => chrome.runtime.sendMessage({ type: 'goHome' }));
+document.getElementById('gear').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'openSettings' }));
 
 async function draw() {
   const st = await chrome.runtime.sendMessage({ type: 'state' });
