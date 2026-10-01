@@ -288,17 +288,35 @@ async function fetchDataFile(repo, token, path, etag) {
   if (etag) headers['If-None-Match'] = etag;
   const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, { headers, cache: 'no-store' });
   if (r.status === 304) return { notModified: true };
-  if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
+  if (!r.ok) throw new Error(await explainHttp(r.status, repo, token, path));
   return { json: await r.json(), etag: r.headers.get('etag') };
 }
 
-const okConfig = (c) => c && c.schemaVersion === 1 && typeof c === 'object' && !Array.isArray(c);
+// GitHub says 404 both for "no such file" and "this token can't see the repo". Tell them apart.
+async function explainHttp(status, repo, token, path) {
+  if (status === 401) return 'GitHub says the token is wrong or expired. Make a new one and paste it again.';
+  if (status === 403) return `GitHub refused the token for ${repo}. Check the token's Contents permission.`;
+  if (status !== 404) return `${path}: GitHub answered ${status}.`;
+  if (!token) return `${repo} is private and there is no token yet. Using the built-in list.`;
+  const who = await fetch('https://api.github.com/user', { headers: ghHeaders(token, 'application/vnd.github+json') });
+  if (who.status === 401) return 'GitHub says the token is wrong or expired. Make a new one and paste it again.';
+  const login = who.ok ? (await who.json()).login : null;
+  const repoRes = await fetch(`https://api.github.com/repos/${repo}`, { headers: ghHeaders(token, 'application/vnd.github+json') });
+  if (repoRes.status === 404) {
+    return `The token${login ? ` (${login})` : ''} works but can't see ${repo}. On GitHub, edit the token: Repository access → Only select repositories → ${repo.split('/')[1]}.`;
+  }
+  return `${path} is missing in ${repo}.`;
+}
+
+const okConfig =(c) => c && c.schemaVersion === 1 && typeof c === 'object' && !Array.isArray(c);
 const okQueue = (q) => q && q.schemaVersion === 1 && Array.isArray(q.videos) && q.videos.every((v) => /^[A-Za-z0-9_-]{11}$/.test(v.videoId) && Number.isFinite(v.durationSeconds));
 
-let syncing = null;
+// Syncs run one after another, so a sync asked for after Save always uses the new token.
+let syncChain = Promise.resolve();
 function sync() {
-  syncing ??= doSync().finally(() => { syncing = null; });
-  return syncing;
+  const run = syncChain.then(doSync);
+  syncChain = run.catch(() => {});
+  return run;
 }
 
 async function doSync() {
@@ -324,7 +342,8 @@ async function doSync() {
     s.syncStatus = status;
   });
   await applySiteRules();
-  try { await flushOutbox(repo, token); } catch (e) { status.errors.push(`activity: ${e.message ?? e}`); }
+  try { await flushOutbox(repo, token); } catch (e) { if (token) status.errors.push(`Saving what he watched: ${e.message ?? e}`); }
+  status.errors = [...new Set(status.errors)];
   await withState((s) => { s.syncStatus = status; });
   return status;
 }
@@ -398,6 +417,7 @@ async function applySiteRules() {
 
 // --- updates -------------------------------------------------------------------------------
 
+const sync_ = () => sync();
 async function checkUpdate() {
   const installed = chrome.runtime.getManifest().version;
   const check = await new Promise((resolve) => chrome.runtime.requestUpdateCheck((status, details) => resolve({ status, details })))
@@ -405,7 +425,7 @@ async function checkUpdate() {
   let latest = null;
   try { latest = await (await fetch(LATEST_URL, { cache: 'no-store' })).json(); } catch {}
   const newer = latest && cmpVersion(latest.version, installed) > 0;
-  const sync = await doSync();
+  const sync = await sync_();
   return { installed, check, latest: latest?.version ?? null, installPage: newer ? INSTALL_PAGE : null, sync };
 }
 

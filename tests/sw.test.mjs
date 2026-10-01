@@ -99,3 +99,16 @@ test('site allowlist rule blocks everything outside the allowed domains', async 
   assert.deepEqual(rule.condition.resourceTypes, ['main_frame']);
   assert.ok(rule.condition.excludedRequestDomains.includes('youtube.com'));
 });
+
+test('a token that cannot see the repo gets a plain explanation, once', async () => {
+  await chrome.storage.local.set({ settings: { ...fake.store.settings, token: 'github_pat_x' } });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    if (String(url) === 'https://api.github.com/user') return { ok: true, status: 200, json: async () => ({ login: 'andyvauliln' }) };
+    return realFetch(url, opts);
+  };
+  const r = await send({ type: 'sync' });
+  globalThis.fetch = realFetch;
+  assert.equal(r.errors.filter((e) => e.includes("can't see andyvauliln/kidtube-data")).length, 1);
+  assert.ok(r.errors[0].includes('(andyvauliln)'));
+});
