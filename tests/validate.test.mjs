@@ -49,7 +49,7 @@ test('effective config: quiz type the build lacks is rejected (C10)', () => {
   assert.ok(checkEffectiveConfig(eff, ['text', 'choice', 'audio']).some((e) => e.includes('memory-game')));
 });
 
-test('effective config: enabled quiz needs defaultIds', () => {
+test('effective config: enabled quiz without defaultIds is a warning', () => {
   const eff = mergeConfig(defaults, { quiz: { enabled: true } });
   assert.ok(checkEffectiveConfig(eff, ['text']).some((e) => e.includes('defaultIds is empty')));
 });

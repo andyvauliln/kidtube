@@ -82,7 +82,7 @@ export function checkEffectiveConfig(eff, quizTypes) {
     if (!items[id]) errs.push(`/quiz/defaultIds "${id}" has no item in quiz.items`);
   }
   if (eff.quiz?.enabled && (eff.quiz.defaultIds ?? []).length === 0) {
-    errs.push('/quiz enabled but defaultIds is empty: videos without quizIds would get no quiz');
+    errs.push('warning: quiz enabled but defaultIds is empty: videos without their own quizIds get no questions');
   }
   if (quizTypes) {
     for (const [id, item] of Object.entries(items)) {
