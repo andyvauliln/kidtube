@@ -1,0 +1,432 @@
+// KidTube service worker: the rules live here. Content scripts and the iframes only ask and show.
+import { mergeConfig } from './lib/merge.js';
+import { lockReason, nextOpening, localParts } from './lib/time.js';
+import { visibleVideos } from './lib/queue.js';
+import { classifyUrl, homeUrl, watchUrl } from './lib/url.js';
+
+const SITE_RULE_ID = 100;
+const POLL_MINUTES = 15;
+const DEFAULT_REPO = 'andyvauliln/kidtube-data';
+const LATEST_URL = 'https://andyvauliln.github.io/kidtube/latest.json';
+const INSTALL_PAGE = 'https://andyvauliln.github.io/kidtube/';
+
+let bundled; // { config, queue }
+async function loadBundled() {
+  if (!bundled) {
+    const [config, queue] = await Promise.all(['default-config.json', 'default-queue.json'].map((f) => fetch(chrome.runtime.getURL(f)).then((r) => r.json())));
+    bundled = { config, queue };
+  }
+  return bundled;
+}
+
+// --- storage: everything persistent, writes serialized so ticks don't race --------------
+
+const KEYS = ['settings', 'data', 'watched', 'today', 'session', 'outbox', 'syncStatus'];
+let chain = Promise.resolve();
+function withState(fn) {
+  const run = chain.then(async () => {
+    const s = await chrome.storage.local.get(KEYS);
+    s.settings ??= {}; s.data ??= {}; s.watched ??= {}; s.outbox ??= []; s.syncStatus ??= {};
+    const before = Object.fromEntries(KEYS.map((k) => [k, JSON.stringify(s[k] ?? null)]));
+    const result = await fn(s);
+    // Only write what changed: the options page writes settings on its own.
+    const changed = KEYS.filter((k) => JSON.stringify(s[k] ?? null) !== before[k]);
+    if (changed.length) await chrome.storage.local.set(Object.fromEntries(changed.map((k) => [k, s[k] ?? null])));
+    return result;
+  });
+  chain = run.catch(() => {});
+  return run;
+}
+
+async function effective(s) {
+  const b = await loadBundled();
+  const config = mergeConfig(b.config, s.data.config);
+  const queue = s.data.queue ?? b.queue;
+  return { config, queue };
+}
+
+function todayPlayed(s, cfg, now = new Date()) {
+  const date = localParts(now, cfg.timezone).date;
+  if (s.today?.date !== date) s.today = { date, playedSeconds: 0 };
+  return s.today.playedSeconds;
+}
+
+function newEvent(type, fields) {
+  return { eventId: crypto.randomUUID(), type, at: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), ...fields };
+}
+
+function sessionUnlocked(s, cfg) {
+  const ses = s.session;
+  return !ses || ses.ended || ses.playedSeconds >= (cfg.minSecondsBeforeLeave ?? 0);
+}
+
+function endSession(s, endReason) {
+  const ses = s.session;
+  if (!ses) return;
+  s.outbox.push(newEvent('watch', {
+    videoId: ses.videoId, watchedSeconds: Math.round(ses.playedSeconds),
+    ...(ses.durationSeconds ? { durationSeconds: ses.durationSeconds } : {}), endReason,
+  }));
+  s.session = null;
+}
+
+function markWatchedIfCounts(s, cfg) {
+  const ses = s.session;
+  if (ses && (ses.ended || ses.playedSeconds >= (cfg.minSecondsBeforeLeave ?? 0))) s.watched[ses.videoId] ??= new Date().toISOString();
+}
+
+// --- the view any screen asks for ----------------------------------------------------------
+
+async function viewState(s) {
+  const { config, queue } = await effective(s);
+  const now = new Date();
+  const played = todayPlayed(s, config, now);
+  const reason = lockReason(config, now, played);
+  const ses = s.session;
+  const min = config.minSecondsBeforeLeave ?? 0;
+  return {
+    videos: visibleVideos(queue, config, s.watched).filter((v) => v.videoId !== ses?.videoId),
+    lock: reason ? { reason, opens: nextOpening(config, now) } : null,
+    minutesLeft: config.time?.maxMinutesPerDay ? Math.max(0, Math.ceil(config.time.maxMinutesPerDay - played / 60)) : null,
+    session: ses ? { videoId: ses.videoId, secondsUntilUnlock: ses.ended ? 0 : Math.max(0, Math.ceil(min - ses.playedSeconds)) } : null,
+  };
+}
+
+// --- navigation guard ----------------------------------------------------------------------
+
+function isOpenable(videoId, queue, cfg, s) {
+  if (s.session?.videoId === videoId) return true;
+  return visibleVideos(queue, cfg, s.watched).some((v) => v.videoId === videoId);
+}
+
+const BLOCK_TARGET = { shorts: 'shorts', search: 'search', channel: 'channel', other: 'video', watch: 'video' };
+
+// Returns the URL to send the tab to, or null to let it be.
+async function guard(s, tabId, href) {
+  const c = classifyUrl(href);
+  if (c.kind === 'internal' || c.kind === 'external') return null; // external sites: DNR allowlist
+  const { config, queue } = await effective(s);
+  const locked = lockReason(config, new Date(), todayPlayed(s, config));
+  const ses = s.session;
+  const backToSession = ses && !sessionUnlocked(s, config) && !locked ? watchUrl(c.host, ses.videoId) : null;
+
+  if (c.kind === 'watch' && ses?.videoId === c.videoId && ses.tabId === tabId) return locked ? homeUrl(c.host) : null;
+
+  if (c.kind === 'home') {
+    if (backToSession) return backToSession;
+    if (ses) { markWatchedIfCounts(s, config); endSession(s, ses.ended ? 'ended' : 'leftAfterLock'); }
+    return null;
+  }
+
+  if (c.kind === 'watch' && !locked && isOpenable(c.videoId, queue, config, s)) {
+    if (backToSession) return backToSession;
+    if (ses) { markWatchedIfCounts(s, config); endSession(s, ses.ended ? 'ended' : 'leftAfterLock'); }
+    const item = queue.videos.find((v) => v.videoId === c.videoId);
+    s.session = { tabId, videoId: c.videoId, playedSeconds: 0, ended: false, startedAt: Date.now(), durationSeconds: item?.durationSeconds };
+    return null;
+  }
+
+  if (!(c.kind === 'watch' && locked)) {
+    s.outbox.push(newEvent('blocked', { target: BLOCK_TARGET[c.kind] ?? 'video', url: href.slice(0, 2000), ...(ses ? { videoId: ses.videoId } : {}) }));
+  }
+  return backToSession ?? homeUrl(c.host);
+}
+
+chrome.tabs.onUpdated.addListener((tabId, info) => {
+  if (!info.url) return;
+  withState((s) => guard(s, tabId, info.url)).then((target) => {
+    if (target && target !== info.url) chrome.tabs.update(tabId, { url: target });
+  });
+});
+
+chrome.tabs.onRemoved.addListener((tabId) => {
+  withState(async (s) => {
+    if (s.session?.tabId !== tabId) return;
+    const { config } = await effective(s);
+    markWatchedIfCounts(s, config);
+    endSession(s, s.session.ended ? 'ended' : 'closed');
+  });
+});
+
+// --- messages from content scripts, iframes, options --------------------------------------
+
+async function handle(msg, sender) {
+  const tabId = sender.tab?.id;
+  const host = sender.tab?.url ? new URL(sender.tab.url).hostname : 'm.youtube.com';
+  switch (msg.type) {
+    case 'state':
+      return withState(viewState);
+
+    case 'open':
+      return withState(async (s) => {
+        const { config, queue } = await effective(s);
+        if (lockReason(config, new Date(), todayPlayed(s, config))) return { ok: false };
+        if (s.session && s.session.videoId !== msg.videoId && !sessionUnlocked(s, config)) return { ok: false };
+        if (!isOpenable(msg.videoId, queue, config, s)) return { ok: false };
+        await chrome.tabs.update(tabId, { url: watchUrl(host, msg.videoId) });
+        return { ok: true };
+      });
+
+    case 'goHome':
+      return withState(async (s) => {
+        const { config } = await effective(s);
+        if (!sessionUnlocked(s, config)) return { ok: false };
+        await chrome.tabs.update(tabId, { url: homeUrl(host) });
+        return { ok: true };
+      });
+
+    case 'tick':
+      return withState(async (s) => {
+        const { config } = await effective(s);
+        const ses = s.session;
+        const seconds = Math.min(Math.max(Number(msg.seconds) || 0, 0), 15);
+        todayPlayed(s, config);
+        s.today.playedSeconds += seconds;
+        if (ses && ses.videoId === msg.videoId && ses.tabId === tabId) {
+          ses.playedSeconds += seconds;
+          markWatchedIfCounts(s, config);
+        }
+        const reason = lockReason(config, new Date(), s.today.playedSeconds);
+        if (reason) {
+          s.outbox.push(newEvent('timeUp', { reason, playedMinutes: Math.round(s.today.playedSeconds / 60) }));
+          if (ses) endSession(s, 'timeUp');
+          return { action: 'lock' };
+        }
+        const close = config.closeAfterSeconds ?? 0;
+        if (ses && close > 0 && ses.playedSeconds >= close) {
+          markWatchedIfCounts(s, config);
+          endSession(s, 'closeAfter');
+          await chrome.tabs.update(tabId, { url: homeUrl(host) });
+          return { action: 'home' };
+        }
+        return { action: 'none' };
+      });
+
+    case 'ended':
+      return withState(async (s) => {
+        const ses = s.session;
+        if (!ses || ses.videoId !== msg.videoId) return;
+        ses.ended = true;
+        const { config } = await effective(s);
+        markWatchedIfCounts(s, config);
+        endSession(s, 'ended');
+        await chrome.tabs.update(tabId, { url: homeUrl(host) });
+      });
+
+    case 'details': // the real channel/length from YouTube's own player data (PLAN.md C19)
+      return withState(async (s) => {
+        const { config } = await effective(s);
+        const ses = s.session;
+        if (!ses || ses.videoId !== msg.videoId) return;
+        if (msg.lengthSeconds > 0) ses.durationSeconds = msg.lengthSeconds;
+        const bad = (config.blockedChannelIds ?? []).includes(msg.channelId) ? 'channel'
+          : (config.blockLive && msg.isLive) ? 'video'
+          : (msg.lengthSeconds > 0 && msg.lengthSeconds < (config.minVideoDurationSeconds ?? 0)) ? 'shorts'
+          : null;
+        if (!bad) return;
+        s.outbox.push(newEvent('blocked', { target: bad, videoId: ses.videoId, url: watchUrl(host, ses.videoId) }));
+        s.watched[ses.videoId] ??= new Date().toISOString();
+        endSession(s, 'blockedOnLoad');
+        await chrome.tabs.update(tabId, { url: homeUrl(host) });
+      });
+
+    case 'note':
+      return withState((s) => {
+        const ev = newEvent('parentNote', { videoId: msg.videoId });
+        if (typeof msg.liked === 'boolean') ev.liked = msg.liked;
+        if (msg.comment) ev.comment = String(msg.comment).slice(0, 2000);
+        s.outbox.push(ev);
+      }).then(() => sync());
+
+    case 'resetToday':
+      return withState((s) => { s.today = null; });
+
+    case 'sync':
+      return sync();
+
+    case 'checkUpdate':
+      return checkUpdate();
+
+    case 'status':
+      return withState(async (s) => {
+        const { config, queue } = await effective(s);
+        return {
+          version: chrome.runtime.getManifest().version,
+          repo: s.settings.repo || DEFAULT_REPO,
+          hasToken: !!s.settings.token,
+          sync: s.syncStatus,
+          configUpdatedAt: config.updatedAt,
+          queueUpdatedAt: queue.updatedAt,
+          queueSource: s.data.queue ? 'GitHub' : 'built-in starter list',
+          visible: visibleVideos(queue, config, s.watched).length,
+          playedMinutesToday: Math.round(todayPlayed(s, config) / 60),
+          maxMinutesPerDay: config.time?.maxMinutesPerDay,
+          outbox: s.outbox.length,
+          recent: Object.entries(s.watched).sort((a, b) => b[1].localeCompare(a[1])).slice(0, 10).map(([videoId, at]) => ({
+            videoId, at, title: queue.videos.find((v) => v.videoId === videoId)?.title ?? videoId,
+          })),
+        };
+      });
+  }
+}
+
+chrome.runtime.onMessage.addListener((msg, sender, reply) => {
+  handle(msg, sender).then(reply, (e) => reply({ error: String(e) }));
+  return true;
+});
+
+// --- GitHub sync ---------------------------------------------------------------------------
+
+function ghHeaders(token, accept = 'application/vnd.github.raw+json') {
+  const h = { Accept: accept, 'X-GitHub-Api-Version': '2022-11-28' };
+  if (token) h.Authorization = `Bearer ${token}`;
+  return h;
+}
+
+async function fetchDataFile(repo, token, path, etag) {
+  const headers = ghHeaders(token);
+  if (etag) headers['If-None-Match'] = etag;
+  const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, { headers, cache: 'no-store' });
+  if (r.status === 304) return { notModified: true };
+  if (!r.ok) throw new Error(`${path}: HTTP ${r.status}`);
+  return { json: await r.json(), etag: r.headers.get('etag') };
+}
+
+const okConfig = (c) => c && c.schemaVersion === 1 && typeof c === 'object' && !Array.isArray(c);
+const okQueue = (q) => q && q.schemaVersion === 1 && Array.isArray(q.videos) && q.videos.every((v) => /^[A-Za-z0-9_-]{11}$/.test(v.videoId) && Number.isFinite(v.durationSeconds));
+
+let syncing = null;
+function sync() {
+  syncing ??= doSync().finally(() => { syncing = null; });
+  return syncing;
+}
+
+async function doSync() {
+  const { settings = {}, data = {} } = await chrome.storage.local.get(['settings', 'data']);
+  const repo = settings.repo || DEFAULT_REPO;
+  const token = settings.token || '';
+  const etags = data.etags ?? {};
+  const status = { at: new Date().toISOString(), errors: [] };
+  const update = {};
+  for (const [key, path, ok] of [['config', 'parent-config.json', okConfig], ['queue', 'queue.json', okQueue]]) {
+    try {
+      const r = await fetchDataFile(repo, token, path, data[key] ? etags[path] : null);
+      if (r.notModified) continue;
+      if (!ok(r.json)) throw new Error(`${path}: not a valid schemaVersion 1 file, keeping the last good copy`);
+      update[key] = r.json;
+      etags[path] = r.etag;
+    } catch (e) {
+      status.errors.push(String(e.message ?? e));
+    }
+  }
+  await withState((s) => {
+    Object.assign(s.data, update, { etags });
+    s.syncStatus = status;
+  });
+  await applySiteRules();
+  try { await flushOutbox(repo, token); } catch (e) { status.errors.push(`activity: ${e.message ?? e}`); }
+  await withState((s) => { s.syncStatus = status; });
+  return status;
+}
+
+// Writes queued events into activity/YYYY-MM-DD.json, de-duplicated by eventId (PLAN.md §3.3).
+async function flushOutbox(repo, token) {
+  const { outbox = [], settings = {}, data = {} } = await chrome.storage.local.get(['outbox', 'settings', 'data']);
+  if (!outbox.length) return;
+  if (!token) throw new Error('no token; events kept on the tablet');
+  const { config, queue } = await effective({ data, settings });
+  const byDate = {};
+  for (const ev of outbox) (byDate[localParts(new Date(ev.at), config.timezone).date] ??= []).push(ev);
+  if (!settings.deviceId) await withState((s) => { s.settings.deviceId ??= `tab-${crypto.randomUUID().slice(0, 8)}`; });
+  const deviceId = (await chrome.storage.local.get('settings')).settings.deviceId;
+
+  const sent = new Set();
+  for (const [date, events] of Object.entries(byDate)) {
+    const path = `activity/${date}.json`;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const url = `https://api.github.com/repos/${repo}/contents/${path}`;
+      const get = await fetch(url, { headers: ghHeaders(token, 'application/vnd.github+json'), cache: 'no-store' });
+      let file = { schemaVersion: 1, date, events: [] }, sha;
+      if (get.ok) {
+        const j = await get.json();
+        sha = j.sha;
+        file = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(j.content.replace(/\n/g, '')), (c) => c.charCodeAt(0))));
+      } else if (get.status !== 404) throw new Error(`${path}: HTTP ${get.status}`);
+      const have = new Set(file.events.map((e) => e.eventId));
+      file.events.push(...events.filter((e) => !have.has(e.eventId)));
+      file.events.sort((a, b) => a.at.localeCompare(b.at));
+      file.device = {
+        deviceId, extensionVersion: chrome.runtime.getManifest().version, quizTypes: [],
+        ...(config.updatedAt ? { configUpdatedAt: config.updatedAt } : {}),
+        ...(queue.updatedAt ? { queueUpdatedAt: queue.updatedAt } : {}),
+        lastSyncAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
+      };
+      const body = JSON.stringify(file, null, 2) + '\n';
+      const put = await fetch(url, {
+        method: 'PUT',
+        headers: { ...ghHeaders(token, 'application/vnd.github+json'), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: `activity ${date}`, content: toBase64(body), ...(sha ? { sha } : {}) }),
+      });
+      if (put.ok) { events.forEach((e) => sent.add(e.eventId)); break; }
+      if (put.status !== 409 && put.status !== 422) throw new Error(`${path}: HTTP ${put.status}`);
+      await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
+    }
+  }
+  await withState((s) => { s.outbox = s.outbox.filter((e) => !sent.has(e.eventId)); });
+}
+
+function toBase64(text) {
+  const bytes = new TextEncoder().encode(text);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) bin += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(bin);
+}
+
+// Every top-level page outside allowedSiteDomains is blocked (PLAN.md C16).
+async function applySiteRules() {
+  const s = await chrome.storage.local.get(['data']);
+  const { config } = await effective({ data: s.data ?? {}, settings: {} });
+  const domains = config.allowedSiteDomains ?? [];
+  await chrome.declarativeNetRequest.updateDynamicRules({
+    removeRuleIds: [SITE_RULE_ID],
+    addRules: config.blockOutboundLinks && domains.length ? [{
+      id: SITE_RULE_ID, priority: 1, action: { type: 'block' },
+      condition: { resourceTypes: ['main_frame'], excludedRequestDomains: domains },
+    }] : [],
+  });
+}
+
+// --- updates -------------------------------------------------------------------------------
+
+async function checkUpdate() {
+  const installed = chrome.runtime.getManifest().version;
+  const check = await new Promise((resolve) => chrome.runtime.requestUpdateCheck((status, details) => resolve({ status, details })))
+    .catch((e) => ({ status: 'error', error: String(e) }));
+  let latest = null;
+  try { latest = await (await fetch(LATEST_URL, { cache: 'no-store' })).json(); } catch {}
+  const newer = latest && cmpVersion(latest.version, installed) > 0;
+  const sync = await doSync();
+  return { installed, check, latest: latest?.version ?? null, installPage: newer ? INSTALL_PAGE : null, sync };
+}
+
+function cmpVersion(a, b) {
+  const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) - (pb[i] ?? 0);
+  return 0;
+}
+
+chrome.runtime.onUpdateAvailable.addListener(() => chrome.runtime.reload());
+
+// --- lifecycle -----------------------------------------------------------------------------
+
+async function start() {
+  chrome.alarms.create('poll', { periodInMinutes: POLL_MINUTES });
+  await applySiteRules();
+  sync();
+}
+chrome.runtime.onInstalled.addListener(async () => {
+  await chrome.storage.local.remove('report'); // left over from the M0 spike
+  await start();
+});
+chrome.runtime.onStartup.addListener(start);
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'poll') sync(); });

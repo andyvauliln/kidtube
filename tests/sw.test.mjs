@@ -1,0 +1,101 @@
+// Plays the kid's scenarios against the real service worker with a fake chrome API.
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { installFakeChrome } from './fake-chrome.mjs';
+
+const fake = installFakeChrome();
+await import('../extension/sw.js');
+
+const queue = JSON.parse(readFileSync('extension/default-queue.json', 'utf8'));
+const [A, B] = queue.videos.map((v) => v.videoId);
+const TAB = 7, TAB_URL = 'https://m.youtube.com/';
+
+const send = (msg) => new Promise((resolve) => fake.listeners.message[0](msg, { tab: { id: TAB, url: TAB_URL } }, resolve));
+// Simulates the tab moving to a URL; returns where the guard sent it (or the URL itself if allowed).
+async function navigate(url) {
+  fake.nav.updates.length = 0;
+  fake.listeners.tabUpdated[0](TAB, { url });
+  await new Promise((r) => setTimeout(r, 20));
+  return fake.nav.updates.at(-1) ?? url;
+}
+async function play(seconds) {
+  let r;
+  for (let left = seconds; left > 0; left -= 15) r = await send({ type: 'tick', videoId: fake.store.session?.videoId, seconds: Math.min(15, left) });
+  return r;
+}
+// Keep the tests inside the allowed hours whatever time it is now.
+fake.store.data = { config: { schemaVersion: 1, updatedAt: '2026-10-01T00:00:00Z', time: { allowed: [{ days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], from: '00:00', to: '23:59' }], maxMinutesPerDay: 20 } } };
+
+test('home screen lists the starter videos', async () => {
+  const st = await send({ type: 'state' });
+  assert.equal(st.lock, null);
+  assert.equal(st.videos.length, 10);
+});
+
+test('a random video is sent home and logged', async () => {
+  assert.equal(await navigate('https://m.youtube.com/watch?v=dQw4w9WgXcQ'), 'https://m.youtube.com/');
+  assert.equal(fake.store.outbox.at(-1).type, 'blocked');
+});
+
+test('channel, shorts and search pages are sent home', async () => {
+  for (const u of ['https://m.youtube.com/@x', 'https://m.youtube.com/shorts/abc', 'https://m.youtube.com/results?search_query=x']) {
+    assert.equal(await navigate(u), 'https://m.youtube.com/');
+  }
+});
+
+test('a listed video plays; leaving before the lock returns to it', async () => {
+  assert.equal(await navigate(`https://m.youtube.com/watch?v=${A}`), `https://m.youtube.com/watch?v=${A}`);
+  assert.equal(fake.store.session.videoId, A);
+  assert.equal(await navigate('https://m.youtube.com/'), `https://m.youtube.com/watch?v=${A}`);
+  assert.equal(await navigate(`https://m.youtube.com/watch?v=${B}`), `https://m.youtube.com/watch?v=${A}`);
+  assert.equal((await send({ type: 'goHome' })).ok, false);
+  assert.ok((await send({ type: 'state' })).session.secondsUntilUnlock > 0);
+});
+
+test('after 2 minutes he can leave; the video counts as watched and leaves the list', async () => {
+  await play(120);
+  assert.equal((await send({ type: 'state' })).session.secondsUntilUnlock, 0);
+  assert.equal(await navigate(`https://m.youtube.com/watch?v=${B}`), `https://m.youtube.com/watch?v=${B}`);
+  const watch = fake.store.outbox.filter((e) => e.type === 'watch').at(-1);
+  assert.equal(watch.videoId, A);
+  assert.equal(watch.endReason, 'leftAfterLock');
+  assert.ok(watch.watchedSeconds >= 120);
+  assert.ok(!(await send({ type: 'state' })).videos.some((v) => v.videoId === A));
+  assert.equal(await navigate(`https://m.youtube.com/watch?v=${A}`), `https://m.youtube.com/watch?v=${B}`); // watched + B still locked
+});
+
+test('video end sends him home and logs ended', async () => {
+  await send({ type: 'ended', videoId: B });
+  assert.equal(fake.nav.updates.at(-1), 'https://m.youtube.com/');
+  assert.equal(fake.store.outbox.filter((e) => e.type === 'watch').at(-1).endReason, 'ended');
+  assert.equal(fake.store.session, null);
+});
+
+test('a blocked channel found in player data is closed', async () => {
+  const C = (await send({ type: 'state' })).videos[0].videoId;
+  await navigate(`https://m.youtube.com/watch?v=${C}`);
+  fake.store.data.config.blockedChannelIds = ['UCzzzzzzzzzzzzzzzzzzzzzz'];
+  await send({ type: 'details', videoId: C, channelId: 'UCzzzzzzzzzzzzzzzzzzzzzz', lengthSeconds: 300, isLive: false });
+  assert.equal(fake.nav.updates.at(-1), 'https://m.youtube.com/');
+  assert.equal(fake.store.outbox.filter((e) => e.type === 'watch').at(-1).endReason, 'blockedOnLoad');
+  delete fake.store.data.config.blockedChannelIds;
+});
+
+test('the daily cap locks the screen and logs timeUp', async () => {
+  const C = (await send({ type: 'state' })).videos[0].videoId;
+  await navigate(`https://m.youtube.com/watch?v=${C}`);
+  const r = await play(20 * 60);
+  assert.equal(r.action, 'lock');
+  assert.equal(fake.store.outbox.at(-1).type, 'timeUp');
+  assert.equal((await send({ type: 'state' })).lock.reason, 'dailyCap');
+  assert.equal(await navigate(`https://m.youtube.com/watch?v=${C}`), 'https://m.youtube.com/');
+  assert.equal((await send({ type: 'open', videoId: C })).ok, false);
+});
+
+test('site allowlist rule blocks everything outside the allowed domains', async () => {
+  await send({ type: 'sync' });
+  const rule = fake.rules[0];
+  assert.deepEqual(rule.condition.resourceTypes, ['main_frame']);
+  assert.ok(rule.condition.excludedRequestDomains.includes('youtube.com'));
+});

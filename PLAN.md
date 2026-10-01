@@ -243,7 +243,7 @@ kidtube-data/                    (private)
 
 ## 6. Milestones (each ends with checks you can run)
 
-**M0: Quetta spike (go/no-go, about 1 day).** _Status: probe built in `spike/`, needs the tablet run._ A throwaway CRX with a content script, a DNR rule, `tabs.onUpdated`, an `alarms` poll, a `fetch` to api.github.com, and an `update_url`.
+**M0: Quetta spike (go/no-go, about 1 day).** _Status: done on the tablet. CRX installs, background update installs 0.0.2, `requestUpdateCheck` returns `throttled`._ A throwaway CRX with a content script, a DNR rule, `tabs.onUpdated`, an `alarms` poll, a `fetch` to api.github.com, and an `update_url`.
 - [ ] Quetta installs a self-signed CRX, and the id stays the same across reinstall (the `key` in the manifest)
 - [ ] Content scripts run on `m.youtube.com` and `www.youtube.com`, in both MAIN and ISOLATED worlds
 - [ ] DNR blocks a `main_frame` to an outside site and blocks `doubleclick.net`
@@ -256,12 +256,12 @@ kidtube-data/                    (private)
 **M1: Contracts and tooling.** _Status: done (28 tests pass)._ `schemas/*`, `tools/validate.mjs`, fixtures (good and bad), `test.yml`, `kidtube-data` with seed files and `validate.yml`.
 - [x] `node tools/validate.mjs fixtures/good/*` passes, and each `fixtures/bad/*` fails with a clear message (one bad fixture per check item C1–C8)
 
-**M2: Sync core (SW).** Config fetch, deep merge, ETag, last-good cache, `alarms` every 15 min, outbox, day-file writer with eventId de-duplication and 409 retry, options page (PIN, repo, token, Update, status panel).
+**M2: Sync core (SW).** _Status: built in 0.1.0 (sync, ETag, outbox, activity writer, PIN, Update). Not yet checked against GitHub from the tablet._ Config fetch, deep merge, ETag, last-good cache, `alarms` every 15 min, outbox, day-file writer with eventId de-duplication and 409 retry, options page (PIN, repo, token, Update, status panel).
 - [ ] Unit tests for `merge.js` (C4 cases) and the outbox merge (a duplicate eventId is written once)
 - [ ] Desktop Chrome unpacked: edit `parent-config.json` on GitHub, press Update, and the new value shows in the status panel within 5 s
 - [ ] Offline (DevTools offline): the event stays in the outbox, then arrives after you go back online and press Update
 
-**M3: Kid shell.** Home iframe from the queue, watch page, real `videoDetails` checks (C19), leave lock, `closeAfterSeconds`, the nav guard in 3 layers (C18), site allowlist (C16), time windows plus playback counter (C3), lock screen, autoplay off, watch events.
+**M3: Kid shell.** _Status: built in 0.1.0. Logic tested in node (tests/sw.test.mjs); on-tablet check pending._ Home iframe from the queue, watch page, real `videoDetails` checks (C19), leave lock, `closeAfterSeconds`, the nav guard in 3 layers (C18), site allowlist (C16), time windows plus playback counter (C3), lock screen, autoplay off, watch events.
 - [ ] Unit tests for `time.js`: window edges, timezone, midnight reset, paused time not counted
 - [ ] Manual script: clicking a channel, a related video, the logo, `/shorts/x`, an outside URL in the address bar, the back button, or an end-screen card always lands on home or does nothing, and logs `blocked`
 - [ ] A queue item from a blocked channel never appears, even if the agent left it in

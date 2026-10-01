@@ -59,7 +59,7 @@ function isValidTimeZone(tz) {
 
 export function checkConfig(cfg) {
   const errs = [];
-  if (cfg.timezone != null && !isValidTimeZone(cfg.timezone)) errs.push(`/timezone "${cfg.timezone}" is not an IANA time zone`);
+  if (cfg.timezone != null && cfg.timezone !== 'local' && !isValidTimeZone(cfg.timezone)) errs.push(`/timezone "${cfg.timezone}" is not an IANA time zone`);
   (cfg.time?.allowed ?? []).forEach((w, i) => {
     if (toMinutes(w.from) >= toMinutes(w.to)) errs.push(`/time/allowed/${i} from ${w.from} must be before to ${w.to} (no windows past midnight)`);
   });

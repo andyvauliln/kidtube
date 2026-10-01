@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KidTube parent</title>
+<style>
+  :root { --bg: #f6f6f6; --card: #fff; --ink: #1d1d1f; --muted: #6b6b6b; --line: #e2e2e2; --accent: #ff7a3d; --bad: #c62828; --ok: #2e7d32; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 22px; margin: 0 0 12px; }
+  h2 { font-size: 17px; margin: 0 0 8px; }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+  label { display: block; font-size: 14px; color: var(--muted); margin: 10px 0 4px; }
+  input, textarea { width: 100%; font: inherit; padding: 10px; border: 1px solid var(--line); border-radius: 8px; }
+  button { font: inherit; padding: 10px 16px; border-radius: 8px; border: 1px solid var(--line); background: #fff; margin: 8px 8px 0 0; }
+  button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+  .muted { color: var(--muted); font-size: 14px; }
+  .err { color: var(--bad); }
+  .ok { color: var(--ok); }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 15px; }
+  dt { color: var(--muted); }
+  dd { margin: 0; word-break: break-word; }
+  .row { border-top: 1px solid var(--line); padding: 10px 0; }
+  .row:first-child { border-top: 0; }
+  .row button { padding: 6px 12px; margin-top: 6px; }
+  .pin { font-size: 28px; letter-spacing: 8px; text-align: center; }
+  [hidden] { display: none !important; }
+  a.install { display: block; text-align: center; padding: 12px; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; text-decoration: none; margin-top: 10px; }
+</style>
+<main>
+  <h1>KidTube · parent</h1>
+
+  <section id="gate">
+    <h2 id="gateTitle">Enter PIN</h2>
+    <input id="pin" class="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8">
+    <input id="pin2" class="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="repeat" hidden>
+    <button class="primary" id="pinGo">OK</button>
+    <p class="err" id="pinErr"></p>
+  </section>
+
+  <div id="app" hidden>
+    <section>
+      <h2>Update</h2>
+      <p class="muted">Gets the newest video list, rules and app version.</p>
+      <button class="primary" id="update">Update now</button>
+      <p id="updateOut" class="muted"></p>
+      <a class="install" id="install" hidden>Install the new version</a>
+    </section>
+
+    <section>
+      <h2>Status</h2>
+      <dl id="status"></dl>
+      <button id="resetToday">Reset today’s minutes</button>
+    </section>
+
+    <section>
+      <h2>Recently watched</h2>
+      <p class="muted">Your thumbs and comments go to the agent.</p>
+      <div id="recent"></div>
+    </section>
+
+    <section>
+      <h2>Connection</h2>
+      <label for="repo">Data repo (owner/name)</label>
+      <input id="repo" placeholder="andyvauliln/kidtube-data">
+      <label for="token">GitHub token (fine-grained, this repo only, Contents: read and write)</label>
+      <input id="token" type="password" autocomplete="off" placeholder="github_pat_…">
+      <button class="primary" id="save">Save</button>
+      <span id="saveOut" class="muted"></span>
+    </section>
+
+    <section>
+      <h2>PIN</h2>
+      <button id="changePin">Change PIN</button>
+    </section>
+  </div>
+</main>
+<script type="module" src="options.js"></script>
+</html>

@@ -2,57 +2,217 @@
   "$id": "parent-config.schema.json",
   "title": "parent-config.json (overlay on extension/default-config.json)",
   "type": "object",
-  "required": ["schemaVersion", "updatedAt"],
+  "required": [
+    "schemaVersion",
+    "updatedAt"
+  ],
   "additionalProperties": false,
   "properties": {
-    "schemaVersion": { "$ref": "common.schema.json#/$defs/schemaVersion" },
-    "updatedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
-    "minExtensionVersion": { "$ref": "common.schema.json#/$defs/semver" },
-    "timezone": { "type": "string", "pattern": "^[A-Za-z_]+(/[A-Za-z0-9_+-]+)*$" },
-    "blockShorts": { "type": ["boolean", "null"] },
-    "blockLive": { "type": ["boolean", "null"] },
-    "blockOutboundLinks": { "type": ["boolean", "null"] },
-    "blockAds": { "type": ["boolean", "null"] },
-    "allowedSiteDomains": { "type": ["array", "null"], "items": { "type": "string", "pattern": "^[a-z0-9.-]+\\.[a-z]{2,}$" } },
-    "minVideoDurationSeconds": { "type": ["integer", "null"], "minimum": 0 },
-    "maxVideoDurationSeconds": { "type": ["integer", "null"], "minimum": 0 },
-    "minSecondsBeforeLeave": { "type": ["integer", "null"], "minimum": 0, "maximum": 3600 },
-    "closeAfterSeconds": { "type": ["integer", "null"], "minimum": 0 },
-    "queueSize": { "type": ["integer", "null"], "minimum": 1, "maximum": 30 },
+    "schemaVersion": {
+      "$ref": "common.schema.json#/$defs/schemaVersion"
+    },
+    "updatedAt": {
+      "$ref": "common.schema.json#/$defs/timestamp"
+    },
+    "minExtensionVersion": {
+      "$ref": "common.schema.json#/$defs/semver"
+    },
+    "timezone": {
+      "type": "string",
+      "pattern": "^(local|[A-Za-z_]+(/[A-Za-z0-9_+-]+)*)$",
+      "description": "\"local\" = the tablet's own time zone"
+    },
+    "blockShorts": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "blockLive": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "blockOutboundLinks": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "blockAds": {
+      "type": [
+        "boolean",
+        "null"
+      ]
+    },
+    "allowedSiteDomains": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z0-9.-]+\\.[a-z]{2,}$"
+      }
+    },
+    "minVideoDurationSeconds": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "maxVideoDurationSeconds": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "minSecondsBeforeLeave": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0,
+      "maximum": 3600
+    },
+    "closeAfterSeconds": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 0
+    },
+    "queueSize": {
+      "type": [
+        "integer",
+        "null"
+      ],
+      "minimum": 1,
+      "maximum": 30
+    },
     "time": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "additionalProperties": false,
       "properties": {
         "allowed": {
-          "type": ["array", "null"],
+          "type": [
+            "array",
+            "null"
+          ],
           "items": {
             "type": "object",
-            "required": ["days", "from", "to"],
+            "required": [
+              "days",
+              "from",
+              "to"
+            ],
             "additionalProperties": false,
             "properties": {
-              "days": { "type": "array", "minItems": 1, "uniqueItems": true, "items": { "$ref": "common.schema.json#/$defs/day" } },
-              "from": { "$ref": "common.schema.json#/$defs/hhmm" },
-              "to": { "$ref": "common.schema.json#/$defs/hhmm" }
+              "days": {
+                "type": "array",
+                "minItems": 1,
+                "uniqueItems": true,
+                "items": {
+                  "$ref": "common.schema.json#/$defs/day"
+                }
+              },
+              "from": {
+                "$ref": "common.schema.json#/$defs/hhmm"
+              },
+              "to": {
+                "$ref": "common.schema.json#/$defs/hhmm"
+              }
             }
           }
         },
-        "maxMinutesPerDay": { "type": ["integer", "null"], "minimum": 0, "maximum": 1440 }
+        "maxMinutesPerDay": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0,
+          "maximum": 1440
+        }
       }
     },
-    "blockedChannelIds": { "type": ["array", "null"], "uniqueItems": true, "items": { "$ref": "common.schema.json#/$defs/channelId" } },
+    "blockedChannelIds": {
+      "type": [
+        "array",
+        "null"
+      ],
+      "uniqueItems": true,
+      "items": {
+        "$ref": "common.schema.json#/$defs/channelId"
+      }
+    },
     "quiz": {
-      "type": ["object", "null"],
+      "type": [
+        "object",
+        "null"
+      ],
       "additionalProperties": false,
       "properties": {
-        "enabled": { "type": ["boolean", "null"] },
-        "when": { "enum": ["afterEachVideo", null] },
-        "maxAttempts": { "type": ["integer", "null"], "minimum": 1, "maximum": 10 },
-        "itemsPerVideo": { "type": ["integer", "null"], "minimum": 1, "maximum": 5 },
-        "defaultIds": { "type": ["array", "null"], "items": { "$ref": "common.schema.json#/$defs/quizId" } },
+        "enabled": {
+          "type": [
+            "boolean",
+            "null"
+          ]
+        },
+        "when": {
+          "enum": [
+            "afterEachVideo",
+            null
+          ]
+        },
+        "maxAttempts": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 10
+        },
+        "itemsPerVideo": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 1,
+          "maximum": 5
+        },
+        "defaultIds": {
+          "type": [
+            "array",
+            "null"
+          ],
+          "items": {
+            "$ref": "common.schema.json#/$defs/quizId"
+          }
+        },
         "items": {
-          "type": ["object", "null"],
-          "propertyNames": { "$ref": "common.schema.json#/$defs/quizId" },
-          "additionalProperties": { "anyOf": [{ "$ref": "quiz-item.schema.json" }, { "type": "null" }] }
+          "type": [
+            "object",
+            "null"
+          ],
+          "propertyNames": {
+            "$ref": "common.schema.json#/$defs/quizId"
+          },
+          "additionalProperties": {
+            "anyOf": [
+              {
+                "$ref": "quiz-item.schema.json"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
         }
       }
     }

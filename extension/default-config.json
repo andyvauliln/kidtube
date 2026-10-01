@@ -2,20 +2,39 @@
   "schemaVersion": 1,
   "updatedAt": "2026-10-01T00:00:00Z",
   "minExtensionVersion": "0.0.0",
-  "timezone": "UTC",
+  "timezone": "local",
   "blockShorts": true,
   "blockLive": true,
   "blockOutboundLinks": true,
   "blockAds": false,
-  "allowedSiteDomains": ["youtube.com", "m.youtube.com", "accounts.google.com", "consent.youtube.com"],
+  "allowedSiteDomains": [
+    "youtube.com",
+    "accounts.google.com",
+    "consent.youtube.com",
+    "andyvauliln.github.io"
+  ],
   "minVideoDurationSeconds": 60,
   "maxVideoDurationSeconds": 1200,
   "minSecondsBeforeLeave": 120,
   "closeAfterSeconds": 0,
   "queueSize": 10,
   "time": {
-    "allowed": [{ "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"], "from": "16:00", "to": "18:30" }],
-    "maxMinutesPerDay": 40
+    "allowed": [
+      {
+        "days": [
+          "mon",
+          "tue",
+          "wed",
+          "thu",
+          "fri",
+          "sat",
+          "sun"
+        ],
+        "from": "08:00",
+        "to": "20:00"
+      }
+    ],
+    "maxMinutesPerDay": 60
   },
   "blockedChannelIds": [],
   "quiz": {
