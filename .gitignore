@@ -3,3 +3,4 @@ node_modules/
 *.crx
 !docs/*.crx
 dist/
+!docs/*.zip

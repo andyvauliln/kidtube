@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KidTube install</title>
+<style>
+  :root { --bg: #fafafa; --fg: #1d1d1f; --muted: #666; --card: #fff; --line: #e3e3e3; --accent: #1b5e20; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #121212; --fg: #eee; --muted: #aaa; --card: #1e1e1e; --line: #333; --accent: #66bb6a; } }
+  body { margin: 0; padding: 16px; background: var(--bg); color: var(--fg); font: 16px/1.5 system-ui, sans-serif; }
+  main { max-width: 640px; margin: 0 auto; }
+  h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .muted { color: var(--muted); font-size: 0.9rem; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 16px 0; }
+  a.btn { display: block; text-align: center; padding: 14px; margin: 8px 0; border-radius: 10px; background: var(--accent); color: #fff; text-decoration: none; font-weight: 600; }
+  @media (prefers-color-scheme: dark) { a.btn { color: #000; } }
+  code { background: var(--line); padding: 1px 5px; border-radius: 4px; word-break: break-all; }
+  li { margin: 6px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>KidTube</h1>
+  <p class="muted">Version <span id="ver">…</span> · extension id <code id="id">…</code></p>
+
+  <div class="card">
+    <a class="btn" id="crx" download>Download .crx</a>
+    <a class="btn" id="zip" download>Download .zip</a>
+    <p class="muted">Tapping a link only downloads the file. Nothing installs until you open it from Quetta's Extensions page.</p>
+  </div>
+
+  <div class="card">
+    <h2>Install in Quetta (Android)</h2>
+    <ol>
+      <li>Tap <b>Download .crx</b> above. If Quetta won't download it, long-press the button and choose <b>Download link</b>.</li>
+      <li>Open Quetta's menu (⋮) → <b>Extensions</b>. You can also type <code>chrome://extensions</code> in the address bar.</li>
+      <li>Turn on <b>Developer mode</b>.</li>
+      <li>Tap the button that installs from a file (it may say <b>+ (from .zip/.crx/.user.js)</b>, <b>Load</b> or <b>Install from file</b>) and pick the file from <b>Downloads</b>.</li>
+      <li>If the .crx is refused, try again with the <b>.zip</b>.</li>
+      <li>Check that the installed id matches the id at the top of this page.</li>
+    </ol>
+  </div>
+
+  <div class="card">
+    <h2>On a computer (development only)</h2>
+    <p>Desktop Chrome downloads the .crx but won't install extensions from outside the Web Store. For development, unzip the .zip and use <b>chrome://extensions → Developer mode → Load unpacked</b>.</p>
+  </div>
+</main>
+<script>
+  fetch('latest.json', { cache: 'no-store' }).then((r) => r.json()).then((l) => {
+    document.getElementById('ver').textContent = l.version;
+    document.getElementById('id').textContent = l.id;
+    document.getElementById('crx').href = l.crxUrl;
+    document.getElementById('zip').href = l.zipUrl;
+  });
+</script>
+</body>
+</html>

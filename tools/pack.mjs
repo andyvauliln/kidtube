@@ -22,9 +22,12 @@ const id = extensionId(der);
 const base = values['base-url'].replace(/\/$/, '');
 const crxName = `${manifest.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${manifest.version}.crx`;
 mkdirSync(values.out, { recursive: true });
-writeFileSync(join(values.out, crxName), buildCrx(zipDir(extDir), pem));
+const zip = zipDir(extDir);
+writeFileSync(join(values.out, crxName), buildCrx(zip, pem));
+// Same files unsigned, for browsers that install from a .zip (the manifest "key" keeps the id the same).
+writeFileSync(join(values.out, crxName.replace(/\.crx$/, '.zip')), zip);
 writeFileSync(join(values.out, 'updates.xml'), updatesXml({ id, version: manifest.version, crxUrl: `${base}/${crxName}` }));
 const quizTypesPath = join(extDir, 'quiz-types.json');
-const latest = { version: manifest.version, id, crxUrl: `${base}/${crxName}`, quizTypes: existsSync(quizTypesPath) ? JSON.parse(readFileSync(quizTypesPath, 'utf8')) : [] };
+const latest = { version: manifest.version, id, crxUrl: `${base}/${crxName}`, zipUrl: `${base}/${crxName.replace(/\.crx$/, '.zip')}`, quizTypes: existsSync(quizTypesPath) ? JSON.parse(readFileSync(quizTypesPath, 'utf8')) : [] };
 writeFileSync(join(values.out, 'latest.json'), JSON.stringify(latest, null, 2) + '\n');
 console.log(`packed ${crxName}  id=${id}  -> ${values.out}/`);
