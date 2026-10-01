@@ -12,7 +12,7 @@ You look after `kidtube-data` (private). This part of the job: give every video 
 ## What to write (per video)
 
 **`intro.text`** (2–4 short sentences, at most 400 characters). Spoken by the friend before the video. Make him curious: one surprising question or fact from the video, without giving away the answer. End by telling him what to look out for, which is what you'll ask about later.
-> "Pika pika! Did you know a spider has more legs than you and me together? In this video we'll find out how many. Watch carefully and count with me!"
+> "Did you know a spider has more legs than you and me together? In this video we'll find out how many. Watch carefully and count with me!"
 
 **`outro.text`** (3–5 short sentences, at most 600 characters). Spoken after the video. Sum up the 2–3 new things he learned, in plain words, then lead into the questions.
 > "Wow! Today we learned that spiders have eight legs, that they spin webs from silk, and that most spiders are friendly. Now let's see what you remember!"
