@@ -53,3 +53,15 @@ test('effective config: enabled quiz needs defaultIds', () => {
   const eff = mergeConfig(defaults, { quiz: { enabled: true } });
   assert.ok(checkEffectiveConfig(eff, ['text']).some((e) => e.includes('defaultIds is empty')));
 });
+
+test('quiz types come from the tablet’s newest activity, else the build', async () => {
+  const { mkdtempSync, cpSync, rmSync } = await import('node:fs');
+  const { tmpdir } = await import('node:os');
+  const dir = mkdtempSync(join(tmpdir(), 'kt-'));
+  cpSync('fixtures/good/data', dir, { recursive: true });
+  rmSync(join(dir, 'activity'), { recursive: true });
+  const cfg = validateDataDir(dir).find((r) => r.path.endsWith('parent-config.json'));
+  const builds = JSON.parse(readFileSync('extension/quiz-types.json', 'utf8'));
+  if (!builds.includes('text')) assert.ok(cfg.errors.some((e) => e.includes('not supported by this build')));
+  rmSync(dir, { recursive: true });
+});

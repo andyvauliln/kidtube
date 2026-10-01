@@ -156,12 +156,19 @@ export function validateDataDir(dir) {
   const defaults = JSON.parse(readFileSync(DEFAULT_CONFIG_PATH, 'utf8'));
   let effectiveConfig = defaults;
 
+  // Quiz types: what the tablet says it has installed (newest activity file), else what this build ships (PLAN.md C10).
+  const actDir = join(dir, 'activity');
+  const actFiles = existsSync(actDir) ? readdirSync(actDir).filter((f) => f.endsWith('.json')).sort() : [];
+  const activityResults = actFiles.map((f) => validateFile(join(actDir, f)));
+  const newestDevice = activityResults.filter((r) => r.data?.device).at(-1)?.data.device;
+  const quizTypes = newestDevice?.quizTypes ?? loadQuizTypes();
+
   const cfgPath = join(dir, 'parent-config.json');
   if (existsSync(cfgPath)) {
     const r = validateFile(cfgPath);
     if (!r.errors.some(isError)) {
       effectiveConfig = mergeConfig(defaults, r.data);
-      r.errors.push(...checkEffectiveConfig(effectiveConfig, loadQuizTypes()));
+      r.errors.push(...checkEffectiveConfig(effectiveConfig, quizTypes));
     }
     results.push(r);
   } else {
@@ -173,10 +180,7 @@ export function validateDataDir(dir) {
     results.push(existsSync(p) ? validateFile(p, { effectiveConfig }) : { path: p, errors: ['missing'] });
   }
 
-  const actDir = join(dir, 'activity');
-  if (existsSync(actDir)) {
-    for (const f of readdirSync(actDir).filter((f) => f.endsWith('.json')).sort()) results.push(validateFile(join(actDir, f)));
-  }
+  results.push(...activityResults);
   return results;
 }
 
