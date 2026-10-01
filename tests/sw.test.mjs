@@ -112,3 +112,36 @@ test('a token that cannot see the repo gets a plain explanation, once', async ()
   assert.equal(r.errors.filter((e) => e.includes("can't see andyvauliln/kidtube-data")).length, 1);
   assert.ok(r.errors[0].includes('(andyvauliln)'));
 });
+
+test('rules saved without GitHub work on the tablet at once', async () => {
+  await chrome.storage.local.set({ settings: { ...fake.store.settings, token: '' } });
+  const r = await send({ type: 'saveRules', patch: { allowSkip: true, allowedSiteDomains: ['wikipedia.org'] } });
+  assert.equal(r.saved, 'tablet');
+  assert.equal((await send({ type: 'state' })).rules.allowSkip, true);
+  const domains = fake.rules[0].condition.excludedRequestDomains;
+  assert.ok(domains.includes('wikipedia.org') && domains.includes('youtube.com'), 'youtube.com always stays open');
+});
+
+test('rules are merged into parent-config.json on GitHub, then the local copy is cleared', async () => {
+  await chrome.storage.local.set({ settings: { ...fake.store.settings, token: 'github_pat_ok' } });
+  const remote = { schemaVersion: 1, updatedAt: '2026-10-01T00:00:00Z', queueSize: 7, time: { maxMinutesPerDay: 30 } };
+  let written = null;
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts = {}) => {
+    if (String(url).endsWith('/contents/parent-config.json') && opts.method === 'PUT') {
+      written = JSON.parse(Buffer.from(JSON.parse(opts.body).content, 'base64').toString('utf8'));
+      return { ok: true, status: 200, json: async () => ({}) };
+    }
+    if (String(url).endsWith('/contents/parent-config.json')) {
+      return { ok: true, status: 200, json: async () => ({ sha: 'abc', content: Buffer.from(JSON.stringify(remote)).toString('base64') }) };
+    }
+    return realFetch(url, opts);
+  };
+  const r = await send({ type: 'saveRules', patch: { time: { maxMinutesPerDay: 45 } } });
+  globalThis.fetch = realFetch;
+  assert.equal(r.saved, 'github');
+  assert.equal(written.queueSize, 7, 'keeps what the agent wrote');
+  assert.equal(written.time.maxMinutesPerDay, 45);
+  assert.equal(written.allowSkip, true, 'earlier tablet-only rules go up too');
+  assert.equal(fake.store.localConfig, null);
+});

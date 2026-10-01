@@ -21,7 +21,8 @@ async function loadBundled() {
 
 // --- storage: everything persistent, writes serialized so ticks don't race --------------
 
-const KEYS = ['settings', 'data', 'watched', 'today', 'session', 'outbox', 'syncStatus'];
+// localConfig: rules saved on the parent page that haven't reached GitHub yet.
+const KEYS = ['settings', 'data', 'watched', 'today', 'session', 'outbox', 'syncStatus', 'localConfig'];
 let chain = Promise.resolve();
 function withState(fn) {
   const run = chain.then(async () => {
@@ -40,7 +41,7 @@ function withState(fn) {
 
 async function effective(s) {
   const b = await loadBundled();
-  const config = mergeConfig(b.config, s.data.config);
+  const config = mergeConfig(mergeConfig(b.config, s.data?.config), s.localConfig);
   const queue = s.data.queue ?? b.queue;
   return { config, queue };
 }
@@ -89,6 +90,7 @@ async function viewState(s) {
     lock: reason ? { reason, opens: nextOpening(config, now) } : null,
     minutesLeft: config.time?.maxMinutesPerDay ? Math.max(0, Math.ceil(config.time.maxMinutesPerDay - played / 60)) : null,
     session: ses ? { videoId: ses.videoId, secondsUntilUnlock: ses.ended ? 0 : Math.max(0, Math.ceil(min - ses.playedSeconds)) } : null,
+    rules: { allowSkip: !!config.allowSkip },
   };
 }
 
@@ -238,6 +240,12 @@ async function handle(msg, sender) {
         s.outbox.push(ev);
       }).then(() => sync());
 
+    case 'getRules':
+      return withState(async (s) => ({ config: (await effective(s)).config, pending: !!s.localConfig }));
+
+    case 'saveRules':
+      return saveRules(msg.patch);
+
     case 'resetToday':
       return withState((s) => { s.today = null; });
 
@@ -342,18 +350,76 @@ async function doSync() {
     s.syncStatus = status;
   });
   await applySiteRules();
-  try { await flushOutbox(repo, token); } catch (e) { if (token) status.errors.push(`Saving what he watched: ${e.message ?? e}`); }
+  // One cause (usually the token) should show once, not once per file.
+  const report = (prefix, msg) => { if (!status.errors.some((x) => msg.includes(x) || x.includes(msg))) status.errors.push(prefix + msg); };
+  const rules = await uploadLocalConfig();
+  if (rules.saved === 'tablet' && token) report('Rules: ', rules.error.replace(/^Saved on this tablet\. GitHub: /, ''));
+  try { await flushOutbox(repo, token); } catch (e) { if (token) report('Saving what he watched: ', String(e.message ?? e)); }
   status.errors = [...new Set(status.errors)];
   await withState((s) => { s.syncStatus = status; });
   return status;
 }
 
+// Reads a JSON file with its sha (null when it doesn't exist yet).
+async function getRepoFile(repo, token, path) {
+  const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, { headers: ghHeaders(token, 'application/vnd.github+json'), cache: 'no-store' });
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error(await explainHttp(r.status, repo, token, path));
+  const j = await r.json();
+  const text = new TextDecoder().decode(Uint8Array.from(atob(j.content.replace(/\n/g, '')), (c) => c.charCodeAt(0)));
+  return { json: JSON.parse(text), sha: j.sha };
+}
+
+// Returns true when written, false on a sha conflict (someone else wrote first).
+async function putRepoFile(repo, token, path, json, sha, message) {
+  const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+    method: 'PUT',
+    headers: { ...ghHeaders(token, 'application/vnd.github+json'), 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message, content: toBase64(JSON.stringify(json, null, 2) + '\n'), ...(sha ? { sha } : {}) }),
+  });
+  if (r.ok) return true;
+  if (r.status === 409 || r.status === 422) return false;
+  throw new Error(await explainHttp(r.status, repo, token, path));
+}
+
+// Rules from the parent page: used on the tablet at once, then written into parent-config.json
+// so the agent sees them. Until GitHub accepts them they stay in localConfig.
+async function saveRules(patch) {
+  await withState((s) => { s.localConfig = mergeConfig(s.localConfig ?? {}, patch); });
+  await applySiteRules();
+  return uploadLocalConfig();
+}
+
+async function uploadLocalConfig() {
+  const { settings = {}, localConfig } = await chrome.storage.local.get(['settings', 'localConfig']);
+  if (!localConfig) return { saved: 'github' };
+  const repo = settings.repo || DEFAULT_REPO, token = settings.token || '';
+  if (!token) return { saved: 'tablet', error: 'No GitHub token yet, so the rules are saved on this tablet only.' };
+  try {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      const cur = await getRepoFile(repo, token, 'parent-config.json');
+      const next = { ...mergeConfig(cur?.json ?? { schemaVersion: 1 }, localConfig), schemaVersion: 1, updatedAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z') };
+      if (await putRepoFile(repo, token, 'parent-config.json', next, cur?.sha, 'Rules changed on the tablet')) {
+        await withState((s) => {
+          s.data.config = next;
+          if (s.data.etags) delete s.data.etags['parent-config.json'];
+          s.localConfig = null;
+        });
+        return { saved: 'github' };
+      }
+    }
+    return { saved: 'tablet', error: 'GitHub was busy; will retry on the next sync.' };
+  } catch (e) {
+    return { saved: 'tablet', error: `Saved on this tablet. GitHub: ${e.message ?? e}` };
+  }
+}
+
 // Writes queued events into activity/YYYY-MM-DD.json, de-duplicated by eventId (PLAN.md §3.3).
 async function flushOutbox(repo, token) {
-  const { outbox = [], settings = {}, data = {} } = await chrome.storage.local.get(['outbox', 'settings', 'data']);
+  const { outbox = [], settings = {}, data = {}, localConfig } = await chrome.storage.local.get(['outbox', 'settings', 'data', 'localConfig']);
   if (!outbox.length) return;
   if (!token) throw new Error('no token; events kept on the tablet');
-  const { config, queue } = await effective({ data, settings });
+  const { config, queue } = await effective({ data, settings, localConfig });
   const byDate = {};
   for (const ev of outbox) (byDate[localParts(new Date(ev.at), config.timezone).date] ??= []).push(ev);
   if (!settings.deviceId) await withState((s) => { s.settings.deviceId ??= `tab-${crypto.randomUUID().slice(0, 8)}`; });
@@ -363,14 +429,8 @@ async function flushOutbox(repo, token) {
   for (const [date, events] of Object.entries(byDate)) {
     const path = `activity/${date}.json`;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const url = `https://api.github.com/repos/${repo}/contents/${path}`;
-      const get = await fetch(url, { headers: ghHeaders(token, 'application/vnd.github+json'), cache: 'no-store' });
-      let file = { schemaVersion: 1, date, events: [] }, sha;
-      if (get.ok) {
-        const j = await get.json();
-        sha = j.sha;
-        file = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(j.content.replace(/\n/g, '')), (c) => c.charCodeAt(0))));
-      } else if (get.status !== 404) throw new Error(`${path}: HTTP ${get.status}`);
+      const cur = await getRepoFile(repo, token, path);
+      const file = cur?.json ?? { schemaVersion: 1, date, events: [] };
       const have = new Set(file.events.map((e) => e.eventId));
       file.events.push(...events.filter((e) => !have.has(e.eventId)));
       file.events.sort((a, b) => a.at.localeCompare(b.at));
@@ -380,14 +440,7 @@ async function flushOutbox(repo, token) {
         ...(queue.updatedAt ? { queueUpdatedAt: queue.updatedAt } : {}),
         lastSyncAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
       };
-      const body = JSON.stringify(file, null, 2) + '\n';
-      const put = await fetch(url, {
-        method: 'PUT',
-        headers: { ...ghHeaders(token, 'application/vnd.github+json'), 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: `activity ${date}`, content: toBase64(body), ...(sha ? { sha } : {}) }),
-      });
-      if (put.ok) { events.forEach((e) => sent.add(e.eventId)); break; }
-      if (put.status !== 409 && put.status !== 422) throw new Error(`${path}: HTTP ${put.status}`);
+      if (await putRepoFile(repo, token, path, file, cur?.sha, `activity ${date}`)) { events.forEach((e) => sent.add(e.eventId)); break; }
       await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
     }
   }
@@ -403,12 +456,13 @@ function toBase64(text) {
 
 // Every top-level page outside allowedSiteDomains is blocked (PLAN.md C16).
 async function applySiteRules() {
-  const s = await chrome.storage.local.get(['data']);
-  const { config } = await effective({ data: s.data ?? {}, settings: {} });
-  const domains = config.allowedSiteDomains ?? [];
+  const s = await chrome.storage.local.get(['data', 'localConfig']);
+  const { config } = await effective({ data: s.data ?? {}, localConfig: s.localConfig });
+  // YouTube and the install page always stay reachable, whatever the list says.
+  const domains = [...new Set([...(config.allowedSiteDomains ?? []), 'youtube.com', 'andyvauliln.github.io'])];
   await chrome.declarativeNetRequest.updateDynamicRules({
     removeRuleIds: [SITE_RULE_ID],
-    addRules: config.blockOutboundLinks && domains.length ? [{
+    addRules: config.blockOutboundLinks ? [{
       id: SITE_RULE_ID, priority: 1, action: { type: 'block' },
       condition: { resourceTypes: ['main_frame'], excludedRequestDomains: domains },
     }] : [],

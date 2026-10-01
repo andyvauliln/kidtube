@@ -15,8 +15,12 @@
     .ytp-youtube-button, .ytp-suggestion-set, .ytp-videowall-still, .ytp-cards-teaser, .ytp-cards-button, .ytp-autonav-endscreen,
     .ytp-title, .ytp-title-channel, .ytm-autonav-bar, .player-endscreen, .fullscreen-watch-next-entrypoint-wrapper,
     .ytwPlayerMiniplayerHost, ytm-pivot-bar-renderer { display: none !important; }
-    iframe.kidtube-frame { position: fixed !important; left: 0 !important; width: 100vw !important; border: 0 !important;
+    iframe.kidtube-frame { position: fixed !important; border: 0 !important; margin: 0 !important; padding: 0 !important;
       z-index: ${Z} !important; background: #fff; color-scheme: normal; display: block !important; }
+    /* allowSkip off: the seek bar can't be dragged (the video element is also guarded below) */
+    html.kidtube-noskip .ytp-progress-bar-container, html.kidtube-noskip .ytp-progress-bar, html.kidtube-noskip .ytm-progress-bar,
+    html.kidtube-noskip .YtmProgressBarHost, html.kidtube-noskip .ytp-scrubber-container, html.kidtube-noskip .player-controls-progress-bar,
+    html.kidtube-noskip .ytp-doubletap-ui-legacy { pointer-events: none !important; }
   `;
   (document.head || document.documentElement).appendChild(style);
   document.documentElement.classList.add('kidtube-on');
@@ -43,39 +47,77 @@
     return v;
   }
 
-  // Covers above and below the player so only the player itself can be touched.
+  function place(f, x, y, w, h) {
+    Object.assign(f.style, { left: `${x}px`, top: `${y}px`, width: `${Math.max(0, w)}px`, height: `${Math.max(0, h)}px` });
+  }
+  const COVERS = ['top', 'left', 'right', 'bottom'];
+
+  // Covers on every side of the player, so only the player itself can be touched.
+  // Upright tablet: the "up next" strip goes below the player. Sideways: it goes on the right.
   function layoutWatch() {
     const v = player();
     const box = (v?.closest('#movie_player, .html5-video-player, #player-container-id, #player') || v)?.getBoundingClientRect();
-    const top = frame('top', 'ui/cover.html');
-    const strip = frame('strip', `ui/strip.html`);
-    if (!box || box.height < 50) {           // player not drawn yet: cover everything below the header area
-      top.style.top = '0'; top.style.height = '0';
-      strip.style.top = '35vh'; strip.style.height = '65vh';
+    const c = Object.fromEntries(COVERS.map((n) => [n, frame(n, 'ui/cover.html')]));
+    const strip = frame('strip', 'ui/strip.html');
+    const W = innerWidth, H = innerHeight;
+    if (!box || box.height < 50 || box.width < 50) {   // player not drawn yet: cover all but the top third
+      COVERS.forEach((n) => place(c[n], 0, 0, 0, 0));
+      place(strip, 0, H * 0.35, W, H * 0.65);
       return;
     }
     if (window.scrollY) window.scrollTo(0, 0);
-    top.style.top = '0'; top.style.height = `${Math.max(0, box.top)}px`;
-    strip.style.top = `${box.bottom}px`; strip.style.height = `${Math.max(0, innerHeight - box.bottom)}px`;
+    const below = H - box.bottom, right = W - box.right;
+    if (below >= 160 || below >= right) {
+      place(strip, 0, box.bottom, W, below);
+      place(c.top, 0, 0, W, box.top);
+      place(c.left, 0, box.top, box.left, box.height);
+      place(c.right, box.right, box.top, right, box.height);
+      place(c.bottom, 0, 0, 0, 0);
+    } else {
+      place(strip, box.right, 0, right, H);
+      place(c.top, 0, 0, box.right, box.top);
+      place(c.left, 0, box.top, box.left, box.height);
+      place(c.bottom, 0, box.bottom, box.right, below);
+      place(c.right, 0, 0, 0, 0);
+    }
   }
 
   function showHome() {
-    drop('top'); drop('strip'); drop('lock');
-    const f = frame('home', 'ui/home.html');
-    f.style.top = '0'; f.style.height = '100vh';
+    [...COVERS, 'strip', 'lock'].forEach(drop);
+    place(frame('home', 'ui/home.html'), 0, 0, innerWidth, innerHeight);
   }
 
   function showLock() {
     player()?.pause();
-    const f = frame('lock', 'ui/home.html?locked=1');
-    f.style.top = '0'; f.style.height = '100vh';
+    place(frame('lock', 'ui/home.html?locked=1'), 0, 0, innerWidth, innerHeight);
+  }
+
+  // allowSkip off: no jumping forward and no speed above 1x. Going back is fine.
+  let allowSkip = false, maxReached = 0;
+  async function loadRules() {
+    const st = await ask({ type: 'state' });
+    if (!st?.rules) return;
+    allowSkip = st.rules.allowSkip;
+    document.documentElement.classList.toggle('kidtube-noskip', !allowSkip);
+  }
+  function guardSkipping(v) {
+    v.addEventListener('timeupdate', () => {
+      if (!v.seeking && v.currentTime <= maxReached + 3) maxReached = Math.max(maxReached, v.currentTime);
+    });
+    v.addEventListener('seeking', () => {
+      if (!allowSkip && v.currentTime > maxReached + 1.5) v.currentTime = maxReached;
+    });
+    v.addEventListener('ratechange', () => {
+      if (!allowSkip && v.playbackRate > 1) v.playbackRate = 1;
+    });
+    for (const t of ['emptied', 'loadstart']) v.addEventListener(t, () => { maxReached = 0; }); // new media (ad -> video)
   }
 
   function route() {
     const u = new URL(location.href);
     const vid = u.pathname === '/watch' ? u.searchParams.get('v') : null;
     if (vid) {
-      if (page !== 'watch' || vid !== videoId) { page = 'watch'; videoId = vid; drop('home'); drop('lock'); played = 0; }
+      if (page !== 'watch' || vid !== videoId) { page = 'watch'; videoId = vid; drop('home'); drop('lock'); played = 0; maxReached = 0; loadRules(); }
       layoutWatch();
     } else {
       if (page !== 'home') { page = 'home'; videoId = null; }
@@ -96,6 +138,7 @@
     if (!hooked.has(v)) {
       hooked.add(v);
       v.addEventListener('ended', () => { if (videoId) ask({ type: 'ended', videoId }); });
+      guardSkipping(v);
     }
     if (!v.paused && !v.ended && document.visibilityState === 'visible') played += Math.min(dt, 2);
     if (played >= 5) {
@@ -122,7 +165,9 @@
   };
   for (const t of ['click', 'auxclick']) document.addEventListener(t, swallow, true);
 
-  addEventListener('resize', () => page === 'watch' && layoutWatch());
+  addEventListener('resize', () => (page === 'watch' ? layoutWatch() : page === 'home' && showHome()));
+  chrome.storage.onChanged.addListener((ch) => { if (ch.data || ch.localConfig) loadRules(); });
+  loadRules();
   document.addEventListener('fullscreenchange', () => page === 'watch' && layoutWatch());
   route();
 })();

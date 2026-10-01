@@ -25,6 +25,18 @@
   .row:first-child { border-top: 0; }
   .row button { padding: 6px 12px; margin-top: 6px; }
   .pin { font-size: 28px; letter-spacing: 8px; text-align: center; }
+  .rules label.check { display: flex; align-items: center; gap: 10px; color: var(--ink); font-size: 16px; margin: 12px 0 0; }
+  .rules label.check input { width: auto; transform: scale(1.3); }
+  .rules .hint { color: var(--muted); font-size: 13px; margin: 2px 0 0; }
+  .rules .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .win { border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-top: 8px; }
+  .days { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+  .days label { display: inline-flex; align-items: center; gap: 4px; margin: 0; color: var(--ink); font-size: 14px;
+    border: 1px solid var(--line); border-radius: 16px; padding: 4px 10px; }
+  .days input { width: auto; }
+  .win .two input { padding: 8px; }
+  .win button { margin-top: 8px; padding: 6px 10px; }
+  textarea { min-height: 84px; }
   [hidden] { display: none !important; }
   a.install { display: block; text-align: center; padding: 12px; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; text-decoration: none; margin-top: 10px; }
 </style>
@@ -52,6 +64,47 @@
       <h2>Status</h2>
       <dl id="status"></dl>
       <button id="resetToday">Reset today’s minutes</button>
+    </section>
+
+    <section class="rules">
+      <h2>Rules</h2>
+      <p class="muted">Changes work on this tablet right away and are saved to GitHub, where the agent sees them.</p>
+
+      <label>Watching hours</label>
+      <div id="windows"></div>
+      <button id="addWindow">+ Add hours</button>
+
+      <div class="two">
+        <div><label for="maxMinutes">Minutes per day</label><input id="maxMinutes" type="number" min="0" max="1440" inputmode="numeric">
+          <p class="hint">0 = no limit. Paused time doesn't count.</p></div>
+        <div><label for="queueSize">Videos on the home screen</label><input id="queueSize" type="number" min="1" max="30" inputmode="numeric"></div>
+      </div>
+
+      <div class="two">
+        <div><label for="minLeave">Must watch before switching (seconds)</label><input id="minLeave" type="number" min="0" max="3600" inputmode="numeric"></div>
+        <div><label for="closeAfter">Back to the list after (seconds)</label><input id="closeAfter" type="number" min="0" inputmode="numeric">
+          <p class="hint">0 = off, the video plays to the end.</p></div>
+      </div>
+
+      <div class="two">
+        <div><label for="minLen">Shortest video (minutes)</label><input id="minLen" type="number" min="0" step="0.5" inputmode="decimal"></div>
+        <div><label for="maxLen">Longest video (minutes)</label><input id="maxLen" type="number" min="0" step="0.5" inputmode="decimal">
+          <p class="hint">0 = no limit.</p></div>
+      </div>
+
+      <label class="check"><input type="checkbox" id="allowSkip"> Allow skipping inside a video</label>
+      <p class="hint">Off: he can't jump forward or speed it up. Going back is always allowed.</p>
+
+      <label class="check"><input type="checkbox" id="blockSites"> Block other websites in this browser</label>
+      <label for="sites">Websites that stay open (one per line)</label>
+      <textarea id="sites" placeholder="youtube.com"></textarea>
+      <p class="hint">youtube.com always stays open. A site also allows its subdomains.</p>
+
+      <label for="channels">Blocked channels (channel ids starting with UC, one per line)</label>
+      <textarea id="channels" placeholder="UC…"></textarea>
+
+      <button class="primary" id="saveRules">Save rules</button>
+      <p id="rulesOut" class="muted"></p>
     </section>
 
     <section>

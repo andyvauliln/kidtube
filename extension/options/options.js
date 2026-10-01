@@ -59,7 +59,7 @@ async function unlock() {
   const s = await getSettings();
   $('repo').value = s.repo ?? '';
   $('token').value = s.token ?? '';
-  await renderStatus();
+  await Promise.all([renderStatus(), renderRules()]);
 }
 
 // --- app ----------------------------------------------------------------------------------
@@ -144,3 +144,97 @@ $('changePin').addEventListener('click', async () => {
 });
 
 initGate();
+
+// --- Rules (parent-config.json) -------------------------------------------------------------
+
+const DAY_NAMES = [['mon', 'Mo'], ['tue', 'Tu'], ['wed', 'We'], ['thu', 'Th'], ['fri', 'Fr'], ['sat', 'Sa'], ['sun', 'Su']];
+
+function windowEditor(w = { days: DAY_NAMES.map(([d]) => d), from: '16:00', to: '18:30' }) {
+  const box = el('div', '', 'win');
+  const days = el('div', '', 'days');
+  for (const [d, label] of DAY_NAMES) {
+    const l = document.createElement('label');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.value = d; cb.checked = w.days.includes(d);
+    l.append(cb, label);
+    days.append(l);
+  }
+  const times = el('div', '', 'two');
+  const from = Object.assign(document.createElement('input'), { type: 'time', value: w.from, className: 'from' });
+  const to = Object.assign(document.createElement('input'), { type: 'time', value: w.to, className: 'to' });
+  times.append(from, to);
+  const del = el('button', 'Remove');
+  del.onclick = () => box.remove();
+  box.append(days, times, del);
+  return box;
+}
+
+async function renderRules() {
+  const { config: c, pending } = await send({ type: 'getRules' });
+  $('windows').replaceChildren(...(c.time?.allowed ?? []).map(windowEditor));
+  $('maxMinutes').value = c.time?.maxMinutesPerDay ?? 0;
+  $('queueSize').value = c.queueSize ?? 10;
+  $('minLeave').value = c.minSecondsBeforeLeave ?? 0;
+  $('closeAfter').value = c.closeAfterSeconds ?? 0;
+  $('minLen').value = (c.minVideoDurationSeconds ?? 0) / 60;
+  $('maxLen').value = (c.maxVideoDurationSeconds ?? 0) / 60;
+  $('allowSkip').checked = !!c.allowSkip;
+  $('blockSites').checked = !!c.blockOutboundLinks;
+  $('sites').value = (c.allowedSiteDomains ?? []).join('\n');
+  $('channels').value = (c.blockedChannelIds ?? []).join('\n');
+  $('rulesOut').textContent = pending ? 'Some rules are saved on this tablet only and will go to GitHub on the next sync.' : '';
+}
+
+$('addWindow').addEventListener('click', () => $('windows').append(windowEditor()));
+
+function readRules() {
+  const errors = [];
+  const allowed = [...$('windows').querySelectorAll('.win')].map((w, i) => {
+    const days = [...w.querySelectorAll('.days input:checked')].map((x) => x.value);
+    const from = w.querySelector('.from').value, to = w.querySelector('.to').value;
+    if (!days.length) errors.push(`Hours #${i + 1}: pick at least one day.`);
+    if (!from || !to || from >= to) errors.push(`Hours #${i + 1}: the start must be before the end (no hours past midnight).`);
+    return { days, from, to };
+  });
+  if (!allowed.length) errors.push('Add at least one block of watching hours, or he can never watch.');
+  const int = (id, min, max) => {
+    const n = Number($(id).value);
+    if (!Number.isFinite(n) || n < min || n > max) errors.push(`${$(id).labels[0].textContent}: use a number from ${min} to ${max}.`);
+    return Math.round(n);
+  };
+  const domain = (line) => line.trim().toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/[/?#].*$/, '').replace(/^www\./, '');
+  const sites = [...new Set($('sites').value.split(/[\s,]+/).map(domain).filter(Boolean))];
+  for (const d of sites) if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)) errors.push(`Website “${d}” doesn't look like a site name (example: wikipedia.org).`);
+  const channels = [...new Set($('channels').value.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean))];
+  for (const ch of channels) if (!/^UC[A-Za-z0-9_-]{22}$/.test(ch)) errors.push(`Channel “${ch}” is not a channel id (24 characters starting with UC).`);
+  const patch = {
+    time: { allowed, maxMinutesPerDay: int('maxMinutes', 0, 1440) },
+    queueSize: int('queueSize', 1, 30),
+    minSecondsBeforeLeave: int('minLeave', 0, 3600),
+    closeAfterSeconds: int('closeAfter', 0, 86400),
+    minVideoDurationSeconds: Math.round(Number($('minLen').value) * 60) || 0,
+    maxVideoDurationSeconds: Math.round(Number($('maxLen').value) * 60) || 0,
+    allowSkip: $('allowSkip').checked,
+    blockOutboundLinks: $('blockSites').checked,
+    allowedSiteDomains: sites.length ? sites : ['youtube.com'],
+    blockedChannelIds: channels,
+  };
+  if (patch.maxVideoDurationSeconds && patch.minVideoDurationSeconds > patch.maxVideoDurationSeconds) errors.push('The shortest video is longer than the longest.');
+  return { patch, errors };
+}
+
+$('saveRules').addEventListener('click', async () => {
+  const { patch, errors } = readRules();
+  if (errors.length) { $('rulesOut').className = 'err'; $('rulesOut').textContent = errors.join(' '); return; }
+  $('saveRules').disabled = true;
+  $('rulesOut').className = 'muted';
+  $('rulesOut').textContent = 'Saving…';
+  try {
+    const r = await send({ type: 'saveRules', patch });
+    $('rulesOut').className = r.saved === 'github' ? 'ok' : 'muted';
+    $('rulesOut').textContent = r.saved === 'github' ? 'Saved on the tablet and on GitHub ✓' : `Working on this tablet now. ${r.error ?? ''}`;
+  } finally {
+    $('saveRules').disabled = false;
+    renderStatus();
+  }
+});

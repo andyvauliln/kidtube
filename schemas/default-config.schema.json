@@ -1,8 +1,29 @@
 {
   "$id": "default-config.schema.json",
   "title": "extension/default-config.json: every key present, no nulls",
-  "allOf": [{ "$ref": "parent-config.schema.json" }],
-  "required": ["schemaVersion", "updatedAt", "minExtensionVersion", "timezone", "blockShorts", "blockLive", "blockOutboundLinks", "blockAds",
-    "allowedSiteDomains", "minVideoDurationSeconds", "maxVideoDurationSeconds", "minSecondsBeforeLeave", "closeAfterSeconds", "queueSize",
-    "time", "blockedChannelIds", "quiz"]
+  "allOf": [
+    {
+      "$ref": "parent-config.schema.json"
+    }
+  ],
+  "required": [
+    "schemaVersion",
+    "updatedAt",
+    "minExtensionVersion",
+    "timezone",
+    "blockShorts",
+    "blockLive",
+    "blockOutboundLinks",
+    "blockAds",
+    "allowSkip",
+    "allowedSiteDomains",
+    "minVideoDurationSeconds",
+    "maxVideoDurationSeconds",
+    "minSecondsBeforeLeave",
+    "closeAfterSeconds",
+    "queueSize",
+    "time",
+    "blockedChannelIds",
+    "quiz"
+  ]
 }

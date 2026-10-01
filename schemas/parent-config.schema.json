@@ -46,6 +46,13 @@
         "null"
       ]
     },
+    "allowSkip": {
+      "type": [
+        "boolean",
+        "null"
+      ],
+      "description": "false = no jumping forward in a video and no speed above 1x"
+    },
     "allowedSiteDomains": {
       "type": [
         "array",

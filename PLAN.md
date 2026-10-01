@@ -69,6 +69,7 @@ Each contract has a schema in `kidtube/schemas/*.schema.json`. The validator and
   "blockLive": true,
   "blockOutboundLinks": true,
   "blockAds": true,
+  "allowSkip": false,
   "allowedSiteDomains": ["youtube.com", "m.youtube.com", "accounts.google.com", "consent.youtube.com"],
 
   "minVideoDurationSeconds": 60,
@@ -107,6 +108,8 @@ Rules:
 - Merge: objects deep-merge, arrays and scalars replace, `null` means bundled default. `quiz.items` is an object, so the agent can add one item without resending all of them.
 - `from` < `to`, both in the same day (no windows past midnight in v1). Day names are `mon`..`sun`.
 - `maxMinutesPerDay` counts seconds while the `<video>` is playing and the page is visible. It resets at local midnight in `timezone`.
+- `allowSkip`: `false` means no jumping forward inside a video and no speed above 1x (going back is fine).
+- Rules saved on the tablet's parent page apply at once and are merged into `parent-config.json` on GitHub, so the parent and the agent edit one file.
 - `closeAfterSeconds`: `0` means off. A positive number sends him back to the list after that many seconds of playback.
 - `minExtensionVersion` higher than the installed build: lock screen saying "Ask a parent to press Update".
 - Text marking: NFKC, trim, collapse spaces, lowercase. If both the answer and the accepted value parse as numbers (`,` counts as a decimal point), they are compared as numbers, so `6` = `6.0` = `6,0`.
