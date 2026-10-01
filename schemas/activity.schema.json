@@ -1,0 +1,84 @@
+{
+  "$id": "activity.schema.json",
+  "type": "object",
+  "required": ["schemaVersion", "date", "device", "events"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "$ref": "common.schema.json#/$defs/schemaVersion" },
+    "date": { "type": "string", "format": "date" },
+    "device": {
+      "type": "object",
+      "required": ["deviceId", "extensionVersion", "quizTypes", "lastSyncAt"],
+      "additionalProperties": false,
+      "properties": {
+        "deviceId": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "extensionVersion": { "$ref": "common.schema.json#/$defs/semver" },
+        "quizTypes": { "type": "array", "uniqueItems": true, "items": { "type": "string" } },
+        "configUpdatedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "queueUpdatedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+        "lastSyncAt": { "$ref": "common.schema.json#/$defs/timestamp" }
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["eventId", "type", "at"],
+        "properties": {
+          "eventId": { "type": "string", "minLength": 8, "maxLength": 64 },
+          "type": { "enum": ["watch", "quiz", "parentNote", "blocked", "timeUp"] },
+          "at": { "$ref": "common.schema.json#/$defs/timestamp" }
+        },
+        "allOf": [
+          { "if": { "properties": { "type": { "const": "watch" } } }, "then": {
+            "required": ["videoId", "watchedSeconds", "endReason"],
+            "additionalProperties": false,
+            "properties": {
+              "eventId": true, "type": true, "at": true,
+              "videoId": { "$ref": "common.schema.json#/$defs/videoId" },
+              "watchedSeconds": { "type": "integer", "minimum": 0 },
+              "durationSeconds": { "type": "integer", "minimum": 0 },
+              "endReason": { "enum": ["ended", "leftAfterLock", "closeAfter", "timeUp", "blockedOnLoad"] }
+            } } },
+          { "if": { "properties": { "type": { "const": "quiz" } } }, "then": {
+            "required": ["quizId", "result", "attempts"],
+            "additionalProperties": false,
+            "properties": {
+              "eventId": true, "type": true, "at": true,
+              "videoId": { "$ref": "common.schema.json#/$defs/videoId" },
+              "quizId": { "$ref": "common.schema.json#/$defs/quizId" },
+              "result": { "enum": ["passed", "failed", "skippedByParent", "unsupported"] },
+              "attempts": { "type": "integer", "minimum": 0 },
+              "answers": { "type": "array", "items": { "type": "string", "maxLength": 200 } }
+            } } },
+          { "if": { "properties": { "type": { "const": "parentNote" } } }, "then": {
+            "anyOf": [{ "required": ["liked"] }, { "required": ["comment"] }],
+            "additionalProperties": false,
+            "properties": {
+              "eventId": true, "type": true, "at": true,
+              "videoId": { "$ref": "common.schema.json#/$defs/videoId" },
+              "liked": { "type": "boolean" },
+              "comment": { "type": "string", "maxLength": 2000 }
+            } } },
+          { "if": { "properties": { "type": { "const": "blocked" } } }, "then": {
+            "required": ["target"],
+            "additionalProperties": false,
+            "properties": {
+              "eventId": true, "type": true, "at": true,
+              "videoId": { "$ref": "common.schema.json#/$defs/videoId" },
+              "target": { "enum": ["video", "channel", "shorts", "ad", "external", "search"] },
+              "url": { "type": "string", "maxLength": 2000 }
+            } } },
+          { "if": { "properties": { "type": { "const": "timeUp" } } }, "then": {
+            "required": ["reason"],
+            "additionalProperties": false,
+            "properties": {
+              "eventId": true, "type": true, "at": true,
+              "reason": { "enum": ["dailyCap", "outsideHours"] },
+              "playedMinutes": { "type": "number", "minimum": 0 }
+            } } }
+        ]
+      }
+    }
+  }
+}

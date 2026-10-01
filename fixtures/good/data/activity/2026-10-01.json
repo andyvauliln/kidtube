@@ -1,0 +1,13 @@
+{
+  "schemaVersion": 1,
+  "date": "2026-10-01",
+  "device": { "deviceId": "tab-7f3a", "extensionVersion": "1.0.0", "quizTypes": ["text", "choice", "audio"],
+              "configUpdatedAt": "2026-10-01T12:00:00Z", "queueUpdatedAt": "2026-10-01T12:00:00Z", "lastSyncAt": "2026-10-01T15:05:00Z" },
+  "events": [
+    { "eventId": "evt-00000001", "type": "watch", "at": "2026-10-01T15:00:00Z", "videoId": "AAAAAAAAAA1", "watchedSeconds": 340, "durationSeconds": 360, "endReason": "ended" },
+    { "eventId": "evt-00000002", "type": "quiz", "at": "2026-10-01T15:04:00Z", "videoId": "AAAAAAAAAA1", "quizId": "pick-6", "result": "passed", "attempts": 2, "answers": ["5", "6"] },
+    { "eventId": "evt-00000003", "type": "parentNote", "at": "2026-10-01T19:00:00Z", "videoId": "AAAAAAAAAA1", "liked": true, "comment": "he liked the blocks" },
+    { "eventId": "evt-00000004", "type": "blocked", "at": "2026-10-01T15:02:00Z", "videoId": "AAAAAAAAAA1", "target": "channel", "url": "https://m.youtube.com/@x" },
+    { "eventId": "evt-00000005", "type": "timeUp", "at": "2026-10-01T16:40:00Z", "reason": "dailyCap", "playedMinutes": 40 }
+  ]
+}

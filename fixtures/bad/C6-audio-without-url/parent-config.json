@@ -1,0 +1,2 @@
+{ "schemaVersion": 1, "updatedAt": "2026-10-01T12:00:00Z",
+  "quiz": { "items": { "hear": { "type": "audio", "prompt": "What did you hear?", "answer": { "kind": "text", "accept": ["6"] } } } } }

@@ -1,0 +1,36 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KidTube spike report</title>
+<style>
+  body { font: 15px system-ui, sans-serif; margin: 16px; max-width: 720px; }
+  button { font: inherit; padding: 10px 14px; margin: 4px 4px 4px 0; }
+  pre { background: #f3f3f3; padding: 12px; overflow-x: auto; font-size: 12px; white-space: pre-wrap; word-break: break-all; }
+  li { margin: 6px 0; }
+</style>
+<h1>KidTube M0 spike</h1>
+<p id="ver"></p>
+<div>
+  <button data-cmd="updateCheck">requestUpdateCheck()</button>
+  <button data-cmd="fetchGithub">Fetch GitHub now</button>
+  <button data-cmd="allowlistOn">Site allowlist ON</button>
+  <button data-cmd="allowlistOff">Site allowlist OFF</button>
+  <button data-cmd="incognito">Check incognito access</button>
+  <button data-cmd="copy">Copy report</button>
+  <button data-cmd="clear">Clear report</button>
+</div>
+<h2>Manual steps</h2>
+<ol>
+  <li>Open <b>youtube.com</b> (it will become m.youtube.com). A green "KidTube spike" badge must appear bottom-right.</li>
+  <li>Open a video, tap another video in the list: <code>mainWorldPushState</code> should count up.</li>
+  <li>Tap a channel name: you should land back on the home page (<code>guardRedirects</code>).</li>
+  <li>Enter fullscreen on a video, then leave it: see <code>fullscreen</code>.</li>
+  <li>Turn the site allowlist ON and type <b>wikipedia.org</b> in the address bar: it must be blocked. Turn it OFF afterwards.</li>
+  <li>Open <b>https://doubleclick.net</b>: it must be blocked.</li>
+  <li>Leave the tablet 5 minutes with Quetta in the background: <code>alarmFires</code> should count up.</li>
+  <li>Press requestUpdateCheck() after 0.0.2 is published: note the status, then check <code>installed</code> shows 0.0.2.</li>
+  <li>Open an incognito tab on youtube.com: does the badge appear? Try removing the extension from Quetta's menu: how hard is it?</li>
+</ol>
+<h2>Report</h2>
+<pre id="out">loading…</pre>
+<script src="options.js"></script>

@@ -1,0 +1,22 @@
+{
+  "$id": "memory.schema.json",
+  "title": "memory.json: agent-owned, loose on purpose",
+  "type": "object",
+  "required": ["schemaVersion", "updatedAt", "processedThrough", "likes", "dislikes", "channels", "journal"],
+  "additionalProperties": true,
+  "properties": {
+    "schemaVersion": { "$ref": "common.schema.json#/$defs/schemaVersion" },
+    "updatedAt": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "processedThrough": { "$ref": "common.schema.json#/$defs/timestamp" },
+    "likes": { "type": "array", "items": { "type": "object", "required": ["topic"] } },
+    "dislikes": { "type": "array", "items": { "type": "object", "required": ["topic"] } },
+    "channels": {
+      "type": "object",
+      "propertyNames": { "$ref": "common.schema.json#/$defs/channelId" },
+      "additionalProperties": { "type": "object", "required": ["verdict"], "properties": { "verdict": { "enum": ["good", "ok", "bad"] } } }
+    },
+    "skills": { "type": "object" },
+    "shown": { "type": "array", "items": { "$ref": "common.schema.json#/$defs/videoId" } },
+    "journal": { "type": "array", "items": { "type": "object", "required": ["at", "summary"] } }
+  }
+}

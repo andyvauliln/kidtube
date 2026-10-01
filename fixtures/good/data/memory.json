@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-10-01T20:00:00Z",
+  "processedThrough": "2026-10-01T19:00:00Z",
+  "likes": [{ "topic": "building blocks", "evidence": ["AAAAAAAAAA1"], "since": "2026-10-01" }],
+  "dislikes": [{ "topic": "loud pranks", "source": "parent", "note": "not cool", "since": "2026-09-20" }],
+  "channels": { "UCaaaaaaaaaaaaaaaaaaaaaa": { "verdict": "good", "note": "calm pacing" } },
+  "skills": { "addition-to-10": { "passed": 7, "failed": 1, "level": "ready-for-20" } },
+  "shown": ["AAAAAAAAAA1"],
+  "journal": [{ "at": "2026-10-01T20:00:00Z", "summary": "Seed memory" }]
+}

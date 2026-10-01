@@ -1,0 +1,2 @@
+{ "schemaVersion": 1, "updatedAt": "2026-10-01T12:00:00Z",
+  "quiz": { "items": { "q": { "type": "text", "prompt": "3 + 3?", "answer": { "kind": "choice", "options": ["5", "6"], "correct": "6" } } } } }

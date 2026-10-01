@@ -1,0 +1,18 @@
+{
+  "manifest_version": 3,
+  "name": "KidTube Spike",
+  "version": "0.0.1",
+  "description": "M0 go/no-go probe for Quetta. Not the product.",
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqh30aXo0JkYMK6WTbyW2Z9oCc49ZWzkLa7sJO07F17J/QGPSAGAbDVCCzt5ereGy8N2uBAv4qCRWiSyRVwAcTOOj9sKiZMMuNKM/l9KatMJA+nBuM3S9fX2s8RMvHIBFbON/HBbS/nf8o04MvMH8+O9Cj+SwopIMEn0DerJeU7ta9vGl/7QfXnFnzFQn58X9AMqbg6yWWaLkmqkYx8bWmvD4PoQb6hgIpf121bzA3AGoMCl48cJIxhf6n8WOdnkdexFZ80EyiLsXs2p00DFGR73jmtCBuZhNPyGTXM/QRui6YZyVVm/yAFuaJKqutPSR/sRickpkBZ8jHXRDXmOaiQIDAQAB",
+  "update_url": "https://andyvauliln.github.io/kidtube/updates.xml",
+  "permissions": ["storage", "alarms", "tabs", "declarativeNetRequest"],
+  "host_permissions": ["*://*.youtube.com/*", "https://api.github.com/*", "https://*.github.io/*"],
+  "background": { "service_worker": "sw.js", "type": "module" },
+  "content_scripts": [
+    { "matches": ["*://www.youtube.com/*", "*://m.youtube.com/*"], "js": ["isolated.js"], "run_at": "document_start" },
+    { "matches": ["*://www.youtube.com/*", "*://m.youtube.com/*"], "js": ["main.js"], "run_at": "document_start", "world": "MAIN" }
+  ],
+  "declarative_net_request": { "rule_resources": [{ "id": "ads", "enabled": true, "path": "rules.json" }] },
+  "web_accessible_resources": [{ "resources": ["frame.html"], "matches": ["*://www.youtube.com/*", "*://m.youtube.com/*"] }],
+  "options_page": "options.html"
+}

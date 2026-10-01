@@ -1,0 +1,3 @@
+{ "schemaVersion": 1, "updatedAt": "2026-10-01T12:00:00Z", "videos": [
+  { "videoId": "AAAAAAAAAA1", "title": "a", "channelId": "UCaaaaaaaaaaaaaaaaaaaaaa", "durationSeconds": 360, "addedAt": "2026-10-01T12:00:00Z" },
+  { "videoId": "AAAAAAAAAA1", "title": "b", "channelId": "UCaaaaaaaaaaaaaaaaaaaaaa", "durationSeconds": 360, "addedAt": "2026-10-01T12:00:00Z" }] }

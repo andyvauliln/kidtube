@@ -1,0 +1,2 @@
+{ "schemaVersion": 1, "updatedAt": "2026-10-01T12:00:00Z",
+  "quiz": { "items": [{ "id": "add-3-3", "type": "text", "prompt": "How much is 3 + 3?", "accept": ["6"] }] } }

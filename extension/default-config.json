@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-10-01T00:00:00Z",
+  "minExtensionVersion": "0.0.0",
+  "timezone": "UTC",
+  "blockShorts": true,
+  "blockLive": true,
+  "blockOutboundLinks": true,
+  "blockAds": false,
+  "allowedSiteDomains": ["youtube.com", "m.youtube.com", "accounts.google.com", "consent.youtube.com"],
+  "minVideoDurationSeconds": 60,
+  "maxVideoDurationSeconds": 1200,
+  "minSecondsBeforeLeave": 120,
+  "closeAfterSeconds": 0,
+  "queueSize": 10,
+  "time": {
+    "allowed": [{ "days": ["mon", "tue", "wed", "thu", "fri", "sat", "sun"], "from": "16:00", "to": "18:30" }],
+    "maxMinutesPerDay": 40
+  },
+  "blockedChannelIds": [],
+  "quiz": {
+    "enabled": false,
+    "when": "afterEachVideo",
+    "maxAttempts": 3,
+    "itemsPerVideo": 1,
+    "defaultIds": [],
+    "items": {}
+  }
+}

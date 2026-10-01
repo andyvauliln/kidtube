@@ -1,0 +1,5 @@
+node_modules/
+*.pem
+*.crx
+!docs/*.crx
+dist/

@@ -1,0 +1,22 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-10-01T12:00:00Z",
+  "minExtensionVersion": "0.0.0",
+  "timezone": "Europe/Moscow",
+  "time": {
+    "allowed": [
+      { "days": ["mon", "tue", "wed", "thu", "fri"], "from": "16:00", "to": "18:30" },
+      { "days": ["sat", "sun"], "from": "10:00", "to": "18:30" }
+    ]
+  },
+  "queueSize": 3,
+  "quiz": {
+    "enabled": true,
+    "defaultIds": ["add-3-3"],
+    "items": {
+      "add-3-3": { "type": "text", "prompt": "How much is 3 + 3?", "answer": { "kind": "text", "accept": ["6", "six"] } },
+      "pick-6": { "type": "choice", "prompt": "Which is 3 + 3?", "answer": { "kind": "choice", "options": ["5", "6", "7"], "correct": "6" } },
+      "hear-number": { "type": "audio", "prompt": "What number did you hear?", "audioUrl": "https://example.github.io/kidtube/audio/six.mp3", "answer": { "kind": "text", "accept": ["6"] } }
+    }
+  }
+}
