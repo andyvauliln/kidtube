@@ -2,6 +2,7 @@
 // The KidTube helper: runs once a day (see agent/README.md).
 //   node agent/run.mjs                    one full run: read, plan, write, commit, update Notion
 //   node agent/run.mjs --dry              the same, but writes nothing (prints the plan)
+//   node agent/run.mjs --no-search        no new ideas today: transcripts, words and questions for the list
 //   node agent/run.mjs setup-notion <url> creates the Notion pages under a page shared with the connection
 //   node agent/run.mjs schedule           puts the daily run into this server's crontab (config.schedule)
 // KIDTUBE_DATA_DIR / KIDTUBE_STATE_DIR override the folders (the cloud runner uses them).
@@ -19,6 +20,7 @@ import { buildQuiz, templateCatalog } from './lib/quiz.mjs';
 import { understandPrompt, choosePrompt, contentPrompt, notesPrompt } from './lib/prompts.mjs';
 import { setupWorkspace, readVideoRows, readTemplates, videoProps, videoMarkdown } from './lib/workspace.mjs';
 import { search } from '../tools/video-info.mjs';
+import { createGemini } from './lib/gemini.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const home = (p) => p.replace(/^~(?=\/)/, homedir());
@@ -28,6 +30,7 @@ const hash = (s) => createHash('sha1').update(String(s)).digest('hex').slice(0, 
 
 const args = process.argv.slice(2);
 const DRY = args.includes('--dry');
+const NO_SEARCH = args.includes('--no-search'); // re-plan and re-write only, no new ideas
 const cmd = args.find((a) => !a.startsWith('--')) ?? 'run';
 
 const config = JSON.parse(readFileSync(join(ROOT, 'agent/config.json'), 'utf8'));
@@ -105,6 +108,7 @@ async function run() {
   const tz = /\//.test(pc.timezone ?? '') ? pc.timezone : config.timezone;
   const today = localDate(tz);
   const journal = [];
+  const transcriptsInDry = new Map();
   const problems = [];
   const touched = new Set();      // Notion rows to write
   const rewritten = new Set();    // Notion page bodies to write
@@ -197,7 +201,7 @@ async function run() {
 
   // 4. Search YouTube and let the model pick new ideas.
   const newIds = [];
-  if (newIdeas > 0 && want.searches.length) {
+  if (newIdeas > 0 && want.searches.length && !NO_SEARCH) {
     const results = [];
     for (const s of want.searches.slice(0, 8)) {
       try {
@@ -235,14 +239,35 @@ async function run() {
   todayIds.forEach((id) => touched.add(id));
   journal.push(`today: ${todayIds.length} videos`);
 
-  // 6. The friend's words and the quiz, from the transcript when the tablet has fetched it.
+  // 6a. Transcripts: Gemini watches the videos (today's first, then new ideas, then planned ones),
+  // within the daily limits in config.transcripts. The tablet still uploads them too when it is on.
+  if (env.GEMINI_API_KEY && config.transcripts?.provider === 'gemini') {
+    const gemini = createGemini({ apiKey: env.GEMINI_API_KEY, stateDir, config: config.transcripts, today, log });
+    let got = 0;
+    for (const id of [...new Set([...todayIds, ...newIds, ...upcoming(videos, todayIds, { today }).map((u) => u.videoId)])]) {
+      const old = transcript(dataDir, id);
+      if (old?.available) continue;
+      const v = videos[id];
+      if (!gemini.fits(v.durationSeconds)) { if (gemini.quotaGone) break; continue; }
+      try {
+        const file = await gemini.transcribe({ videoId: id, ...v });
+        if (!DRY) writeJson(join(dataDir, 'transcripts', `${id}.json`), file);
+        else transcriptsInDry.set(id, file);
+        got++;
+      } catch (e) { problems.push(`transcript ${id}: ${e.message}`); }
+    }
+    const left = gemini.left();
+    journal.push(`${got} transcripts from Gemini (left today: ${left.videos} videos, ${Math.round(left.seconds / 60)} min)`);
+  }
+
+  // 6b. The friend's words and the quiz, from the transcript.
   const quizOn = !!pc.quiz?.enabled;
   const friend = { name: pc.presenter?.name || 'Zippy' };
   const usable = templates.filter((t) => quizTypes.includes(TEMPLATE_TYPE(t)));
   let written = 0;
   for (const id of [...new Set([...todayIds, ...newIds])]) {
     const v = videos[id];
-    const tr = transcript(dataDir, id);
+    const tr = transcriptsInDry.get(id) ?? transcript(dataDir, id);
     const source = tr?.available ? 'transcript' : 'title';
     if (v.content && (v.content.source === 'transcript' || source === 'title')) continue;
     if (written >= D.contentPerRun) break;

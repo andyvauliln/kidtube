@@ -1,6 +1,6 @@
 {
   "$id": "transcript.schema.json",
-  "title": "transcripts/<videoId>.json (the tablet writes; the agent reads)",
+  "title": "transcripts/<videoId>.json (the tablet or the helper writes; the helper reads)",
   "type": "object",
   "required": [
     "schemaVersion",
@@ -48,13 +48,26 @@
       "enum": [
         "manual",
         "auto",
+        "ai",
         null
-      ]
+      ],
+      "description": "manual/auto = YouTube captions (tablet); ai = Gemini watched the video (helper)"
     },
     "text": {
       "type": "string",
       "maxLength": 60000,
       "description": "\"[m:ss] words\" lines, about 20 s each"
+    },
+    "source": {
+      "enum": [
+        "tablet",
+        "gemini"
+      ]
+    },
+    "onScreen": {
+      "type": "string",
+      "maxLength": 20000,
+      "description": "\"[m:ss] what is shown\" lines (Gemini only)"
     }
   }
 }

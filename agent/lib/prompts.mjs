@@ -108,6 +108,7 @@ Why it was chosen: ${video.why ?? ''}
 
 # Transcript
 ${transcript?.available ? transcript.text.slice(0, 24000) : '(not available yet — write from the title only, keep it general and do not invent details; questions only about what the title makes certain)'}
+${transcript?.onScreen ? `\n# What is shown on screen\n${transcript.onScreen.slice(0, 6000)}\n(You may ask about clearly shown things too, e.g. colours, how many, which animal.)` : ''}
 
 # The talking friend
 Name: ${friend.name}. Speaks as ${friend.name}, warm and excited, short sentences.
