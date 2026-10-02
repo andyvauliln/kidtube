@@ -35,7 +35,7 @@ You do all the thinking and writing yourself. Gemini only watches videos.
    - Numbers come from the "Numbers" section: videos per day, new ideas per day, minimum Russian videos, must-watch order. Otherwise use `defaults`.
    - Look at what is already planned: `node agent/kt.mjs videos`.
 
-4. **Find new ideas.** Run 4–8 searches with `node agent/kt.mjs search "<words>" 10 <en|ru>`, in the video's language (for example "numberblocks adding to 10", "мультик про дружбу для малышей").
+4. **Find new ideas, every day** — also when Gemini can't watch more videos today (ideas wait for their transcript; that's fine). If the wishes ask for Russian videos and the list has too few, search in Russian. Run 4–8 searches with `node agent/kt.mjs search "<words>" 10 <en|ru>`, in the video's language (for example "numberblocks adding to 10", "мультик про дружбу для малышей").
    - Pick up to "new ideas per day" of the best results: known children's education channels, clear teaching, calm pace, and variety.
    - Add them with `node agent/kt.mjs add '[{"videoId":"…","why":"one sentence for the parent","topics":["numbers"],"lang":"en","required":null}]'`.
    - Set `required` to `today` or `yes` only when the parent asked for that topic to be a must-watch.
@@ -54,7 +54,7 @@ You do all the thinking and writing yourself. Gemini only watches videos.
    - Read a transcript with `node agent/kt.mjs transcript <id>`.
    - Use `node agent/kt.mjs ask <id> "<question>"` only when the transcript leaves something unclear. It counts against the same daily limit.
 
-7. **Words and questions.** For every video on today's list or among the new ideas whose words are missing, or were written from the title only while a transcript now exists, read the transcript and run `node agent/kt.mjs words <id> '<json>'` with:
+7. **Words and questions.** For every video on today's list, among the new ideas, or planned (`node agent/kt.mjs videos`) whose words are missing, or were written from the title only while a transcript now exists (at most 15 a day, today's list first), read the transcript and run `node agent/kt.mjs words <id> '<json>'` with:
    - `summary`: 3–5 sentences for the parent;
    - `learned`: 2–4 new things he learns;
    - `intro`: 2–4 short sentences, at most 400 characters. It makes him curious without giving the answer and says what to look out for.
@@ -72,7 +72,7 @@ You do all the thinking and writing yourself. Gemini only watches videos.
    - `diary`: 2–4 sentences for the parent on what changed today and why;
    - `requiredFirst`: only if the wishes changed the must-watch order (`first`, `mix` or `off`).
 
-9. **Save.** `node agent/kt.mjs save`. It makes the recordings of today's lines (if switched on), checks every file, and pushes to GitHub. It prints `notion.rows`; for each row:
+9. **Save.** `node agent/kt.mjs save`. Report its `voices` numbers as they are (`made`, `kept`, `errors`); lines without a recording are spoken by the tablet and are recorded on a later run. It makes the recordings of today's lines (if switched on), checks every file, and pushes to GitHub. It prints `notion.rows`; for each row:
    - New row (`notionPageId` null): create a page in the Videos data source with `properties`, and with the content of `pageFile` when there is one. Collect `{videoId, notionPageId}` pairs.
    - Existing row: update its properties. If `pageFile` is set, replace the page content with that file's text.
    - Then run `node agent/kt.mjs notion-done '<json of the new pairs>'`.

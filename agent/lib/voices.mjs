@@ -17,6 +17,8 @@ const words = (s) => String(s).toLowerCase().normalize('NFKC').replace(/[^\p{L}\
 export function createVoices({ env, cfg, log = console.log, fetchImpl = fetch }) {
   const provider = cfg?.provider ?? 'device';
   const style = cfg.style ?? 'Say this in a cheerful, squeaky, excited cartoon-creature voice for a small child';
+  const tries = {};
+  let quotaGone = false;
 
   // Raw audio (wav or 16-bit PCM at `rate`) → a small mp3, pitched up a little for the friend.
   function toMp3(buf, { pcmRate = null } = {}) {
@@ -37,6 +39,13 @@ export function createVoices({ env, cfg, log = console.log, fetchImpl = fetch })
       }).catch((e) => ({ ok: false, status: 0, json: async () => ({ error: { message: e.message } }) }));
       const j = await r.json().catch(() => ({}));
       const part = j.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData;
+      if (r.status === 429) {
+        // The free tier allows only a few lines a minute: wait as long as Gemini asks, then try again.
+        const msg = j.error?.message ?? '';
+        if (/per day|daily/i.test(msg)) { quotaGone = true; throw new Error(`Gemini voice: daily quota used up`); }
+        const wait = Number(JSON.stringify(j.error?.details ?? '').match(/"retryDelay":"(\d+)/)?.[1] ?? msg.match(/retry in ([\d.]+)s/i)?.[1] ?? 30);
+        if ((tries[text] = (tries[text] ?? 0) + 1) <= 4) { await new Promise((res) => setTimeout(res, Math.min(wait + 1, 70) * 1000)); return gemini(text); }
+      }
       if (!r.ok || !part) { errors.push(`${model}: ${j.error?.message ?? `HTTP ${r.status}`}`.slice(0, 160)); continue; }
       const buf = Buffer.from(part.data, 'base64');
       const rate = /L16|pcm/i.test(part.mimeType) ? Number(part.mimeType.match(/rate=(\d+)/)?.[1] ?? 24000) : null;
@@ -72,7 +81,9 @@ export function createVoices({ env, cfg, log = console.log, fetchImpl = fetch })
   return {
     provider,
     enabled: provider !== 'device',
+    get quotaGone() { return quotaGone; },
     async speak(text) {
+      if (quotaGone) throw new Error('daily voice quota used up');
       if (provider === 'gemini') return gemini(text);
       if (provider === 'openrouter') return openrouter(text);
       throw new Error('voices.speak.provider is "device": nothing to make');

@@ -1,6 +1,6 @@
 # KidTube: how it works
 
-*As of 2026-10-02.*
+*As of 2026-10-02 (version 0.6.0).*
 
 ## Overview
 
@@ -10,9 +10,9 @@ KidTube has five parts. They never talk to each other directly. Everything goes 
 | --- | --- | --- | --- | --- |
 | Tablet extension (KidTube 0.5.0) | Quetta browser on the tablet | Shows only the planned videos, the talking friend and the questions. Enforces hours, minutes and locks. | `queue.json`, `parent-config.json`, `characters/` | `activity/<day>.json`, `transcripts/` (when it can), rule changes |
 | Data repo `kidtube-data` | GitHub (private) | The one place everything is stored. Every push is checked. | — | — |
-| Daily helper | This server, 03:30 UTC (crontab) | Plans the list, finds videos, gets transcripts, writes the friend's words and the questions | data repo, Notion, YouTube search | data repo, Notion |
+| Daily helper | This server, 03:30 UTC (crontab → `agent/daily.sh`) | Claude Code (Sonnet) runs the day by `agent/DAILY.md`: plans the list, finds videos, writes the friend's words and the questions, keeps Notion up to date | data repo, Notion, YouTube search | data repo, Notion |
 | Notion "Kids Content Manager" | Notion | Where you approve videos, write wishes and comments, and read the plan | — | — |
-| AI services | Google Gemini, OpenRouter (free models) | Gemini watches videos; the text models plan and write | what the helper sends | answers only |
+| AI services | Claude, Google Gemini, OpenRouter | Claude thinks and writes; Gemini watches videos and records the friend's voice; OpenRouter is the voice alternative and the old program's text models | what the helper sends | answers only |
 
 The tablet syncs with GitHub every 15 minutes, and also when you press **Update**. The helper runs once a day. Claude (in a chat in this repo) can change the code, run the helper by hand, and edit Notion.
 
@@ -84,15 +84,26 @@ You can steer from three places. All of them end up in the data repo or Notion, 
 
 **In a chat with Claude** in this repo: say what you want, for example "one Russian fairy tale a day", "harder questions" or "run it now". Claude edits the wishes, the code or the prompts, or runs the helper by hand.
 
+## Who does what in the daily run
+
+| Job | Done by | Notes |
+| --- | --- | --- |
+| Run the day, decide, write every text, Notion | **Claude Code (Sonnet)** following `agent/DAILY.md` | uses some of your Claude plan's usage each day |
+| Data, YouTube search, checks, saving | `agent/kt.mjs` (commands Claude calls) | plain code, same result every time |
+| Watch videos: transcripts, questions about a video | **Gemini** (free tier) | limits in `agent/config.json` → `transcripts` |
+| Record the friend's voice | **Gemini** speech (free) by default; OpenRouter (paid) or off | `voices.speak.provider`: `device`, `gemini` or `openrouter` |
+| Hear his answers | the tablet's own recognition, or OpenRouter (paid, key on the tablet) | parent page → Talking friend → Hearing his answers |
+| Backup if Claude can't run | `agent/run.mjs`, the old fixed program with OpenRouter text models | `orchestrator.fallbackToNode`; `openrouter.mode`: `free-first`, `paid` or `specific` |
+
 ## The daily helper run
 
-One run takes about 10–20 minutes. It uses about 15 text-model calls and up to 10 Gemini videos. It starts at 03:30 UTC from the server's crontab (`node agent/run.mjs`).
+One run takes about 10–20 minutes. It uses about 15 text-model calls and up to 10 Gemini videos. It starts at 03:30 UTC from the server's crontab (`agent/daily.sh`). Claude Code runs the steps below with the commands in `agent/kt.mjs`. If Claude can't run and nothing was saved that day, the old program `agent/run.mjs` does the same steps with OpenRouter models instead.
 
 ```mermaid
 flowchart TD
   A["03:30 UTC: lock, pull kidtube-data"] --> B["Read tablet activity since the last run"]
   B --> C["Read Notion: wishes, approvals, comments"]
-  C -. "no Notion key" .-> C2["Plan from tablet messages + defaults"]
+  C -. "Notion not reachable" .-> C2["Plan from tablet messages + defaults"]
   C --> D["Plan searches, search YouTube, pick ideas"]
   D -. "all models fail" .-> D2["Step skipped, noted in the diary"]
   D --> E["Today's list: approved and must-watch first"]
@@ -110,11 +121,11 @@ flowchart TD
     - A video watched to the end, or longer than the minimum, becomes *Watched*.
     - Thumbs, comments and quiz answers are remembered for the notes.
     - Messages to the helper are collected.
-3. **Read Notion** (only if the helper has its own Notion key).
+3. **Read Notion** through Claude's Notion connection (the backup program needs its own Notion key for this).
     - It reads the four pages (wishes, about him, noticed, plan), the Videos table, comments and quiz templates.
     - Your *Approved*, *No*, *Must watch*, *Day* and *Parent comment* win over the helper's own choices.
     - Tablet messages are added to *Wishes and settings*.
-    - Without a Notion key it plans from the tablet messages and its defaults only.
+    - If Notion can't be reached, it plans from the tablet messages and its defaults only.
 4. **Understand** (text model): what you want now, the numbers for today, and 4–8 YouTube searches. If every model fails, it uses the defaults and searches nothing.
 5. **Search YouTube** from the server. It keeps only new videos of the right length from channels that aren't blocked.
 6. **Choose** (text model): up to *New ideas per day* become **Ideas**, each with a reason, topics and a language.
@@ -141,7 +152,7 @@ flowchart TD
 12. **Check and save.** `validate.mjs` checks every file.
     - If a file fails, nothing is saved and the run stops, with the reason in the log.
     - If all pass, it commits and pushes. If the tablet pushed meanwhile, the helper puts its commit on top and pushes again.
-13. **Update Notion** (only with its key): table rows, video pages, noticed, plan and diary.
+13. **Update Notion**: table rows, video pages, noticed, plan and diary.
 
 The tablet picks up the new list on its next sync (15 min) or when you press **Update**.
 
@@ -190,9 +201,9 @@ The temperature is 0.2, so it sticks to what is there.
 
 Google's free tier allows about 8 hours of YouTube video a day. On the free tier, Google may use requests to improve its products.
 
-## Words and questions (text models)
+## Words and questions
 
-Four kinds of request go to free models on OpenRouter. Each answer is checked, and sent back for a fix when it breaks a rule. The prompts are in `agent/lib/prompts.mjs` and `agent/PROMPT.md`.
+Claude writes them during the daily session, following `agent/DAILY.md`. `kt.mjs words` checks every answer (lengths, language, answers a 4-year-old can say) and refuses it until it's right. The backup program sends four kinds of request to OpenRouter models instead; its prompts are in `agent/lib/prompts.mjs` and `agent/PROMPT.md`:
 
 | Request | It gets | It returns | Checks before use |
 | --- | --- | --- | --- |
@@ -229,6 +240,19 @@ English and Russian number words both count ("seven", "семь", "7"). Without 
 
 A busy model rests for 30 minutes. A paid model can be added as a last resort (`llm.paidModel`).
 
+## Voices
+
+**The friend's voice.** `voices.speak.provider` in `agent/config.json`:
+- `device`: the tablet speaks every line with its own voice.
+- `gemini` (now): during `save`, Gemini records today's intros, outros, questions, "the answer is…" lines, the catchphrase and the praise lines in English and Russian. They are saved as `audio/<id>.mp3` in the data repo. The tablet downloads them on sync and plays them; any line without a recording is spoken by the tablet. Recordings no one uses any more are deleted.
+- `openrouter`: the same, made with `openai/gpt-audio-mini` (paid, about $0.0003 a line). A recording is kept only if the model said exactly the text.
+
+On the parent page, *Use the helper's recorded voice* turns playback off.
+
+**Hearing his answers.** Parent page → *Hearing his answers*:
+- *The tablet's own speech recognition* (default, free).
+- *OpenRouter audio model*: the tablet records his answer (it stops after a short silence) and sends it to the models listed, in order. The default is `openai/gpt-audio-mini`, about $0.00004 an answer. The key is typed on the parent page and stays on the tablet only; use a separate key with a small monthly limit. If it fails, the tablet's own recognition is used. The free audio model on OpenRouter heard nothing in a test, so the default is paid.
+
 ## Where everything lives, and failures
 
 The code is public (`andyvauliln/kidtube`). Everything about him is private (`andyvauliln/kidtube-data`, Notion). The keys live in one file on the server.
@@ -243,7 +267,9 @@ The code is public (`andyvauliln/kidtube`). Everything about him is private (`an
 | Pikachu drawing | `kidtube-data/characters/pikachu.svg` |
 | Keys (OpenRouter, Gemini, later Notion) | `~/.config/kidtube/agent.env` on the server, readable only by your user |
 | Helper log, model stats, Gemini usage | `~/.local/share/kidtube/state/` on the server |
-| Helper settings (schedule, limits, models) | `agent/config.json` |
+| Helper settings (runner, model, schedule, limits, voices, OpenRouter mode) | `agent/config.json` |
+| The daily session's instructions | `agent/DAILY.md` |
+| Recordings of the friend's voice | `kidtube-data/audio/*.mp3`; on the tablet in its cache |
 
 | If this fails | What happens |
 | --- | --- |
@@ -254,7 +280,8 @@ The code is public (`andyvauliln/kidtube`). Everything about him is private (`an
 | The new files fail the checks | Nothing is saved; the tablet keeps yesterday's list |
 | The server is off at 03:30 | No run that day; the next run catches up on all activity |
 | The tablet is offline | It keeps the last good list; its events wait and are sent later |
-| The Notion key is missing | The daily run doesn't read or update Notion |
+| Claude can't run (logged out, out of usage) | The backup program runs; Notion is skipped unless it has its own Notion key |
+| The Notion login expired | Claude skips Notion, says so in the log; sign in again in Claude Code (`/mcp`) |
 
 ## Not built yet
 
