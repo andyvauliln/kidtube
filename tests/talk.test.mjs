@@ -162,3 +162,19 @@ test('a message to the helper goes out as a wish event', async () => {
   assert.ok(fake.store.outbox.some((e) => e.type === 'wish' && e.text === 'At least 3 videos in Russian'));
   assert.equal((await send({ type: 'wish', text: '   ' })).ok, false);
 });
+
+test('recorded lines and cloud listening reach the talk page', async () => {
+  const q = structuredClone(queue);
+  q.videos[0].intro = { text: 'Hello!', audioRef: 'repo:audio/abc123.mp3' };
+  setConfig({ presenter: { intro: true, catchphrase: 'Pika!', catchphraseAudioRef: 'repo:audio/cp.mp3',
+    phrases: { en: { praise: [{ text: 'Yes!', audioRef: 'repo:audio/yes.mp3' }] } },
+    voice: { listen: { provider: 'openrouter', models: ['openai/gpt-audio-mini'] } } } });
+  fake.store.data.queue = q;
+  const t = await send({ type: 'talk', videoId: A, mode: 'intro' });
+  assert.deepEqual(t.lines.map((l) => l.audioRef), ['repo:audio/cp.mp3', 'repo:audio/abc123.mp3']);
+  assert.equal(t.phrases.en.praise[0].audioRef, 'repo:audio/yes.mp3');
+  assert.equal(t.listen.provider, 'openrouter');
+  assert.equal(t.recorded, true);
+  const { audioRefs } = await import('../extension/sw.js');
+  assert.deepEqual([...audioRefs(q, fake.store.data.config)].sort(), ['audio/abc123.mp3', 'audio/cp.mp3', 'audio/yes.mp3']);
+});

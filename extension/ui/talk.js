@@ -1,6 +1,6 @@
 // The talking friend: says the intro before a video, and after it says what we learned and asks the questions.
 // The service worker decides what comes next; this page only talks, listens and reports.
-import { say, listen } from './voice.js';
+import { say, listen, recordedUrl, recordAnswer, transcribeAnswer } from './voice.js';
 import { createRig } from './rig.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { checkPin } from '../lib/pin.js';
@@ -31,7 +31,19 @@ async function speak(line, lang = script.lang) {
   if (skipAll) return;
   $('bubble').textContent = line.text;
   talking(true);
-  try { await say(line, { ...script.voice, lang: lang || script.voice?.lang }, { onWord: () => rig?.word() }); } finally { talking(false); }
+  // A recording made by the helper plays instead of the tablet's own voice (when the parent allows it).
+  const recorded = script.recorded !== false && line.audioRef ? await recordedUrl(line.audioRef) : null;
+  try { await say(recorded ? { ...line, audioUrl: recorded } : line, { ...script.voice, lang: lang || script.voice?.lang }, { onWord: () => rig?.word() }); }
+  finally { talking(false); if (recorded) URL.revokeObjectURL(recorded); }
+}
+
+// A line around the questions: the helper's recording of it when there is one, else the built-in text.
+function phrase(lang, key, ...args) {
+  const l = String(lang ?? '').slice(0, 2);
+  const rec = script.phrases?.[l]?.[key];
+  if (rec?.length) return pick(rec);
+  const p = say_(lang)[key];
+  return { text: typeof p === 'function' ? p(...args) : Array.isArray(p) ? pick(p) : p };
 }
 
 // What the friend says around the questions, in English and Russian (a Russian video gets Russian).
@@ -141,7 +153,14 @@ function voiceAnswer(item, resolve) {
     mic.classList.add('on');
     mic.disabled = true;
     $('heard').textContent = say_(item.lang).listening;
-    const heard = await listen(item.lang || script.voice?.lang || 'en-US');
+    const lang = item.lang || script.voice?.lang || 'en-US';
+    let heard = null;
+    // Cloud listening (parent's choice, key stored on this tablet); the device's own recognition is the fallback.
+    if (script.listen?.provider === 'openrouter' && listenKey) {
+      heard = await transcribeAnswer(await recordAnswer({ seconds: script.listen.seconds ?? 6, onLevel: (l) => mic.style.setProperty('--level', l) }),
+        { key: listenKey, models: script.listen.models, lang, question: item.prompt });
+    }
+    if (heard === null) heard = await listen(lang);
     mic.classList.remove('on');
     mic.disabled = false;
     if (heard === null) {                 // no microphone here: type instead, from now on
@@ -162,12 +181,12 @@ const pick = (a) => a[Math.floor(Math.random() * a.length)];
 async function ask(item) {
   const result = { quizId: item.quizId, attempts: 0, answers: [] };
   if (!item.supported) {
-    await speak({ text: say_(item.lang).newerApp }, item.lang);
+    await speak(phrase(item.lang, 'newerApp'), item.lang);
     return { ...result, result: 'unsupported' };
   }
   if (skipAll) return { ...result, result: 'skippedByParent' };
   const skipped = new Promise((r) => { skipNow = r; });
-  await speak({ text: item.prompt, audioUrl: item.audioUrl }, item.lang);
+  await speak({ text: item.prompt, audioUrl: item.audioUrl, audioRef: item.audioRef }, item.lang);
   $('bubble').textContent = item.prompt;
   while (result.attempts < script.maxAttempts) {
     const a = skipAll ? 'skip' : await Promise.race([getAnswer(item), skipped]);
@@ -178,16 +197,16 @@ async function ask(item) {
     clearAnswers();
     if (isCorrect(item, a.value, { spoken: a.by === 'spoken' })) {
       rig?.react('happy');
-      await speak({ text: pick(say_(item.lang).praise) }, item.lang);
+      await speak(phrase(item.lang, 'praise'), item.lang);
       return { ...result, result: 'passed' };
     }
     rig?.react('sad');
     if (result.attempts < script.maxAttempts) {
-      await speak({ text: pick(say_(item.lang).retry) }, item.lang);
+      await speak(phrase(item.lang, 'retry'), item.lang);
       $('bubble').textContent = item.prompt;
     }
   }
-  await speak({ text: say_(item.lang).answerIs(correctText(item)) }, item.lang);
+  await speak({ text: say_(item.lang).answerIs(correctText(item)), audioRef: item.answerAudioRef }, item.lang);
   return { ...result, result: 'failed' };
 }
 
@@ -205,15 +224,14 @@ async function run() {
   rig?.wave();
   for (const line of script.lines) await speak(line);
   if (mode === 'outro' && script.items.length) {
-    const P = say_(script.lang);
-    if (!script.lines.length) await speak({ text: P.hello(script.name) });
+    if (!script.lines.length) await speak(phrase(script.lang, 'hello', script.name));
     const results = [];
     for (const item of script.items) results.push(await ask(item));
     const { next } = await send({ type: 'quizResults', videoId, results });
     const allGood = results.every((r) => r.result !== 'failed');
-    await speak({ text: next === 'rewatch' ? P.rewatch : next === 'stopForToday' ? P.stop : allGood ? P.great : P.tried });
+    await speak(phrase(script.lang, next === 'rewatch' ? 'rewatch' : next === 'stopForToday' ? 'stop' : allGood ? 'great' : 'tried'));
   }
-  if (mode === 'outro' && script.catchphrase) await speak({ text: script.catchphrase });
+  if (mode === 'outro' && script.catchphrase) await speak({ text: script.catchphrase, audioRef: script.catchphraseAudioRef });
   finish();
 }
 
@@ -231,6 +249,8 @@ $('pinOk').onclick = async () => {
 };
 
 script = await send({ type: 'talk', videoId, mode });
+// The OpenRouter key for listening never leaves this tablet (the parent stores it on the parent page).
+const { voiceKey: listenKey = '' } = await chrome.storage.local.get('voiceKey');
 setupFriend();
 if (!script.lines.length && !script.items.length) finish();
 // Browsers only let a page speak after a tap, so he taps the friend to start.

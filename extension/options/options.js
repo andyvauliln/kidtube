@@ -1,5 +1,5 @@
 import { hashPin, checkPin } from '../lib/pin.js';
-import { say, listen } from '../ui/voice.js';
+import { say, listen, recordAnswer, transcribeAnswer } from '../ui/voice.js';
 
 const $ = (id) => document.getElementById(id);
 const send = (msg) => chrome.runtime.sendMessage(msg);
@@ -189,6 +189,11 @@ async function renderRules() {
   $('pitch').value = p.voice?.pitch ?? 1.9;
   $('friendImage').value = p.imageUrl ?? '';
   $('catchphrase').value = p.catchphrase ?? '';
+  $('recorded').checked = p.voice?.recorded !== false;
+  $('listenProvider').value = p.voice?.listen?.provider ?? 'device';
+  $('listenModels').value = (p.voice?.listen?.models ?? ['openai/gpt-audio-mini']).join('\n');
+  $('cloudListen').hidden = $('listenProvider').value !== 'openrouter';
+  chrome.storage.local.get('voiceKey').then(({ voiceKey }) => { $('voiceKey').value = voiceKey ?? ''; });
   voiceLang = p.voice?.lang || 'en-US';
   $('rulesOut').textContent = pending ? 'Some rules are saved on this tablet only and will go to GitHub on the next sync.' : '';
 }
@@ -232,7 +237,8 @@ function readRules() {
       name: $('friendName').value.trim() || 'Zippy',
       imageUrl: $('friendImage').value.trim(),
       catchphrase: $('catchphrase').value.trim(),
-      voice: { pitch: Number($('pitch').value) },
+      voice: { pitch: Number($('pitch').value), recorded: $('recorded').checked,
+        listen: { provider: $('listenProvider').value, models: listenModels() } },
     },
     quiz: { enabled: $('quizOn').checked, onFail: $('onFail').value, maxAttempts: int('maxAttempts', 1, 10) },
   };
@@ -263,6 +269,25 @@ $('saveRules').addEventListener('click', async () => {
 
 let voiceLang = 'en-US';
 $('maxAttempts').addEventListener('input', () => { $('attemptsLabel').textContent = $('maxAttempts').value || '3'; });
+
+const listenModels = () => [...new Set($('listenModels').value.split(/[\s,]+/).map((x) => x.trim()).filter((x) => /^[a-z0-9._-]+\/[A-Za-z0-9._:-]+$/.test(x)))].slice(0, 6);
+$('listenProvider').addEventListener('change', async () => {
+  const cloud = $('listenProvider').value === 'openrouter';
+  $('cloudListen').hidden = !cloud;
+  // Asked only when chosen, so the extension doesn't need this permission for everyone.
+  if (cloud) await chrome.permissions.request({ origins: ['https://openrouter.ai/*'] }).catch(() => false);
+});
+// The key is stored on this tablet only: never in the rules, never on GitHub.
+$('voiceKey').addEventListener('change', () => chrome.storage.local.set({ voiceKey: $('voiceKey').value.trim() }));
+$('tryCloud').addEventListener('click', async () => {
+  await chrome.storage.local.set({ voiceKey: $('voiceKey').value.trim() });
+  $('cloudOut').textContent = 'Listening… say a word now.';
+  const audio = await recordAnswer({ seconds: 4 });
+  if (audio === null) { $('cloudOut').textContent = 'The microphone is not allowed here. Press “Try the microphone” first.'; return; }
+  $('cloudOut').textContent = 'Sending…';
+  const heard = await transcribeAnswer(audio, { key: $('voiceKey').value.trim(), models: listenModels().length ? listenModels() : ['openai/gpt-audio-mini'], lang: voiceLang });
+  $('cloudOut').textContent = heard === null ? 'It didn’t work: check the key, the models and the internet.' : heard.length ? `Heard: “${heard[0]}”` : 'Nothing was heard. Try again a bit louder.';
+});
 
 $('sendWish').addEventListener('click', async () => {
   const text = $('wish').value.trim();

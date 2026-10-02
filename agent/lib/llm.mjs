@@ -31,7 +31,11 @@ export function createLLM({ apiKey, stateDir, config = {}, log = console.log, fe
 
   // Preferred models first (config.llm.preferred), then the rest by success rate, then newest.
   function order(minContext) {
-    const pref = config.preferred ?? [];
+    // config.openrouter.mode: free-first (free, then config.openrouter.paid) | paid (only paid) | specific (only specific).
+    const or = config.openrouter ?? {};
+    if (or.mode === 'specific' && or.specific?.length) return [...or.specific];
+    if (or.mode === 'paid' && or.paid?.length) return [...or.paid];
+    const pref = [...(or.free ?? []), ...(config.preferred ?? [])];
     const now = Date.now();
     const score = (id) => { const s = state.stats[id] ?? {}; return (s.ok ?? 0) + 1 - 2 * (s.bad ?? 0); };
     const ids = state.list.filter((m) => m.context >= minContext).map((m) => m.id);
@@ -43,6 +47,7 @@ export function createLLM({ apiKey, stateDir, config = {}, log = console.log, fe
     });
     if (config.router !== false) ready.push('openrouter/free');
     if (config.paidModel) ready.push(config.paidModel);
+    ready.push(...(or.paid ?? []).filter((m) => !/audio/.test(m)));
     return [...new Set(ready)];
   }
 

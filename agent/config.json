@@ -1,5 +1,11 @@
 {
-  "runner": "local",
+  "orchestrator": {
+    "runner": "claude",
+    "model": "sonnet",
+    "maxTurns": 250,
+    "fallbackToNode": true,
+    "note": "runner: claude = Claude Code runs agent/DAILY.md with the tools in agent/kt.mjs; node = the old fixed program agent/run.mjs (OpenRouter text models)"
+  },
   "dataRepo": "andyvauliln/kidtube-data",
   "dataDir": "~/.local/share/kidtube/kidtube-data",
   "stateDir": "~/.local/share/kidtube/state",
@@ -40,5 +46,39 @@
       "gemini-flash-latest"
     ],
     "secondsPerRequest": 120
+  },
+  "voices": {
+    "speak": {
+      "provider": "gemini",
+      "voice": "Puck",
+      "pitch": 1.15,
+      "style": "Say this in a cheerful, squeaky, excited cartoon-creature voice for a small child",
+      "gemini": {
+        "models": [
+          "gemini-3.8-flash-tts",
+          "gemini-3.8-flash-lite-tts",
+          "gemini-2.5-flash-preview-tts"
+        ]
+      },
+      "openrouter": {
+        "models": [
+          "openai/gpt-audio-mini"
+        ],
+        "voice": "alloy"
+      },
+      "note": "provider: device (tablet voice) | gemini (free tier) | openrouter (paid). Recordings are made for today's lines and played by the tablet."
+    },
+    "listen": {
+      "note": "How the tablet hears his answers is a tablet rule (parent page \u2192 Talking friend \u2192 Hearing his answers), saved in parent-config presenter.voice.listen."
+    }
+  },
+  "openrouter": {
+    "mode": "free-first",
+    "note": "free-first = free models, then the paid list; paid = only the paid list; specific = only the specific list",
+    "free": [],
+    "paid": [
+      "openai/gpt-audio-mini"
+    ],
+    "specific": []
   }
 }

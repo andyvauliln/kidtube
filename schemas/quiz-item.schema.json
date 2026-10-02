@@ -80,6 +80,16 @@
       "type": "string",
       "pattern": "^[a-z]{2}(-[A-Z]{2})?$",
       "description": "language of the video, e.g. en or ru-RU; the talking friend speaks and listens in it"
+    },
+    "audioRef": {
+      "type": "string",
+      "pattern": "^repo:audio/[A-Za-z0-9_-]+\\.(mp3|wav|ogg)$",
+      "description": "a recording in the data repo; the tablet plays it instead of its own voice"
+    },
+    "answerAudioRef": {
+      "type": "string",
+      "pattern": "^repo:audio/[A-Za-z0-9_-]+\\.(mp3|wav|ogg)$",
+      "description": "recording of \"Good try! The answer is …\""
     }
   },
   "allOf": [

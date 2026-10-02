@@ -246,7 +246,7 @@ async function handle(msg, sender) {
         const lang = fullLang(v.lang) ?? p.voice?.lang ?? 'en-US';
         const ru = lang.startsWith('ru');
         if (msg.mode === 'intro') {
-          if (p.catchphrase) lines.push({ text: p.catchphrase });
+          if (p.catchphrase) lines.push({ text: p.catchphrase, ...(p.catchphraseAudioRef ? { audioRef: p.catchphraseAudioRef } : {}) });
           lines.push(v.intro ?? { text: ru
             ? `Привет! Я ${name}! Сейчас мы посмотрим: ${v.title}. ${hasQuiz ? 'Смотри внимательно, в конце я задам тебе вопрос!' : 'Давай узнаем что-то новое!'}`
             : `Hi! I'm ${name}! Now we're going to watch: ${v.title}. ${hasQuiz ? 'Watch carefully, because at the end I will ask you a question!' : 'Let’s find out something new!'}` });
@@ -258,7 +258,9 @@ async function handle(msg, sender) {
         const ch = s.character && p.imageUrl === `repo:${s.character.path}` ? s.character : null;
         return {
           name, imageUrl: ch?.src ?? (p.imageUrl?.startsWith('https://') ? p.imageUrl : ''), svg: ch?.svg ?? '',
-          catchphrase: p.catchphrase ?? '', voice: { ...(p.voice ?? {}), lang }, lang, title: v.title, lines,
+          catchphrase: p.catchphrase ?? '', catchphraseAudioRef: p.catchphraseAudioRef ?? null, phrases: p.phrases ?? {},
+          recorded: p.voice?.recorded !== false, listen: p.voice?.listen ?? { provider: 'device' },
+          voice: { ...(p.voice ?? {}), lang }, lang, title: v.title, lines,
           items: items.map((i) => ({ ...i, lang: fullLang(i.lang) ?? lang, supported: quizTypes.includes(i.type) })),
           maxAttempts: config.quiz?.maxAttempts ?? 3, onFail: config.quiz?.onFail ?? 'continue',
         };
@@ -553,6 +555,7 @@ async function doSync() {
   if (token) {
     try { await uploadTranscripts(repo, token); } catch (e) { report('Transcripts: ', String(e.message ?? e)); }
     try { await loadCharacter(repo, token); } catch (e) { report('Talking friend picture: ', String(e.message ?? e)); }
+    try { await syncAudio(repo, token); } catch (e) { report('Talking friend recordings: ', String(e.message ?? e)); }
   }
   status.errors = [...new Set(status.errors)];
   await withState((s) => { s.syncStatus = status; });
@@ -705,6 +708,40 @@ async function uploadTranscripts(repo, token) {
   if (due.length) await withState((s) => { s.transcripts = { ...(s.transcripts ?? {}), ...done }; });
   const failed = Object.values(done).filter((d) => d.status === 'error');
   if (failed.length) throw new Error(`${failed.length} of ${due.length} could not be fetched (${failed[0].error}); will retry tomorrow.`);
+}
+
+// --- the talking friend's recorded voice: audio/*.mp3 from the data repo, kept in Cache Storage ---
+
+const AUDIO_CACHE = 'kidtube-audio';
+const audioKey = (path) => `https://kidtube.invalid/${path}`;
+
+export function audioRefs(queue, config) {
+  const refs = new Set();
+  const walk = (x) => {
+    if (typeof x === 'string') { if (/^repo:audio\/[A-Za-z0-9_-]+\.(mp3|wav|ogg)$/.test(x)) refs.add(x.slice(5)); }
+    else if (x && typeof x === 'object') Object.values(x).forEach(walk);
+  };
+  walk(queue?.videos);
+  walk(config?.quiz?.items);
+  walk(config?.presenter);
+  return refs;
+}
+
+async function syncAudio(repo, token) {
+  if (!self.caches) return;
+  const { data = {}, localConfig } = await chrome.storage.local.get(['data', 'localConfig']);
+  const { config, queue } = await effective({ data, localConfig });
+  const want = audioRefs(queue, config);
+  const cache = await caches.open(AUDIO_CACHE);
+  for (const req of await cache.keys()) if (!want.has(req.url.replace('https://kidtube.invalid/', ''))) await cache.delete(req);
+  let failed = 0;
+  for (const path of want) {
+    if (await cache.match(audioKey(path))) continue;
+    const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, { headers: { ...ghHeaders(token), Accept: 'application/vnd.github.raw+json' }, cache: 'no-store' });
+    if (!r.ok) { failed++; continue; }
+    await cache.put(audioKey(path), new Response(await r.blob(), { headers: { 'Content-Type': path.endsWith('.mp3') ? 'audio/mpeg' : path.endsWith('.ogg') ? 'audio/ogg' : 'audio/wav' } }));
+  }
+  if (failed) throw new Error(`${failed} of ${want.size} could not be downloaded; the tablet's own voice is used for those.`);
 }
 
 // --- the talking friend's picture from the private data repo ("repo:characters/x.svg") --------

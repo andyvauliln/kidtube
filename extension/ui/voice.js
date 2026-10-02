@@ -71,3 +71,86 @@ export function listen(lang = 'en-US', { seconds = 8 } = {}) {
     try { r.start(); } catch { clearTimeout(stop); resolve(null); }
   });
 }
+
+// --- recordings made by the helper (Pikachu's recorded voice) -----------------------------------
+// The service worker keeps them in the Cache Storage under this name; "repo:audio/x.mp3" → a playable URL.
+export const AUDIO_CACHE = 'kidtube-audio';
+export const audioKey = (ref) => `https://kidtube.invalid/${String(ref).replace(/^repo:/, '')}`;
+export async function recordedUrl(ref) {
+  if (!ref || !('caches' in self)) return null;
+  try {
+    const r = await (await caches.open(AUDIO_CACHE)).match(audioKey(ref));
+    return r ? URL.createObjectURL(await r.blob()) : null;
+  } catch { return null; }
+}
+
+// --- listening through OpenRouter (when the parent chose it and stored a key on this tablet) ------
+
+// Records one answer as 16 kHz mono WAV. Stops after `seconds`, or after a short silence once he has spoken.
+export async function recordAnswer({ seconds = 6, onLevel } = {}) {
+  let stream;
+  try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
+  catch { return null; }
+  const ctx = new AudioContext({ sampleRate: 16000 });
+  const src = ctx.createMediaStreamSource(stream);
+  const node = ctx.createScriptProcessor(4096, 1, 1);
+  const chunks = [];
+  let spoke = false, quietSince = 0;
+  const started = performance.now();
+  await new Promise((resolve) => {
+    const stop = () => { node.onaudioprocess = null; resolve(); };
+    const timer = setTimeout(stop, seconds * 1000);
+    node.onaudioprocess = (e) => {
+      const d = e.inputBuffer.getChannelData(0);
+      chunks.push(new Float32Array(d));
+      let sum = 0;
+      for (const x of d) sum += x * x;
+      const level = Math.sqrt(sum / d.length);
+      onLevel?.(level);
+      const now = performance.now();
+      if (level > 0.03) { spoke = true; quietSince = 0; }
+      else if (spoke) { quietSince ||= now; if (now - quietSince > 1200 && now - started > 1500) { clearTimeout(timer); stop(); } }
+    };
+    src.connect(node);
+    node.connect(ctx.destination);
+  });
+  src.disconnect(); node.disconnect();
+  stream.getTracks().forEach((t) => t.stop());
+  await ctx.close();
+  if (!spoke) return new Uint8Array(0);
+  return wav(chunks, 16000);
+}
+
+function wav(chunks, rate) {
+  const n = chunks.reduce((a, c) => a + c.length, 0);
+  const buf = new DataView(new ArrayBuffer(44 + n * 2));
+  const str = (o, s) => { for (let i = 0; i < s.length; i++) buf.setUint8(o + i, s.charCodeAt(i)); };
+  str(0, 'RIFF'); buf.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt '); buf.setUint32(16, 16, true); buf.setUint16(20, 1, true); buf.setUint16(22, 1, true);
+  buf.setUint32(24, rate, true); buf.setUint32(28, rate * 2, true); buf.setUint16(32, 2, true); buf.setUint16(34, 16, true); str(36, 'data'); buf.setUint32(40, n * 2, true);
+  let o = 44;
+  for (const c of chunks) for (const x of c) { buf.setInt16(o, Math.max(-1, Math.min(1, x)) * 0x7fff, true); o += 2; }
+  return new Uint8Array(buf.buffer);
+}
+
+const b64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
+
+// Sends the recording to the audio models in order. Returns [text] | [] (nothing said) | null (failed: use the device).
+export async function transcribeAnswer(audio, { key, models = ['openai/gpt-audio-mini'], lang = 'en-US', question = '' } = {}) {
+  if (!audio) return null;
+  if (!audio.length) return [];
+  for (const model of models) {
+    try {
+      const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'X-Title': 'KidTube tablet' },
+        body: JSON.stringify({ model, max_tokens: 60, temperature: 0, messages: [{ role: 'user', content: [
+          { type: 'text', text: `A small child answers this question out loud${question ? `: "${question}"` : ''}. The language is ${lang}. Write down exactly the words the child says, nothing else. Numbers as digits. If nothing is said, reply with nothing.` },
+          { type: 'input_audio', input_audio: { data: b64(audio), format: 'wav' } }] }] }),
+        signal: AbortSignal.timeout(15000),
+      });
+      if (!r.ok) continue;
+      const text = (await r.json()).choices?.[0]?.message?.content?.trim() ?? '';
+      return text ? [text.replace(/^["“]|["”]$/g, '')] : [];
+    } catch {}
+  }
+  return null;
+}

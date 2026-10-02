@@ -140,6 +140,23 @@
       <input id="catchphrase" maxlength="60" placeholder="Pika pika!">
       <label for="friendImage">Picture: a link (https://…) or a file in the data repo (repo:characters/name.svg)</label>
       <input id="friendImage" placeholder="empty = the built-in cloud friend">
+      <label class="check"><input type="checkbox" id="recorded"> Use the helper’s recorded voice when there is one</label>
+      <p class="hint">The daily helper can record the friend’s lines (Gemini or OpenRouter, set on the server). Off: the tablet’s own voice says everything.</p>
+
+      <label for="listenProvider">Hearing his answers</label>
+      <select id="listenProvider">
+        <option value="device">The tablet’s own speech recognition (free)</option>
+        <option value="openrouter">OpenRouter audio model (paid, very cheap, often more accurate)</option>
+      </select>
+      <div id="cloudListen" hidden>
+        <label for="listenModels">Models, tried in order (one per line)</label>
+        <textarea id="listenModels" placeholder="openai/gpt-audio-mini"></textarea>
+        <label for="voiceKey">OpenRouter key for this tablet (stays on this tablet only)</label>
+        <input id="voiceKey" type="password" autocomplete="off" placeholder="sk-or-v1-…">
+        <p class="hint">Make a separate key on openrouter.ai with a small monthly limit (for example $1): about $0.00004 per answer. If it fails, the tablet’s own recognition is used.</p>
+        <button id="tryCloud">🎤 Try it: say a word</button>
+        <p id="cloudOut" class="hint"></p>
+      </div>
       <button id="tryVoice">🔊 Try the voice</button>
       <button id="tryMic">🎤 Try the microphone</button>
       <p id="micOut" class="hint">Press “Try the microphone” once and allow it, so the questions can hear him.</p>

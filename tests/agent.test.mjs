@@ -117,3 +117,11 @@ test('questions too hard for a 4-year-old are sent back', async () => {
   assert.equal(tooHard([{ accept: ['hemoglobin in the blood'] }]), 'hemoglobin in the blood');
   assert.equal(tooHard([{ options: ['5', '50'] }]), '50');
 });
+
+test('a recording’s file name changes with the text and the voice settings', async () => {
+  const { audioPath } = await import('../agent/lib/voices.mjs');
+  const cfg = { provider: 'gemini', voice: 'Puck', pitch: 1.15 };
+  assert.match(audioPath('Hi!', 'en', cfg), /^audio\/[0-9a-f]{16}\.mp3$/);
+  assert.equal(audioPath('Hi!', 'en', cfg), audioPath('Hi!', 'en', { ...cfg }));
+  assert.notEqual(audioPath('Hi!', 'en', cfg), audioPath('Hi!', 'en', { ...cfg, pitch: 1.3 }));
+});

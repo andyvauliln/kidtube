@@ -78,5 +78,25 @@ export function createGemini({ apiKey, stateDir, config = {}, today, log = conso
     throw new Error(`Gemini: ${errors.join(' | ')}`);
   }
 
-  return { transcribe, fits, left, get quotaGone() { return quotaGone; } };
+  // Any question about the video itself (Gemini watches it again; counts against the same limits).
+  async function ask(video, question) {
+    if (!fits(video.durationSeconds)) throw new Error('over today’s Gemini limit');
+    const errors = [];
+    for (const model of [...models]) {
+      const r = await fetchImpl(`${API}/${model}:generateContent`, {
+        method: 'POST', headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ file_data: { file_uri: `https://www.youtube.com/watch?v=${video.videoId}` } }, { text: question }] }], generationConfig: { temperature: 0.3 } }),
+        signal: AbortSignal.timeout((config.secondsPerRequest ?? 120) * 1000),
+      }).catch((e) => ({ ok: false, status: 0, json: async () => ({ error: { message: e.message } }) }));
+      const j = await r.json().catch(() => ({}));
+      if (!r.ok || j.error) { errors.push(`${model}: ${j.error?.message ?? `HTTP ${r.status}`}`.slice(0, 200)); demote(model); if (r.status === 429) break; continue; }
+      usage.videos++;
+      usage.seconds += video.durationSeconds;
+      writeFileSync(usagePath, JSON.stringify(usage));
+      return j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
+    }
+    throw new Error(`Gemini: ${errors.join(' | ')}`);
+  }
+
+  return { transcribe, ask, fits, left, get quotaGone() { return quotaGone; } };
 }

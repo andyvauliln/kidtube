@@ -310,6 +310,38 @@
               ],
               "minimum": 0.5,
               "maximum": 2
+            },
+            "listen": {
+              "type": "object",
+              "additionalProperties": false,
+              "description": "how the tablet hears his answers",
+              "properties": {
+                "provider": {
+                  "enum": [
+                    "device",
+                    "openrouter"
+                  ],
+                  "description": "device = the browser’s speech recognition; openrouter = recorded and sent to an audio model with the key stored on the tablet"
+                },
+                "models": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9._-]+/[A-Za-z0-9._:-]+$"
+                  },
+                  "maxItems": 6,
+                  "description": "tried in order"
+                },
+                "seconds": {
+                  "type": "integer",
+                  "minimum": 2,
+                  "maximum": 15
+                }
+              }
+            },
+            "recorded": {
+              "type": "boolean",
+              "description": "play recordings made by the helper when there are some (default true)"
             }
           }
         },
@@ -320,6 +352,41 @@
           ],
           "maxLength": 60,
           "description": "said at the start of the intro and the end of the outro"
+        },
+        "catchphraseAudioRef": {
+          "type": "string",
+          "pattern": "^repo:audio/[A-Za-z0-9_-]+\\.(mp3|wav|ogg)$",
+          "description": "a recording in the data repo; the tablet plays it instead of its own voice"
+        },
+        "phrases": {
+          "type": "object",
+          "description": "recorded lines around the questions, by language (en, ru…) and kind (praise, retry, hello, rewatch, stop, great, tried)",
+          "additionalProperties": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "maxItems": 6,
+              "items": {
+                "type": "object",
+                "required": [
+                  "text"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "text": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 300
+                  },
+                  "audioRef": {
+                    "type": "string",
+                    "pattern": "^repo:audio/[A-Za-z0-9_-]+\\.(mp3|wav|ogg)$",
+                    "description": "a recording in the data repo; the tablet plays it instead of its own voice"
+                  }
+                }
+              }
+            }
+          }
         }
       }
     }

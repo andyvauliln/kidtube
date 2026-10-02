@@ -84,6 +84,11 @@
                 "format": "uri",
                 "pattern": "^https://",
                 "description": "optional recorded voice; without it the tablet reads text aloud"
+              },
+              "audioRef": {
+                "type": "string",
+                "pattern": "^repo:audio/[A-Za-z0-9_-]+\\.(mp3|wav|ogg)$",
+                "description": "a recording in the data repo; the tablet plays it instead of its own voice"
               }
             },
             "description": "what the talking friend says before the video"
@@ -105,6 +110,11 @@
                 "format": "uri",
                 "pattern": "^https://",
                 "description": "optional recorded voice; without it the tablet reads text aloud"
+              },
+              "audioRef": {
+                "type": "string",
+                "pattern": "^repo:audio/[A-Za-z0-9_-]+\\.(mp3|wav|ogg)$",
+                "description": "a recording in the data repo; the tablet plays it instead of its own voice"
               }
             },
             "description": "what the talking friend says after the video: what we learned"

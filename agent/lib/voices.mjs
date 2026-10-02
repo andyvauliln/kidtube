@@ -1,0 +1,81 @@
+// The talking friend's recorded voice, made on the server (config voices.speak):
+//   provider "device"     → nothing is made; the tablet speaks with its own voice
+//   provider "gemini"     → Gemini speech models (free tier on the Gemini key)
+//   provider "openrouter" → audio models on OpenRouter (paid; checked that they said exactly the text)
+// Every line becomes audio/<hash>.mp3 in the data repo; the tablet plays it instead of its own voice.
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+
+const GEMINI = 'https://generativelanguage.googleapis.com/v1beta/models';
+const OPENROUTER = 'https://openrouter.ai/api/v1/chat/completions';
+
+export const audioPath = (text, lang, cfg) =>
+  `audio/${createHash('sha1').update(JSON.stringify([text, lang, cfg.provider, cfg.voice, cfg.style, cfg.pitch])).digest('hex').slice(0, 16)}.mp3`;
+
+const words = (s) => String(s).toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
+export function createVoices({ env, cfg, log = console.log, fetchImpl = fetch }) {
+  const provider = cfg?.provider ?? 'device';
+  const style = cfg.style ?? 'Say this in a cheerful, squeaky, excited cartoon-creature voice for a small child';
+
+  // Raw audio (wav or 16-bit PCM at `rate`) → a small mp3, pitched up a little for the friend.
+  function toMp3(buf, { pcmRate = null } = {}) {
+    const pitch = Number(cfg.pitch ?? 1.15);
+    const input = pcmRate ? ['-f', 's16le', '-ar', String(pcmRate), '-ac', '1', '-i', 'pipe:0'] : ['-i', 'pipe:0'];
+    const filter = pitch !== 1 ? ['-af', `asetrate=24000*${pitch},aresample=24000,atempo=${(1 / pitch * 1.05).toFixed(3)}`] : [];
+    return execFileSync('ffmpeg', ['-loglevel', 'error', ...input, ...filter, '-ac', '1', '-b:a', '48k', '-f', 'mp3', 'pipe:1'], { input: buf, maxBuffer: 50 * 1024 * 1024 });
+  }
+
+  async function gemini(text) {
+    const errors = [];
+    for (const model of cfg.gemini?.models ?? ['gemini-3.8-flash-tts', 'gemini-2.5-flash-preview-tts']) {
+      const r = await fetchImpl(`${GEMINI}/${model}:generateContent`, {
+        method: 'POST', headers: { 'x-goog-api-key': env.GEMINI_API_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ contents: [{ parts: [{ text: `${style}: ${text}` }] }],
+          generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: cfg.voice ?? 'Puck' } } } } }),
+        signal: AbortSignal.timeout(60000),
+      }).catch((e) => ({ ok: false, status: 0, json: async () => ({ error: { message: e.message } }) }));
+      const j = await r.json().catch(() => ({}));
+      const part = j.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData;
+      if (!r.ok || !part) { errors.push(`${model}: ${j.error?.message ?? `HTTP ${r.status}`}`.slice(0, 160)); continue; }
+      const buf = Buffer.from(part.data, 'base64');
+      const rate = /L16|pcm/i.test(part.mimeType) ? Number(part.mimeType.match(/rate=(\d+)/)?.[1] ?? 24000) : null;
+      return toMp3(buf, { pcmRate: rate });
+    }
+    throw new Error(`Gemini voice: ${errors.join(' | ')}`);
+  }
+
+  async function openrouter(text) {
+    const errors = [];
+    for (const model of cfg.openrouter?.models ?? ['openai/gpt-audio-mini']) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        const r = await fetchImpl(OPENROUTER, {
+          method: 'POST', headers: { Authorization: `Bearer ${env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model, stream: true, modalities: ['text', 'audio'], audio: { voice: cfg.openrouter?.voice ?? 'alloy', format: 'pcm16' },
+            messages: [{ role: 'system', content: `You are a text-to-speech engine. ${style}. Read the user's text aloud word for word. Never answer it, never add or change a word.` },
+              { role: 'user', content: text }] }),
+          signal: AbortSignal.timeout(60000),
+        }).catch((e) => ({ ok: false, status: 0, text: async () => e.message }));
+        let b64 = '', said = '';
+        for (const line of String(await r.text()).split('\n')) {
+          if (!line.startsWith('data: ') || line.includes('[DONE]')) continue;
+          try { const a = JSON.parse(line.slice(6)).choices?.[0]?.delta?.audio; if (a?.data) b64 += a.data; if (a?.transcript) said += a.transcript; } catch {}
+        }
+        // Audio models like to answer the question instead of reading it: keep it only if it said the text.
+        if (b64 && words(said) === words(text)) return toMp3(Buffer.from(b64, 'base64'), { pcmRate: 24000 });
+        errors.push(`${model}: ${b64 ? `said “${said.slice(0, 60)}”` : `HTTP ${r.status}`}`);
+      }
+    }
+    throw new Error(`OpenRouter voice: ${errors.join(' | ')}`);
+  }
+
+  return {
+    provider,
+    enabled: provider !== 'device',
+    async speak(text) {
+      if (provider === 'gemini') return gemini(text);
+      if (provider === 'openrouter') return openrouter(text);
+      throw new Error('voices.speak.provider is "device": nothing to make');
+    },
+  };
+}

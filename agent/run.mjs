@@ -73,7 +73,7 @@ try {
 // One crontab line, tagged so it can be replaced: the run's output goes to state/helper.log.
 function schedule() {
   const tag = '# kidtube-helper';
-  const line = `${config.schedule} cd ${ROOT} && ${process.execPath} agent/run.mjs >> ${join(stateDir, 'helper.log')} 2>&1 ${tag}`;
+  const line = `${config.schedule} cd ${ROOT} && PATH=${dirname(process.execPath)}:$HOME/.local/bin:/usr/bin:/bin agent/daily.sh >> ${join(stateDir, 'helper.log')} 2>&1 ${tag}`;
   let current = '';
   try { current = execFileSync('crontab', ['-l'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch {}
   const next = `${current.split('\n').filter((l) => l && !l.includes(tag)).concat(line).join('\n')}\n`;
@@ -187,7 +187,7 @@ async function run() {
   }
   if (comments.length) log(`parent comments: ${comments.length}`);
 
-  const llm = createLLM({ apiKey: env.OPENROUTER_API_KEY, stateDir, config: config.llm, log });
+  const llm = createLLM({ apiKey: env.OPENROUTER_API_KEY, stateDir, config: { ...config.llm, openrouter: config.openrouter }, log });
 
   // 3. What to look for.
   let want = { summary: '', searches: [], videosPerDay: D.videosPerDay, newIdeas: D.newIdeas, languageMins: D.languageMins, requiredFirst: D.requiredFirst };
@@ -355,6 +355,7 @@ async function run() {
     throw new Error(`the new files did not pass the checks, nothing was saved:\n${out}`);
   }
   commitAndPush(dataDir, `helper: ${today}: ${journal.join(', ')}`);
+  writeFileSync(join(stateDir, 'last-save'), today);
   log('saved to GitHub');
 
   // 10. Notion: rows, video pages, noticed, plan, diary.

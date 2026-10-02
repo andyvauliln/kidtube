@@ -182,6 +182,14 @@ export function validateDataDir(dir) {
     results.push(existsSync(p) ? validateFile(p, { effectiveConfig }) : { path: p, errors: ['missing'] });
   }
 
+  // Every recording a file points at must be in the repo, or the tablet would play nothing.
+  for (const r of results) {
+    if (!r.data) continue;
+    for (const ref of JSON.stringify(r.data).match(/repo:audio\/[A-Za-z0-9_-]+\.(mp3|wav|ogg)/g) ?? []) {
+      if (!existsSync(join(dir, ref.slice(5)))) r.errors.push(`${ref}: the recording is missing`);
+    }
+  }
+
   results.push(...activityResults);
   const trDir = join(dir, 'transcripts');
   if (existsSync(trDir)) results.push(...readdirSync(trDir).filter((f) => f.endsWith('.json')).sort().map((f) => validateFile(join(trDir, f))));
