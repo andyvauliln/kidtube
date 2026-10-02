@@ -52,7 +52,8 @@ function tier(v, today) {
   if (v.required === 'yes' && v.approved && due) return 1;
   if (v.required === 'yes' && due) return 2;
   if (v.approved && due) return 3;
-  if (!v.approved && due) return 5;       // the helper's own pick, used only when approved ones run out
+  if (!v.approved && due && !v.content?.tooHard) return 5; // the helper's own pick, used only when approved ones run out
+  if (!v.approved && due) return 7;       // flagged as too hard: only if nothing else is left
   return 9;                               // planned for a later day
 }
 

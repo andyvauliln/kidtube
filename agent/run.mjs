@@ -280,7 +280,8 @@ async function run() {
     try {
       const out = await llm.json(`words for ${id}`, contentPrompt({ video: v, transcript: tr, friend, about, want, templates: usable, quizOn, maxQuestions: D.maxQuestions }));
       const { items, ids } = quizOn ? buildQuiz(id, out.quiz, v.lang === 'ru' ? 'ru' : null, { max: D.maxQuestions }) : { items: {}, ids: [] };
-      v.content = { source, at: iso(), summary: String(out.summary ?? ''), learned: list(out.learned), intro: out.intro.trim().slice(0, 600), outro: out.outro.trim().slice(0, 600), talkAbout: list(out.talkAbout), quizIds: ids, items };
+      v.content = { source, at: iso(), summary: String(out.summary ?? ''), learned: list(out.learned), intro: out.intro.trim().slice(0, 600), outro: out.outro.trim().slice(0, 600), talkAbout: list(out.talkAbout), quizIds: ids, items,
+        ...(source === 'transcript' && typeof out.tooHardFor4 === 'string' && out.tooHardFor4.trim() ? { tooHard: out.tooHardFor4.trim().slice(0, 300) } : {}) };
       rewritten.add(id);
       touched.add(id);
       written++;

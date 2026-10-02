@@ -176,6 +176,7 @@ export function videoProps(id, v, { order = null, isNew = false } = {}) {
 
 function reaction(v) {
   const bits = [];
+  if (v.content?.tooHard) bits.push('⚠️ maybe too hard');
   if (v.liked === true) bits.push('👍');
   if (v.liked === false) bits.push('👎');
   if (v.comment) bits.push(`“${v.comment}”`);
@@ -188,6 +189,7 @@ export function videoMarkdown(id, v, { items = {}, transcript = null } = {}) {
   const c = v.content ?? {};
   const lines = [
     `<video src="https://www.youtube.com/watch?v=${id}"></video>`,
+    ...(c.tooHard ? [`<callout icon="⚠️" color="yellow_bg">`, `\t**Probably too advanced for him:** ${esc(c.tooHard)} Set Status to **No** if you agree.`, `</callout>`] : []),
     `<callout icon="💬">`,
     `\tWrite what you think in the **Parent comment** field or as a comment on this page. The helper rewrites this page text.`,
     `</callout>`,
