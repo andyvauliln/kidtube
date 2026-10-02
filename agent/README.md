@@ -69,7 +69,7 @@ Comments on the page work too.
 
 ## Setup (once)
 
-1. **The OpenRouter key** is in `~/.config/kidtube/agent.env` (only your user can read it, and it's never committed).
+1. **Keys** (OpenRouter, Gemini) are in `~/.config/kidtube/agent.env` (only your user can read it, and it's never committed).
 2. **Notion:**
    1. On https://www.notion.so/profile/integrations, make an internal connection named "KidTube helper". Give it Read content, Update content, Insert content and Read comments.
    2. Copy its secret into `~/.config/kidtube/agent.env` as `NOTION_TOKEN=ntn_...`.
@@ -91,6 +91,7 @@ Try it without saving anything: `node agent/run.mjs --dry`. The details land in 
 | `schedule` | cron time for `schedule`, in server time (UTC) |
 | `timezone` | the day boundary when `parent-config.json` has no IANA time zone |
 | `defaults` | videos per day, new ideas per day, questions per video… Your **Numbers** in Notion win. |
+| `transcripts` | Gemini watches the public videos for transcripts: `maxVideosPerDay` (10), `maxMinutesPerDay` (120), `models` tried in order, `secondsPerRequest` |
 | `llm.preferred` | free models to try first; the rest are found and ranked automatically every day |
 | `llm.paidModel` | a paid model id from openrouter.ai/models, used only when every free model fails (`null` = free only) |
 
