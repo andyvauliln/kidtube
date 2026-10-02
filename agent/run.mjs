@@ -3,6 +3,7 @@
 //   node agent/run.mjs                    one full run: read, plan, write, commit, update Notion
 //   node agent/run.mjs --dry              the same, but writes nothing (prints the plan)
 //   node agent/run.mjs --no-search        no new ideas today: transcripts, words and questions for the list
+//   node agent/run.mjs --rewrite          also write today's words and questions again (after a prompt change)
 //   node agent/run.mjs setup-notion <url> creates the Notion pages under a page shared with the connection
 //   node agent/run.mjs schedule           puts the daily run into this server's crontab (config.schedule)
 // KIDTUBE_DATA_DIR / KIDTUBE_STATE_DIR override the folders (the cloud runner uses them).
@@ -31,6 +32,7 @@ const hash = (s) => createHash('sha1').update(String(s)).digest('hex').slice(0, 
 const args = process.argv.slice(2);
 const DRY = args.includes('--dry');
 const NO_SEARCH = args.includes('--no-search'); // re-plan and re-write only, no new ideas
+const REWRITE = args.includes('--rewrite');     // write today's words and questions again
 const cmd = args.find((a) => !a.startsWith('--')) ?? 'run';
 
 const config = JSON.parse(readFileSync(join(ROOT, 'agent/config.json'), 'utf8'));
@@ -265,11 +267,14 @@ async function run() {
   const friend = { name: pc.presenter?.name || 'Zippy' };
   const usable = templates.filter((t) => quizTypes.includes(TEMPLATE_TYPE(t)));
   let written = 0;
-  for (const id of [...new Set([...todayIds, ...newIds])]) {
+  // Today's list and new ideas, then planned videos whose transcript has arrived since their words were written.
+  const later = upcoming(videos, todayIds, { today }).map((u) => u.videoId).filter((id) => videos[id].content?.source === 'title');
+  for (const id of [...new Set([...todayIds, ...newIds, ...later])]) {
     const v = videos[id];
     const tr = transcriptsInDry.get(id) ?? transcript(dataDir, id);
     const source = tr?.available ? 'transcript' : 'title';
-    if (v.content && (v.content.source === 'transcript' || source === 'title')) continue;
+    const again = REWRITE && todayIds.includes(id);
+    if (v.content && !again && (v.content.source === 'transcript' || source === 'title')) continue;
     if (written >= D.contentPerRun) break;
     try {
       const out = await llm.json(`words for ${id}`, contentPrompt({ video: v, transcript: tr, friend, about, want, templates: usable, quizOn, maxQuestions: D.maxQuestions }));

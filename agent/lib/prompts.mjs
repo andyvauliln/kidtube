@@ -94,6 +94,18 @@ mustWatch is "today", "yes" or null; keep the value of the search that found it 
   };
 }
 
+// A spoken answer a small child can give: 1–2 short words, or a whole number up to 20.
+export function tooHard(quiz) {
+  for (const q of Array.isArray(quiz) ? quiz : []) {
+    for (const a of [...(q?.accept ?? []), ...(q?.options ?? [])].map(String)) {
+      const words = a.trim().split(/\s+/);
+      if (words.length > 2 || a.length > 20) return a;
+      if (/\d/.test(a) && !(/^\d+$/.test(a) && Number(a) <= 20)) return a;
+    }
+  }
+  return null;
+}
+
 // 3. The talking friend's words and the quiz for one video.
 export function contentPrompt({ video, transcript, friend, about, want, templates, quizOn, maxQuestions }) {
   const ru = (video.lang ?? 'en').startsWith('ru');
@@ -131,13 +143,17 @@ Reply JSON:
   "talkAbout": ["2–4 things the parent can talk about with him after"],
   "quiz": [ { "template": "video-voice", "prompt": "…", "accept": ["…"] } ]
 }
-Quiz: at most ${maxQuestions} questions.${transcript?.available ? '' : ' There is no transcript yet: return "quiz": [] unless it is a math video (then use only the math templates); the questions are written later from the transcript.'} For math videos use the math templates (add, subtract, next-number, number-before, bigger) with "params": {"max": N} and optional "count". For other videos use video-voice (one- or two-word answers, several accepted forms) or video-choice ("options" and "correct"). Only ask about things the video really says. Do not start the intro or end the outro with a catchphrase; the tablet adds it.`,
+Quiz: at most ${maxQuestions} questions.${transcript?.available ? '' : ' There is no transcript yet: return "quiz": [] unless it is a math video (then use only the math templates); the questions are written later from the transcript.'} For math videos use the math templates (add, subtract, next-number, number-before, bigger) with "params": {"max": N} and optional "count". For other videos use video-voice (one- or two-word answers, several accepted forms) or video-choice ("options" and "correct"). Only ask about things the video really says.
+He is 4–5 years old: the intro, outro and questions use only words a small child knows. Skip hard facts from the video (scientific terms like "nucleus" or "hemoglobin", big numbers, shape names like "trapezoid"); ask about the simple, memorable things instead (what it is made of, what colour, which animal, how many up to 10, what to do).
+Answers he says must be 1–2 everyday words or a number up to 20.
+Do not start the intro or end the outro with a catchphrase or the friend's name; the tablet adds it.`,
     check: (o) => (typeof o.intro !== 'string' || !o.intro.trim() ? 'intro is missing'
       : o.intro.length > 450 ? 'intro is longer than 400 characters'
       : typeof o.outro !== 'string' || !o.outro.trim() ? 'outro is missing'
       : o.outro.length > 600 ? 'outro is longer than 600 characters'
       : typeof o.summary !== 'string' ? 'summary is missing'
       : ru && !/[а-яё]/i.test(o.intro) ? 'the video is Russian: write the intro in Russian'
+      : tooHard(o.quiz) ? `this answer is too hard for a 4-year-old: "${tooHard(o.quiz)}" (use 1–2 everyday words or a number up to 20)`
       : null),
   };
 }

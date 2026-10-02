@@ -109,3 +109,11 @@ test('tablet: must-watch first / mix / off', () => {
   assert.deepEqual([...waitingIds(list, { requiredFirst: 'mix' }, { required: 1, free: 1 })], ['b', 'c']);
   assert.deepEqual([...waitingIds([{ videoId: 'b' }], { requiredFirst: 'first' })], []);
 });
+
+test('questions too hard for a 4-year-old are sent back', async () => {
+  const { tooHard } = await import('../agent/lib/prompts.mjs');
+  assert.equal(tooHard([{ accept: ['sugar'] }, { accept: ['one', '1'] }]), null);
+  assert.equal(tooHard([{ accept: ['2.4 million'] }]), '2.4 million');
+  assert.equal(tooHard([{ accept: ['hemoglobin in the blood'] }]), 'hemoglobin in the blood');
+  assert.equal(tooHard([{ options: ['5', '50'] }]), '50');
+});
