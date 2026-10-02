@@ -268,7 +268,8 @@ async function run() {
   const usable = templates.filter((t) => quizTypes.includes(TEMPLATE_TYPE(t)));
   let written = 0;
   // Today's list and new ideas, then planned videos whose transcript has arrived since their words were written.
-  const later = upcoming(videos, todayIds, { today }).map((u) => u.videoId).filter((id) => videos[id].content?.source === 'title');
+  const later = upcoming(videos, todayIds, { today }).map((u) => u.videoId)
+    .filter((id) => (transcriptsInDry.get(id) ?? transcript(dataDir, id))?.available && videos[id].content?.source !== 'transcript');
   for (const id of [...new Set([...todayIds, ...newIds, ...later])]) {
     const v = videos[id];
     const tr = transcriptsInDry.get(id) ?? transcript(dataDir, id);
