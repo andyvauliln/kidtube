@@ -16,3 +16,15 @@ export function visibleVideos(queue, cfg, watched = {}) {
   }
   return out;
 }
+
+// Must-watch videos (⭐, `required` in the queue). config.requiredFirst:
+//   "first": the others wait until every ⭐ video on the list is watched;
+//   "mix":   one ⭐ video, then one free choice, then ⭐ again;
+//   "off":   ⭐ is only a mark.
+// watchedToday: { required, free } counts of videos finished today.
+export function waitingIds(videos, cfg, watchedToday = { required: 0, free: 0 }) {
+  const mode = cfg.requiredFirst ?? 'off';
+  if (mode === 'off' || !videos.some((v) => v.required)) return new Set();
+  if (mode === 'mix' && watchedToday.free < watchedToday.required) return new Set();
+  return new Set(videos.filter((v) => !v.required).map((v) => v.videoId));
+}

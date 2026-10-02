@@ -12,10 +12,15 @@ export function normalize(s) {
     .replace(/\s+/g, ' ').trim();
 }
 
+const NUMBER_WORDS_RU = ['ноль', 'один', 'два', 'три', 'четыре', 'пять', 'шесть', 'семь', 'восемь', 'девять', 'десять',
+  'одиннадцать', 'двенадцать', 'тринадцать', 'четырнадцать', 'пятнадцать', 'шестнадцать', 'семнадцать', 'восемнадцать', 'девятнадцать', 'двадцать'];
+
 function asNumber(s) {
-  const t = normalize(s);
+  const t = normalize(s).replace(/ё/g, 'е');
   const i = NUMBER_WORDS.indexOf(t);
   if (i >= 0) return i;
+  const r = NUMBER_WORDS_RU.indexOf(t);
+  if (r >= 0) return r;
   return /^-?\d+([.,]\d+)?$/.test(t) ? Number(t.replace(',', '.')) : null;
 }
 

@@ -14,7 +14,7 @@ function sentences(text) {
   return String(text).match(/[^.!?…]+[.!?…]*\s*/g)?.map((x) => x.trim()).filter(Boolean) ?? [String(text)];
 }
 
-function speakOne(text, voice) {
+function speakOne(text, voice, onWord) {
   return new Promise((resolve) => {
     const u = new SpeechSynthesisUtterance(text);
     u.lang = voice.lang || 'en-US';
@@ -27,12 +27,14 @@ function speakOne(text, voice) {
     function done() { clearTimeout(guard); resolve(); }
     u.onend = done;
     u.onerror = done;
+    // Word events move the friend's mouth in time with the words (many Android voices never send them).
+    if (onWord) u.onboundary = (e) => { if (!e.name || e.name === 'word') onWord(); };
     speechSynthesis.speak(u);
   });
 }
 
-// line: { text, audioUrl? }. Resolves when it has finished.
-export async function say(line, voice = {}) {
+// line: { text, audioUrl? }. Resolves when it has finished. onWord is called at each spoken word, when the engine says so.
+export async function say(line, voice = {}, { onWord } = {}) {
   if (line.audioUrl) {
     const ok = await new Promise((resolve) => {
       const a = new Audio(line.audioUrl);
@@ -44,7 +46,7 @@ export async function say(line, voice = {}) {
   }
   if (!('speechSynthesis' in window)) return wait(1500 + String(line.text).length * 60);
   speechSynthesis.cancel();
-  for (const s of sentences(line.text)) await speakOne(s, voice);
+  for (const s of sentences(line.text)) await speakOne(s, voice, onWord);
 }
 
 export const canListen = () => !!(window.SpeechRecognition || window.webkitSpeechRecognition);

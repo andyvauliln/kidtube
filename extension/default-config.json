@@ -19,6 +19,7 @@
   "minSecondsBeforeLeave": 120,
   "closeAfterSeconds": 0,
   "queueSize": 10,
+  "requiredFirst": "first",
   "time": {
     "allowed": [
       {

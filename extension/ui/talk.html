@@ -12,11 +12,12 @@
   .friend svg, .friend img { width: 100%; height: 100%; object-fit: contain; display: block; }
   .talking .friend { animation: bob .45s ease-in-out infinite; }
   .talking .friend img { animation: squash .22s ease-in-out infinite alternate; }
+  /* an SVG character is moved part by part by rig.js; only a plain picture bobs as a whole */
+  .friend.rigged, .talking .friend.rigged { animation: none; }
+  .friend svg { overflow: visible; }
   @keyframes bob { 50% { transform: translateY(-10px); } }
   @keyframes squash { to { transform: scale(1.04, .96); } }
-  .friend #mouth { transform-box: fill-box; transform-origin: center; transition: transform .08s; }
-  .wave #armR { animation: wave .5s ease-in-out 3; transform-origin: 160px 128px; }
-  @keyframes wave { 50% { transform: rotate(-35deg); } }
+  .friend #mouth, .friend #mouthOpen { transition: transform .08s; }
   .side { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; max-width: 640px; }
   .bubble { background: #fff; border-radius: 22px; padding: 16px 20px; font-size: 24px; line-height: 1.3; text-align: center;
     box-shadow: 0 4px 0 #0000000f, 0 8px 22px #0000001a; min-height: 1em; max-height: 36vh; overflow: auto; }
@@ -45,18 +46,20 @@
     <div class="friend" id="friend">
       <svg id="buddy" viewBox="0 0 200 200" aria-hidden="true">
         <!-- Zippy: an original character, a little cloud that carries a spark -->
+        <g id="body">
         <path d="M100 8 L88 40 L102 40 L92 66 L120 30 L106 30 Z" fill="#ffd23f" stroke="#e0a800" stroke-width="3" stroke-linejoin="round"/>
         <g id="armL"><ellipse cx="38" cy="132" rx="16" ry="11" fill="#7cc6ff"/></g>
-        <g id="armR"><ellipse cx="162" cy="128" rx="16" ry="11" fill="#7cc6ff"/></g>
+        <g id="armR" data-origin="0% 50%" data-wave="-35"><ellipse cx="162" cy="128" rx="16" ry="11" fill="#7cc6ff"/></g>
         <path d="M45 170 C18 170 14 132 40 124 C34 92 70 70 96 84 C110 60 152 64 156 98 C186 98 192 140 168 150 C176 172 150 180 140 170 Z"
           fill="#9ed8ff" stroke="#5aaee8" stroke-width="4" stroke-linejoin="round"/>
         <ellipse cx="102" cy="140" rx="44" ry="24" fill="#d7f0ff"/>
-        <g id="eyes">
+        <g id="eyes" data-origin="50% 50%">
           <ellipse cx="80" cy="112" rx="11" ry="14" fill="#1d2b3a"/><ellipse cx="124" cy="112" rx="11" ry="14" fill="#1d2b3a"/>
           <circle cx="84" cy="106" r="4" fill="#fff"/><circle cx="128" cy="106" r="4" fill="#fff"/>
         </g>
         <ellipse cx="62" cy="132" rx="9" ry="6" fill="#ffb3c7"/><ellipse cx="142" cy="132" rx="9" ry="6" fill="#ffb3c7"/>
         <ellipse id="mouth" cx="102" cy="138" rx="12" ry="5" fill="#7a2d3a" style="transform: scaleY(.5)"/>
+        </g>
       </svg>
     </div>
     <div class="side">

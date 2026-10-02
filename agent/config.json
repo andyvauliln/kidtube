@@ -1,0 +1,31 @@
+{
+  "runner": "local",
+  "dataRepo": "andyvauliln/kidtube-data",
+  "dataDir": "~/.local/share/kidtube/kidtube-data",
+  "stateDir": "~/.local/share/kidtube/state",
+  "envFile": "~/.config/kidtube/agent.env",
+  "timezone": "UTC",
+  "schedule": "30 3 * * *",
+  "defaults": {
+    "videosPerDay": 6,
+    "newIdeas": 6,
+    "languageMins": {},
+    "requiredFirst": "first",
+    "maxQuestions": 2,
+    "searchResults": 8,
+    "contentPerRun": 14,
+    "planEveryDays": 7
+  },
+  "llm": {
+    "preferred": [
+      "nvidia/nemotron-3-super-120b-a12b:free",
+      "qwen/qwen3.8-27b:free",
+      "google/gemma-4-31b-it:free",
+      "nvidia/nemotron-3-ultra-550b-a55b:free"
+    ],
+    "router": true,
+    "paidModel": null,
+    "maxCallsPerRun": 80,
+    "maxModelsPerCall": 8
+  }
+}

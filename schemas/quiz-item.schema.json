@@ -75,6 +75,11 @@
           }
         }
       ]
+    },
+    "lang": {
+      "type": "string",
+      "pattern": "^[a-z]{2}(-[A-Z]{2})?$",
+      "description": "language of the video, e.g. en or ru-RU; the talking friend speaks and listens in it"
     }
   },
   "allOf": [

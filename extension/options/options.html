@@ -99,6 +99,13 @@
           <p class="hint">0 = no limit.</p></div>
       </div>
 
+      <label for="requiredFirst">Must-watch videos (⭐, chosen by you or the helper)</label>
+      <select id="requiredFirst">
+        <option value="first">⭐ videos first, the others wait</option>
+        <option value="mix">one ⭐ video, then one he picks, and so on</option>
+        <option value="off">⭐ is only a mark, he picks freely</option>
+      </select>
+
       <label class="check"><input type="checkbox" id="allowSkip"> Allow skipping inside a video</label>
       <p class="hint">Off: he can't jump forward or speed it up. Going back is always allowed.</p>
 
@@ -139,6 +146,14 @@
 
       <button class="primary" id="saveRules">Save rules</button>
       <p id="rulesOut" class="muted"></p>
+    </section>
+
+    <section>
+      <h2>Message to the helper</h2>
+      <p class="muted">The daily helper reads this on its next run (every evening) and adds it to your wishes in Notion. For example: “This week: plus and minus up to 10”, “Today something about friendship”, “At least 3 videos in Russian”.</p>
+      <textarea id="wish" maxlength="2000" placeholder="What should he watch or learn?"></textarea>
+      <button class="primary" id="sendWish">Send to the helper</button>
+      <p id="wishOut" class="muted"></p>
     </section>
 
     <section>

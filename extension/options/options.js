@@ -173,6 +173,7 @@ async function renderRules() {
   $('closeAfter').value = c.closeAfterSeconds ?? 0;
   $('minLen').value = (c.minVideoDurationSeconds ?? 0) / 60;
   $('maxLen').value = (c.maxVideoDurationSeconds ?? 0) / 60;
+  $('requiredFirst').value = c.requiredFirst ?? 'first';
   $('allowSkip').checked = !!c.allowSkip;
   $('blockSites').checked = !!c.blockOutboundLinks;
   $('sites').value = (c.allowedSiteDomains ?? []).join('\n');
@@ -221,6 +222,7 @@ function readRules() {
     closeAfterSeconds: int('closeAfter', 0, 86400),
     minVideoDurationSeconds: Math.round(Number($('minLen').value) * 60) || 0,
     maxVideoDurationSeconds: Math.round(Number($('maxLen').value) * 60) || 0,
+    requiredFirst: $('requiredFirst').value,
     allowSkip: $('allowSkip').checked,
     blockOutboundLinks: $('blockSites').checked,
     allowedSiteDomains: sites.length ? sites : ['youtube.com'],
@@ -261,6 +263,16 @@ $('saveRules').addEventListener('click', async () => {
 
 let voiceLang = 'en-US';
 $('maxAttempts').addEventListener('input', () => { $('attemptsLabel').textContent = $('maxAttempts').value || '3'; });
+
+$('sendWish').addEventListener('click', async () => {
+  const text = $('wish').value.trim();
+  if (!text) return;
+  $('sendWish').disabled = true;
+  const r = await send({ type: 'wish', text });
+  $('sendWish').disabled = false;
+  if (r?.ok) { $('wish').value = ''; $('wishOut').textContent = `Sent. The helper will read it on its next run.`; }
+  else $('wishOut').textContent = 'Could not send it. Check the GitHub settings above and try again.';
+});
 
 $('tryVoice').addEventListener('click', () => {
   const name = $('friendName').value.trim() || 'Zippy';

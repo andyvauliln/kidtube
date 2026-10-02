@@ -1,6 +1,7 @@
 // The talking friend: says the intro before a video, and after it says what we learned and asks the questions.
 // The service worker decides what comes next; this page only talks, listens and reports.
 import { say, listen } from './voice.js';
+import { createRig } from './rig.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { checkPin } from '../lib/pin.js';
 
@@ -19,22 +20,48 @@ const svg = $('buddy');
 
 // --- the character -----------------------------------------------------------------------------
 
-let flap = null;
+let rig = null;                 // moves the SVG character (rig.js); a plain picture only bobs
 function talking(on) {
   document.body.classList.toggle('talking', on);
-  const mouth = $('friend').querySelector('#mouth');
-  clearInterval(flap);
-  if (!mouth) return;
-  if (on) flap = setInterval(() => { mouth.style.transform = `scaleY(${(0.5 + Math.random() * 1.8).toFixed(2)})`; }, 110);
-  else mouth.style.transform = 'scaleY(.5)';
+  rig?.talking(on);
 }
 
-async function speak(line) {
+// lang: the language of this line (a question can differ from the video); default the video's.
+async function speak(line, lang = script.lang) {
   if (skipAll) return;
   $('bubble').textContent = line.text;
   talking(true);
-  try { await say(line, script.voice); } finally { talking(false); }
+  try { await say(line, { ...script.voice, lang: lang || script.voice?.lang }, { onWord: () => rig?.word() }); } finally { talking(false); }
 }
+
+// What the friend says around the questions, in English and Russian (a Russian video gets Russian).
+const PHRASES = {
+  en: {
+    praise: ['Yes! Great job!', 'Correct! You’re so smart!', 'That’s right! Hooray!'],
+    retry: ['Hmm, not quite. Try again!', 'Almost! One more try!'],
+    answerIs: (a) => `Good try! The answer is ${a}.`,
+    newerApp: 'This question needs a newer app. Let’s skip it!',
+    hello: (n) => `Hi, it’s ${n}! I have a question for you.`,
+    rewatch: 'Let’s watch it one more time and listen carefully!',
+    stop: 'That’s all for today. Let’s try again tomorrow. Bye bye!',
+    great: 'You did great! Now pick the next video.',
+    tried: 'Good job trying! Now pick the next video.',
+    listening: 'I’m listening…', notHeard: 'I didn’t hear you. Tap the 🎤 and say it again.', heard: (h) => `I heard: “${h}”`,
+  },
+  ru: {
+    praise: ['Да! Молодец!', 'Правильно! Ты такой умный!', 'Верно! Ура!'],
+    retry: ['Хм, не совсем. Попробуй ещё!', 'Почти! Ещё разок!'],
+    answerIs: (a) => `Хорошая попытка! Правильный ответ: ${a}.`,
+    newerApp: 'Для этого вопроса нужно обновить приложение. Пропустим!',
+    hello: (n) => `Привет, это ${n}! У меня есть вопрос.`,
+    rewatch: 'Давай посмотрим ещё раз и будем слушать внимательно!',
+    stop: 'На сегодня всё. Попробуем завтра. Пока-пока!',
+    great: 'Ты молодец! Теперь выбери следующее видео.',
+    tried: 'Ты хорошо старался! Теперь выбери следующее видео.',
+    listening: 'Я слушаю…', notHeard: 'Я тебя не услышал. Нажми 🎤 и скажи ещё раз.', heard: (h) => `Я услышал: «${h}»`,
+  },
+};
+const say_ = (lang) => PHRASES[String(lang ?? '').slice(0, 2)] ?? PHRASES.en;
 
 // A character drawn as SVG (from the private data repo) is put into the page so its #mouth can move.
 function inlineSvg(text) {
@@ -49,14 +76,19 @@ function inlineSvg(text) {
   return document.importNode(root, true);
 }
 
+function animate(el) {
+  rig = createRig(el);
+  if (el.querySelector('#body')) $('friend').classList.add('rigged');
+}
+
 function setupFriend() {
   const custom = script.svg && inlineSvg(script.svg);
-  if (custom) svg.replaceWith(custom);
+  if (custom) { svg.replaceWith(custom); animate(custom); }
   else if (script.imageUrl) {
     const img = Object.assign(document.createElement('img'), { src: script.imageUrl, alt: '' });
-    img.onerror = () => img.replaceWith(svg);
+    img.onerror = () => { img.replaceWith(svg); animate(svg); };
     svg.replaceWith(img);
-  }
+  } else animate(svg);
   $('startText').textContent = `👆 Tap ${script.name}`;
 }
 
@@ -108,8 +140,8 @@ function voiceAnswer(item, resolve) {
   const go = async () => {
     mic.classList.add('on');
     mic.disabled = true;
-    $('heard').textContent = 'I’m listening…';
-    const heard = await listen(script.voice?.lang || 'en-US');
+    $('heard').textContent = say_(item.lang).listening;
+    const heard = await listen(item.lang || script.voice?.lang || 'en-US');
     mic.classList.remove('on');
     mic.disabled = false;
     if (heard === null) {                 // no microphone here: type instead, from now on
@@ -117,27 +149,25 @@ function voiceAnswer(item, resolve) {
       $('heard').textContent = '';
       return typedAnswer(item, resolve);
     }
-    if (!heard.length) { $('heard').textContent = 'I didn’t hear you. Tap the 🎤 and say it again.'; return; }
-    $('heard').textContent = `I heard: “${heard[0]}”`;
+    if (!heard.length) { $('heard').textContent = say_(item.lang).notHeard; return; }
+    $('heard').textContent = say_(item.lang).heard(heard[0]);
     resolve({ value: heard, by: 'spoken' });
   };
   mic.onclick = go;
   go();                                   // start listening right after the question
 }
 
-const PRAISE = ['Yes! Great job!', 'Correct! You’re so smart!', 'That’s right! Hooray!'];
-const RETRY = ['Hmm, not quite. Try again!', 'Almost! One more try!'];
 const pick = (a) => a[Math.floor(Math.random() * a.length)];
 
 async function ask(item) {
   const result = { quizId: item.quizId, attempts: 0, answers: [] };
   if (!item.supported) {
-    await speak({ text: 'This question needs a newer app. Let’s skip it!' });
+    await speak({ text: say_(item.lang).newerApp }, item.lang);
     return { ...result, result: 'unsupported' };
   }
   if (skipAll) return { ...result, result: 'skippedByParent' };
   const skipped = new Promise((r) => { skipNow = r; });
-  await speak({ text: item.prompt, audioUrl: item.audioUrl });
+  await speak({ text: item.prompt, audioUrl: item.audioUrl }, item.lang);
   $('bubble').textContent = item.prompt;
   while (result.attempts < script.maxAttempts) {
     const a = skipAll ? 'skip' : await Promise.race([getAnswer(item), skipped]);
@@ -147,15 +177,17 @@ async function ask(item) {
     result.answers.push([].concat(a.value)[0]);
     clearAnswers();
     if (isCorrect(item, a.value, { spoken: a.by === 'spoken' })) {
-      await speak({ text: pick(PRAISE) });
+      rig?.react('happy');
+      await speak({ text: pick(say_(item.lang).praise) }, item.lang);
       return { ...result, result: 'passed' };
     }
+    rig?.react('sad');
     if (result.attempts < script.maxAttempts) {
-      await speak({ text: pick(RETRY) });
+      await speak({ text: pick(say_(item.lang).retry) }, item.lang);
       $('bubble').textContent = item.prompt;
     }
   }
-  await speak({ text: `Good try! The answer is ${correctText(item)}.` });
+  await speak({ text: say_(item.lang).answerIs(correctText(item)) }, item.lang);
   return { ...result, result: 'failed' };
 }
 
@@ -170,17 +202,16 @@ function finish() {
 async function run() {
   running = true;
   $('start').hidden = true;
-  document.body.classList.add('wave');
+  rig?.wave();
   for (const line of script.lines) await speak(line);
   if (mode === 'outro' && script.items.length) {
-    if (!script.lines.length) await speak({ text: `Hi, it’s ${script.name}! I have a question for you.` });
+    const P = say_(script.lang);
+    if (!script.lines.length) await speak({ text: P.hello(script.name) });
     const results = [];
     for (const item of script.items) results.push(await ask(item));
     const { next } = await send({ type: 'quizResults', videoId, results });
     const allGood = results.every((r) => r.result !== 'failed');
-    await speak({ text: next === 'rewatch' ? 'Let’s watch it one more time and listen carefully!'
-      : next === 'stopForToday' ? 'That’s all for today. Let’s try again tomorrow. Bye bye!'
-      : allGood ? 'You did great! Now pick the next video.' : 'Good job trying! Now pick the next video.' });
+    await speak({ text: next === 'rewatch' ? P.rewatch : next === 'stopForToday' ? P.stop : allGood ? P.great : P.tried });
   }
   if (mode === 'outro' && script.catchphrase) await speak({ text: script.catchphrase });
   finish();

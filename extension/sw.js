@@ -1,7 +1,7 @@
 // KidTube service worker: the rules live here. Content scripts and the iframes only ask and show.
 import { mergeConfig } from './lib/merge.js';
 import { lockReason, nextOpening, localParts } from './lib/time.js';
-import { visibleVideos } from './lib/queue.js';
+import { visibleVideos, waitingIds } from './lib/queue.js';
 import { classifyUrl, homeUrl, watchUrl } from './lib/url.js';
 import { parseCaptions, captionsToText } from './lib/captions.js';
 
@@ -70,6 +70,11 @@ function videoInfo(s, queue, videoId) {
   return { videoId, ...(s.seen?.[videoId] ?? {}), ...(v ?? {}), title: v?.title ?? s.seen?.[videoId]?.title ?? 'this video' };
 }
 
+const LANGS = { en: 'en-US', ru: 'ru-RU', de: 'de-DE', fr: 'fr-FR', es: 'es-ES', uk: 'uk-UA' };
+function fullLang(l) {
+  return !l ? null : l.includes('-') ? l : LANGS[l] ?? l;
+}
+
 function newEvent(type, fields) {
   return { eventId: crypto.randomUUID(), type, at: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), ...fields };
 }
@@ -105,7 +110,7 @@ async function viewState(s, tabId) {
   const ses = s.session;
   const min = config.minSecondsBeforeLeave ?? 0;
   return {
-    videos: visibleVideos(queue, config, s.watched).filter((v) => v.videoId !== ses?.videoId),
+    videos: kidList(s, queue, config).filter((v) => v.videoId !== ses?.videoId),
     lock: reason ? { reason, opens: nextOpening(config, now) } : null,
     minutesLeft: config.time?.maxMinutesPerDay ? Math.max(0, Math.ceil(config.time.maxMinutesPerDay - played / 60)) : null,
     session: ses ? { videoId: ses.videoId, secondsUntilUnlock: ses.ended ? 0 : Math.max(0, Math.ceil(min - ses.playedSeconds)) } : null,
@@ -116,9 +121,27 @@ async function viewState(s, tabId) {
 
 // --- navigation guard ----------------------------------------------------------------------
 
+// How many ⭐ and free videos he finished today (for config.requiredFirst).
+function watchedToday(s, queue, cfg) {
+  const date = localParts(new Date(), cfg.timezone).date;
+  const required = new Set(queue.videos.filter((v) => v.required).map((v) => v.videoId));
+  const out = { required: 0, free: 0 };
+  for (const [id, at] of Object.entries(s.watched)) {
+    if (localParts(new Date(at), cfg.timezone).date === date) out[required.has(id) ? 'required' : 'free']++;
+  }
+  return out;
+}
+
+// The list he sees, with ⭐ videos marked and the ones that must wait greyed out.
+function kidList(s, queue, cfg) {
+  const videos = visibleVideos(queue, cfg, s.watched);
+  const waiting = waitingIds(videos, cfg, watchedToday(s, queue, cfg));
+  return videos.map((v) => (waiting.has(v.videoId) ? { ...v, waiting: true } : v));
+}
+
 function isOpenable(videoId, queue, cfg, s) {
   if (s.session?.videoId === videoId) return true;
-  return visibleVideos(queue, cfg, s.watched).some((v) => v.videoId === videoId);
+  return kidList(s, queue, cfg).some((v) => v.videoId === videoId && !v.waiting);
 }
 
 const BLOCK_TARGET = { shorts: 'shorts', search: 'search', channel: 'channel', other: 'video', watch: 'video' };
@@ -219,19 +242,24 @@ async function handle(msg, sender) {
         const name = p.name || 'Zippy';
         const lines = [];
         const hasQuiz = !!config.quiz?.enabled;
+        // A Russian video gets a Russian intro and a Russian voice (queue `lang`).
+        const lang = fullLang(v.lang) ?? p.voice?.lang ?? 'en-US';
+        const ru = lang.startsWith('ru');
         if (msg.mode === 'intro') {
           if (p.catchphrase) lines.push({ text: p.catchphrase });
-          lines.push(v.intro ?? { text: `Hi! I'm ${name}! Now we're going to watch: ${v.title}. ${hasQuiz ? 'Watch carefully, because at the end I will ask you a question!' : 'Let’s find out something new!'}` });
+          lines.push(v.intro ?? { text: ru
+            ? `Привет! Я ${name}! Сейчас мы посмотрим: ${v.title}. ${hasQuiz ? 'Смотри внимательно, в конце я задам тебе вопрос!' : 'Давай узнаем что-то новое!'}`
+            : `Hi! I'm ${name}! Now we're going to watch: ${v.title}. ${hasQuiz ? 'Watch carefully, because at the end I will ask you a question!' : 'Let’s find out something new!'}` });
         } else if (p.outro) {
-          lines.push(v.outro ?? { text: `That was: ${v.title}. Well done for watching it all!` });
+          lines.push(v.outro ?? { text: ru ? `Это было: ${v.title}. Молодец, что досмотрел до конца!` : `That was: ${v.title}. Well done for watching it all!` });
         }
         const items = msg.mode === 'outro' ? (t?.quizIds ?? []).map((quizId) => ({ quizId, ...config.quiz.items[quizId] })).filter((i) => i.prompt) : [];
         const { quizTypes } = await loadBundled();
         const ch = s.character && p.imageUrl === `repo:${s.character.path}` ? s.character : null;
         return {
           name, imageUrl: ch?.src ?? (p.imageUrl?.startsWith('https://') ? p.imageUrl : ''), svg: ch?.svg ?? '',
-          catchphrase: p.catchphrase ?? '', voice: p.voice ?? {}, title: v.title, lines,
-          items: items.map((i) => ({ ...i, supported: quizTypes.includes(i.type) })),
+          catchphrase: p.catchphrase ?? '', voice: { ...(p.voice ?? {}), lang }, lang, title: v.title, lines,
+          items: items.map((i) => ({ ...i, lang: fullLang(i.lang) ?? lang, supported: quizTypes.includes(i.type) })),
           maxAttempts: config.quiz?.maxAttempts ?? 3, onFail: config.quiz?.onFail ?? 'continue',
         };
       });
@@ -361,6 +389,14 @@ async function handle(msg, sender) {
         if (msg.comment) ev.comment = String(msg.comment).slice(0, 2000);
         s.outbox.push(ev);
       }).then(() => sync());
+
+    case 'wish': // "message to the helper" from the parent page; the daily helper reads it
+      return withState((s) => {
+        const text = String(msg.text ?? '').trim().slice(0, 2000);
+        if (!text) return { ok: false };
+        s.outbox.push(newEvent('wish', { text }));
+        return { ok: true };
+      }).then(async (r) => { if (r.ok) await sync(); return r; });
 
     case 'getRules':
       return withState(async (s) => ({ config: (await effective(s)).config, pending: !!s.localConfig }));
@@ -648,7 +684,9 @@ export async function fetchTranscript(videoId) {
 async function uploadTranscripts(repo, token) {
   const { transcripts = {}, data = {} } = await chrome.storage.local.get(['transcripts', 'data']);
   const queue = data.queue ?? (await loadBundled()).queue;
-  const due = queue.videos.map((v) => v.videoId).filter((id) => {
+  // Today's videos first, then the planned ones (`upcoming`) so the helper can prepare them.
+  const ids = [...new Set([...queue.videos, ...(queue.upcoming ?? [])].map((v) => v.videoId))];
+  const due = ids.filter((id) => /^[A-Za-z0-9_-]{11}$/.test(id)).filter((id) => {
     const t = transcripts[id];
     return !t || (t.status === 'error' && Date.now() - t.at > RETRY_AFTER_MS);
   }).slice(0, TRANSCRIPTS_PER_SYNC);

@@ -15,3 +15,12 @@ h1 { font-size: 28px; margin: 16px 0 8px; }
 p { margin: 4px 0; color: var(--muted); font-weight: 500; font-size: 18px; }
 .gear { position: fixed; right: 12px; bottom: 12px; width: 44px; height: 44px; border: 0; border-radius: 50%; background: #ffffffcc;
   font-size: 22px; opacity: .55; box-shadow: 0 2px 6px #0002; z-index: 10; }
+/* must-watch videos (⭐) and the ones waiting for them */
+.card { position: relative; }
+.card .star { position: absolute; top: 6px; left: 6px; font-size: 30px; filter: drop-shadow(0 2px 2px #0005); }
+.card.waiting { opacity: .45; filter: grayscale(.7); }
+.card.waiting::after { content: '⭐ first'; position: absolute; top: 8px; right: 8px; background: #fffc; border-radius: 12px; padding: 2px 8px; font-size: 14px; }
+.nudge { animation: nudge .4s ease-in-out; }
+.star.nudge { animation: pop .6s ease-in-out 2; }
+@keyframes nudge { 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
+@keyframes pop { 50% { transform: scale(1.5) rotate(15deg); } }

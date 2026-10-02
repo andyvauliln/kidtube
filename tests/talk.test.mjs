@@ -128,3 +128,37 @@ test('the gear opens the parent settings page', async () => {
   await send({ type: 'openSettings' });
   assert.equal(fake.nav.created.at(-1), 'ext://options/options.html');
 });
+
+test('must-watch videos first: the others are greyed and can’t be opened until ⭐ ones are watched', async () => {
+  const q = structuredClone(queue);
+  q.videos[2].required = true;
+  setConfig({ requiredFirst: 'first' });
+  fake.store.data.queue = q;
+  fake.store.watched = {};
+  fake.store.session = null;
+  const st = await send({ type: 'state' });
+  assert.equal(st.videos.find((v) => v.videoId === C).waiting, undefined);
+  assert.equal(st.videos.find((v) => v.videoId === A).waiting, true);
+  assert.equal((await send({ type: 'open', videoId: A })).ok, false);
+  assert.equal((await send({ type: 'open', videoId: C })).ok, true);
+  fake.store.watched = { [C]: new Date().toISOString() };
+  fake.store.session = null;
+  assert.equal((await send({ type: 'state' })).videos.some((v) => v.waiting), false);
+});
+
+test('a Russian video: Russian voice and Russian default words', async () => {
+  const q = structuredClone(queue);
+  q.videos[0].lang = 'ru';
+  setConfig({ presenter: { intro: true, name: 'Пикачу' } });
+  fake.store.data.queue = q;
+  const t = await send({ type: 'talk', videoId: A, mode: 'intro' });
+  assert.equal(t.voice.lang, 'ru-RU');
+  assert.match(t.lines[0].text, /Сейчас мы посмотрим/);
+});
+
+test('a message to the helper goes out as a wish event', async () => {
+  fake.store.outbox = [];
+  await send({ type: 'wish', text: '  At least 3 videos in Russian  ' });
+  assert.ok(fake.store.outbox.some((e) => e.type === 'wish' && e.text === 'At least 3 videos in Russian'));
+  assert.equal((await send({ type: 'wish', text: '   ' })).ok, false);
+});

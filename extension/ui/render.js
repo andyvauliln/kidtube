@@ -14,6 +14,21 @@ export function card(v, onTap, { small = false } = {}) {
     d.textContent = `${Math.round(v.durationSeconds / 60)} min`;
     b.append(d);
   }
+  if (v.required) {
+    const star = document.createElement('div');
+    star.className = 'star';
+    star.textContent = '⭐';
+    b.append(star);
+  }
+  if (v.waiting) {
+    // Must-watch videos come first: this one waits, and a tap only says so.
+    b.classList.add('waiting');
+    b.addEventListener('click', () => {
+      b.classList.remove('nudge'); void b.offsetWidth; b.classList.add('nudge');
+      document.querySelectorAll('.card .star').forEach((x) => { x.classList.remove('nudge'); void x.offsetWidth; x.classList.add('nudge'); });
+    });
+    return b;
+  }
   b.addEventListener('click', onTap);
   return b;
 }

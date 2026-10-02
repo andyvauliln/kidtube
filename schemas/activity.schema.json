@@ -73,7 +73,8 @@
               "quiz",
               "parentNote",
               "blocked",
-              "timeUp"
+              "timeUp",
+              "wish"
             ]
           },
           "at": {
@@ -281,6 +282,31 @@
                 "playedMinutes": {
                   "type": "number",
                   "minimum": 0
+                }
+              }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "wish"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "text"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "eventId": true,
+                "type": true,
+                "at": true,
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
                 }
               }
             }

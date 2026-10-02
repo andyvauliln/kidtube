@@ -1,0 +1,32 @@
+# The daily helper on GitHub's computers instead of this server (config "runner": "cloud").
+# To use it: copy this file to kidtube-data/.github/workflows/helper.yml, add the repository
+# secrets OPENROUTER_API_KEY and NOTION_TOKEN in kidtube-data → Settings → Secrets → Actions,
+# and remove the line from this server's crontab (crontab -e, the "# kidtube-helper" line).
+# Note: YouTube sometimes blocks searches from GitHub's servers; the run then only re-plans the list.
+name: helper
+on:
+  schedule: [{ cron: '30 3 * * *' }]   # UTC
+  workflow_dispatch: {}
+permissions:
+  contents: write
+concurrency: helper
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+        with: { path: data, fetch-depth: 0 }
+      - uses: actions/checkout@v4
+        with: { repository: andyvauliln/kidtube, path: kidtube }
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: npm ci --omit=optional
+        working-directory: kidtube
+      - run: node agent/run.mjs
+        working-directory: kidtube
+        env:
+          KIDTUBE_DATA_DIR: ${{ github.workspace }}/data
+          KIDTUBE_STATE_DIR: ${{ runner.temp }}/state
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          NOTION_TOKEN: ${{ secrets.NOTION_TOKEN }}
