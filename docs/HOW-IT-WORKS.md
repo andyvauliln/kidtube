@@ -8,7 +8,7 @@ KidTube has five parts. They never talk to each other directly. Everything goes 
 
 | Part | Where it runs | What it does | Reads | Writes |
 | --- | --- | --- | --- | --- |
-| Tablet extension (KidTube 0.5.0) | Quetta browser on the tablet | Shows only the planned videos, the talking friend and the questions. Enforces hours, minutes and locks. | `queue.json`, `parent-config.json`, `characters/` | `activity/<day>.json`, `transcripts/` (when it can), rule changes |
+| Tablet extension (KidTube 0.6.1) | Quetta browser on the Android tablet, or Orion on iPad/iPhone/Mac | Shows only the planned videos, the talking friend and the questions. Enforces hours, minutes and locks. | `queue.json`, `parent-config.json`, `characters/` | `activity/<day>.json`, `transcripts/` (when it can), rule changes |
 | Data repo `kidtube-data` | GitHub (private) | The one place everything is stored. Every push is checked. | — | — |
 | Daily helper | This server, 03:30 UTC (crontab → `agent/daily.sh`) | Claude Code (Sonnet) runs the day by `agent/DAILY.md`: plans the list, finds videos, writes the friend's words and the questions, keeps Notion up to date | data repo, Notion, YouTube search | data repo, Notion |
 | Notion "Kids Content Manager" | Notion | Where you approve videos, write wishes and comments, and read the plan | — | — |
@@ -282,6 +282,17 @@ The code is public (`andyvauliln/kidtube`). Everything about him is private (`an
 | The tablet is offline | It keeps the last good list; its events wait and are sent later |
 | Claude can't run (logged out, out of usage) | The backup program runs; Notion is skipped unless it has its own Notion key |
 | The Notion login expired | Claude skips Notion, says so in the log; sign in again in Claude Code (`/mcp`) |
+
+## Orion (iPad, iPhone, Mac)
+
+The same extension installs in Orion from the .zip on the install page. Orion is built on WebKit and lacks some Chrome features:
+
+| Feature | Quetta | Orion |
+| --- | --- | --- |
+| Other websites blocked | before the page loads (blocking rules) | sent back to his list right after it starts loading |
+| His spoken answers | the tablet's speech recognition | may be missing on iPad/iPhone: he types, or use *Hearing his answers → OpenRouter* |
+| Updates | automatic | maybe manual: the parent page shows *Install the new version* |
+| Keeping him in the browser | Family Link | Screen Time |
 
 ## Not built yet
 

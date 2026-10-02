@@ -149,7 +149,8 @@ const BLOCK_TARGET = { shorts: 'shorts', search: 'search', channel: 'channel', o
 // Returns the URL to send the tab to, or null to let it be.
 async function guard(s, tabId, href) {
   const c = classifyUrl(href);
-  if (c.kind === 'internal' || c.kind === 'external') return null; // external sites: DNR allowlist
+  if (c.kind === 'internal') return null;
+  if (c.kind === 'external') return externalGuard(c.host);         // normally DNR blocks them; this is the fallback
   // A parent watching from the parent page: that one video in that one tab, no kid rules.
   const pass = s.parentPass;
   if (pass) {
@@ -781,18 +782,36 @@ function toBase64(text) {
 }
 
 // Every top-level page outside allowedSiteDomains is blocked (PLAN.md C16).
+const allowedDomains = (config) => [...new Set([...(config.allowedSiteDomains ?? []), 'youtube.com', 'andyvauliln.github.io'])];
 async function applySiteRules() {
   const s = await chrome.storage.local.get(['data', 'localConfig']);
   const { config } = await effective({ data: s.data ?? {}, localConfig: s.localConfig });
   // YouTube and the install page always stay reachable, whatever the list says.
-  const domains = [...new Set([...(config.allowedSiteDomains ?? []), 'youtube.com', 'andyvauliln.github.io'])];
-  await chrome.declarativeNetRequest.updateDynamicRules({
-    removeRuleIds: [SITE_RULE_ID],
-    addRules: config.blockOutboundLinks ? [{
-      id: SITE_RULE_ID, priority: 1, action: { type: 'block' },
-      condition: { resourceTypes: ['main_frame'], excludedRequestDomains: domains },
-    }] : [],
-  });
+  try {
+    await chrome.declarativeNetRequest.updateDynamicRules({
+      removeRuleIds: [SITE_RULE_ID],
+      addRules: config.blockOutboundLinks ? [{
+        id: SITE_RULE_ID, priority: 1, action: { type: 'block' },
+        condition: { resourceTypes: ['main_frame'], excludedRequestDomains: allowedDomains(config) },
+      }] : [],
+    });
+    dnrWorks = true;
+  } catch {
+    dnrWorks = false;   // Orion (WebKit) has no dynamic rules: the navigation guard sends other sites home instead
+  }
+  await chrome.storage.local.set({ dnrWorks });
+}
+
+// Browsers without dynamic blocking rules (Orion): a page outside the allowed sites goes back to his list.
+let dnrWorks;
+async function externalGuard(host) {
+  dnrWorks ??= (await chrome.storage.local.get('dnrWorks')).dnrWorks ?? !!chrome.declarativeNetRequest?.updateDynamicRules;
+  if (dnrWorks) return null;
+  const s = await chrome.storage.local.get(['data', 'localConfig']);
+  const { config } = await effective({ data: s.data ?? {}, localConfig: s.localConfig });
+  if (!config.blockOutboundLinks) return null;
+  const allowed = allowedDomains(config).some((d) => host === d || host.endsWith(`.${d}`));
+  return allowed ? null : homeUrl('www.youtube.com');
 }
 
 // --- updates -------------------------------------------------------------------------------
