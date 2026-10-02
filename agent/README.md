@@ -7,6 +7,27 @@ tablet's list (`kidtube-data`) and your Notion pages.
 It uses free AI models on OpenRouter and rotates between them. A paid model can be added later
 (`llm.paidModel` in `config.json`).
 
+## How it runs (since 0.6.0)
+
+Cron starts `agent/daily.sh` at 03:30 UTC. It runs **Claude Code (Sonnet)** with the instructions in `agent/DAILY.md`.
+
+- Claude does the thinking and the writing, and reads and writes Notion through its Notion connection. No Notion key is needed.
+- Claude calls `node agent/kt.mjs …` for data, YouTube search, Gemini (transcripts and questions about a video), the friend's recordings, the checks and saving.
+- If Claude can't run (logged out, out of usage) and nothing was saved that day, the old program `agent/run.mjs` runs the same steps with OpenRouter text models.
+
+Settings in `config.json`:
+
+| Setting | What it chooses |
+| --- | --- |
+| `orchestrator` | runner (`claude` or `node`), model, whether to fall back to `run.mjs` |
+| `voices.speak.provider` | `device`, `gemini` or `openrouter`: who records the friend's lines |
+| `openrouter.mode` | `free-first`, `paid` or `specific`, with model lists |
+| `transcripts` | Gemini limits per day (videos and minutes) |
+
+Run the session by hand with `agent/daily.sh`. The log goes to `~/.local/share/kidtube/state/`.
+
+The steps below describe the old program `run.mjs`. The Claude session follows the same order.
+
 ## What one run does
 
 1. **Gets the data.** Pulls `kidtube-data` (its own clone in `~/.local/share/kidtube/kidtube-data`).
