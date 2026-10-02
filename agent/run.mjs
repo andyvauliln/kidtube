@@ -159,6 +159,12 @@ async function run() {
       if (!seen.has(c.id)) { seen.add(c.id); comments.push({ page: 'About him', comment: c.text }); }
     }
     helper.seenComments = [...seen].slice(-2000);
+    // Videos the helper knew before Notion was connected (or whose row was deleted) get a row.
+    for (const [id, v] of Object.entries(videos)) {
+      if (rows[id]) continue;
+      if (v.notionPageId) delete v.notionPageId;
+      if (v.status !== 'watched' || (v.watchedAt ?? '') > iso(new Date(Date.now() - 14 * 864e5))) touched.add(id);
+    }
     const custom = (await readTemplates(notion, ws).catch(() => [])).filter((t) => t.use);
     const builtIn = new Set(custom.filter((t) => t.kind === 'Built-in').map((t) => t.id));
     templates = [...templateCatalog().filter((t) => builtIn.size === 0 || builtIn.has(t.id)),
