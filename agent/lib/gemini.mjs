@@ -25,7 +25,9 @@ export function createGemini({ apiKey, stateDir, config = {}, today, log = conso
   if (usage.date !== today) usage = { date: today, videos: 0, seconds: 0 };
   const maxVideos = config.maxVideosPerDay ?? 10;
   const maxSeconds = (config.maxMinutesPerDay ?? 120) * 60;
-  const models = config.models ?? ['gemini-3.7-flash', 'gemini-3.8-flash', 'gemini-3.5-flash', 'gemini-flash-latest', 'gemini-3.5-flash-lite'];
+  const models = [...(config.models ?? ['gemini-3.5-flash-lite', 'gemini-3.7-flash', 'gemini-3.8-flash', 'gemini-flash-latest'])];
+  // A model that is busy, broken or too slow goes to the back of the line for the rest of the run.
+  const demote = (m) => { models.splice(models.indexOf(m), 1); models.push(m); };
   let quotaGone = false;
 
   const left = () => ({ videos: maxVideos - usage.videos, seconds: maxSeconds - usage.seconds });
@@ -35,7 +37,8 @@ export function createGemini({ apiKey, stateDir, config = {}, today, log = conso
   async function transcribe(video) {
     if (!fits(video.durationSeconds)) throw new Error('over today’s Gemini limit');
     const errors = [];
-    for (const model of models) {
+    for (const model of [...models]) {
+      const started = Date.now();
       const r = await fetchImpl(`${API}/${model}:generateContent`, {
         method: 'POST',
         headers: { 'x-goog-api-key': apiKey, 'Content-Type': 'application/json' },
@@ -43,12 +46,13 @@ export function createGemini({ apiKey, stateDir, config = {}, today, log = conso
           contents: [{ parts: [{ file_data: { file_uri: `https://www.youtube.com/watch?v=${video.videoId}` } }, { text: PROMPT }] }],
           generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: 0.2 },
         }),
-        signal: AbortSignal.timeout(300000),
+        signal: AbortSignal.timeout((config.secondsPerRequest ?? 120) * 1000),
       }).catch((e) => ({ ok: false, status: 0, json: async () => ({ error: { message: e.message } }) }));
       const j = await r.json().catch(() => ({}));
       if (!r.ok || j.error) {
         const msg = `${model}: ${j.error?.message ?? `HTTP ${r.status}`}`.slice(0, 200);
         errors.push(msg);
+        demote(model);
         // 429 = the free daily quota is used up: stop for today. 503/404 = busy or gone: next model.
         if (r.status === 429 && /quota|exhaust|per day/i.test(msg)) { quotaGone = true; break; }
         continue;
@@ -57,9 +61,10 @@ export function createGemini({ apiKey, stateDir, config = {}, today, log = conso
       usage.videos++;
       usage.seconds += video.durationSeconds;
       writeFileSync(usagePath, JSON.stringify(usage));
+      log(`  ${model} took ${Math.round((Date.now() - started) / 1000)} s`);
       const text = j.candidates?.[0]?.content?.parts?.map((p) => p.text ?? '').join('') ?? '';
       let o;
-      try { o = JSON.parse(text); } catch { errors.push(`${model}: not JSON`); continue; }
+      try { o = JSON.parse(text); } catch { errors.push(`${model}: not JSON`); demote(model); continue; }
       const lines = (arr) => (Array.isArray(arr) ? arr : []).filter((x) => x?.text).map((x) => `[${String(x.t ?? '').replace(/[^\d:]/g, '') || '0:00'}] ${String(x.text).replace(/\s+/g, ' ').trim()}`).join('\n');
       const transcript = lines(o.transcript);
       log(`  transcript ${video.videoId}: ${model}, ${transcript.length} chars`);
