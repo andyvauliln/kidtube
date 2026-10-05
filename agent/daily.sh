@@ -14,6 +14,9 @@ TODAY=$(date -u +%F)
 echo "=== $(date -u +%FT%TZ) daily run, runner=$RUNNER model=$MODEL"
 
 if [ "$RUNNER" = "claude" ] && command -v claude >/dev/null; then
+  # Long steps (save makes voice recordings) must run in the foreground: in -p mode Claude ends
+  # when it stops talking, and a backgrounded save was killed with it (Oct 3–5).
+  CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 BASH_DEFAULT_TIMEOUT_MS=1800000 BASH_MAX_TIMEOUT_MS=1800000 \
   claude -p "$(cat agent/DAILY.md)" \
     --model "${MODEL:-sonnet}" \
     --permission-mode dontAsk \

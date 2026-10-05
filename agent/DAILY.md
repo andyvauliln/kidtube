@@ -72,7 +72,7 @@ You do all the thinking and writing yourself. Gemini only watches videos.
    - `diary`: 2–4 sentences for the parent on what changed today and why;
    - `requiredFirst`: only if the wishes changed the must-watch order (`first`, `mix` or `off`).
 
-9. **Save.** `node agent/kt.mjs save`. Report its `voices` numbers as they are (`made`, `kept`, `errors`); lines without a recording are spoken by the tablet and are recorded on a later run. It makes the recordings of today's lines (if switched on), checks every file, and pushes to GitHub. It prints `notion.rows`; for each row:
+9. **Save.** `node agent/kt.mjs save` — run it in the foreground and wait for it (it can take 10+ minutes); never send it to the background, the session ends when you stop. Report its `voices` numbers as they are (`made`, `kept`, `errors`); lines without a recording are spoken by the tablet and are recorded on a later run. It makes the recordings of today's lines (if switched on), checks every file, and pushes to GitHub. It prints `notion.rows`; for each row:
    - New row (`notionPageId` null): create a page in the Videos data source with `properties`, and with the content of `pageFile` when there is one. Collect `{videoId, notionPageId}` pairs.
    - Existing row: update its properties. If `pageFile` is set, replace the page content with that file's text.
    - Then run `node agent/kt.mjs notion-done '<json of the new pairs>'`.
