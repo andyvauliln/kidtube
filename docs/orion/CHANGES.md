@@ -2,6 +2,12 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.7.3 (2026-10-05)
+
+- **↻ Update** button at the top of parent mode: sends your notes and what he watched, then the helper runs right away (it starts within a minute or two and takes about 10–30 minutes).
+- Next to it: "Waiting for the server…", "Helper is working…", then "Updated" with the time. The lists refresh by themselves when it's done.
+- At most 6 runs on request a day; the nightly run still happens.
+
 ## 0.7.2 (2026-10-05)
 - Parent mode shows the app version at the top; when a newer one exists, a "⬆ Download" link gets the new .zip directly.
 - The home screen refills itself: when he watches a video or you remove one, the next ready video takes its place (up to 10 on screen).
