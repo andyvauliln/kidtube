@@ -2,6 +2,12 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.6.4 (2026-10-05)
+
+- Fix for the white screen in Orion: KidTube now talks to its background the way Orion supports, so its screens get their answers.
+- If the list's frame still doesn't open, KidTube draws the list straight on the YouTube page instead.
+- New download link that never changes: `andyvauliln.github.io/kidtube/orion/kidtube-orion.zip` (always the newest Orion build).
+
 ## 0.6.3 (2026-10-05)
 
 - Fixes nothing yet; it finds out why youtube.com stayed white in Orion. Instead of a blank page, KidTube now says what is wrong.
