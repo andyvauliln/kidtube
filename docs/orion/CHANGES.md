@@ -2,6 +2,11 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.8.0 (2026-10-05)
+
+- New **Context** tab in parent mode: the documents the helper plans from — About him, Strategy, Math, Letters, World. Read them and add notes; the helper works your notes into the document on its next run (tap ↻ Update to run it now).
+- Every video now has a subject (math, letters, world or other).
+
 ## 0.7.4 (2026-10-05)
 
 - Settings → Connection: **Save settings to a file** and **Load settings from a file**. Removing the extension erases the GitHub key and PIN; after a reinstall, set any PIN, then load the file to get both back.
