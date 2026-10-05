@@ -57,7 +57,15 @@ function readEnv(path) {
 }
 const out = (x) => { console.log(JSON.stringify(x, null, 1)); };
 const fail = (msg) => { out({ ok: false, error: msg }); process.exit(1); };
-const parse = (s, what) => { try { return JSON.parse(s); } catch { return fail(`${what}: not valid JSON`); } };
+// Long JSON (notes with whole documents) can come as a file: @/tmp/kidtube-in/<name>.json (daily.sh lets Claude write there).
+const IN_DIR = '/tmp/kidtube-in/';
+const parse = (s, what) => {
+  if (s?.startsWith('@')) {
+    const f = s.slice(1);
+    if (!f.startsWith(IN_DIR) || f.includes('..')) fail(`${what}: files only from ${IN_DIR}`);
+    s = existsSync(f) ? readFileSync(f, 'utf8') : fail(`${what}: no file ${f}`);
+  }
+  try { return JSON.parse(s); } catch { return fail(`${what}: not valid JSON`); } };
 // Context documents in kidtube-data context/: about him, the overall strategy, one per subject.
 const CONTEXT_DOCS = ['kid', 'strategy', 'math', 'letters', 'world'];
 const SUBJECTS = ['math', 'letters', 'world', 'other'];

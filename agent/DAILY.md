@@ -70,7 +70,7 @@ You do all the thinking and writing yourself. Gemini only watches videos.
 
    Don't start the intro or end the outro with the friend's name or catchphrase; the tablet adds them. If the command refuses, fix what it says and run it again.
 
-7. **Notes** (shown to the parent in parent mode → Prompt). `node agent/kt.mjs notes '<json>'` with:
+7. **Notes** (shown to the parent in parent mode → Prompt). `node agent/kt.mjs notes '<json>'`, or, for long text (always when you send `context`), write the JSON with the Write tool to `/tmp/kidtube-in/notes.json` and run `node agent/kt.mjs notes @/tmp/kidtube-in/notes.json`. With:
    - `diary`: 2–4 sentences for the parent on what changed today and why, plus any problems;
    - `noticed`: rewrite "What I noticed" with these sections: What he likes, What he doesn't like, How he does with questions (by skill), Parent's preferences I learned, Open questions for the parent. Keep what is still true from `noticed`, add what is new, and write only what the data shows;
    - `plan`: only on the first run (no `studyPlan` yet), on Mondays, or when the parent's messages or notes changed what he should learn. A realistic 4-week plan from the wishes and the tablet rules (minutes per day, hours): Goals, This week, Weeks 2–4, How we check progress (which quiz templates), Healthy screen time;
