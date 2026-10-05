@@ -126,6 +126,22 @@ test('notes for the AI: one video (parentNote) and a whole list (wish with list)
   assert.equal((await fromPage({ type: 'videoDetail', videoId: ids[0] })).notes[0].text, 'Too fast for him');
 });
 
+test('prompt changes: added, shown as waiting, removed; the helper gets prompt events', async () => {
+  fake.store.memory.helper.promptNotes = [{ id: 'note-0001-aaaa', at: '2026-10-04T10:00:00Z', text: 'Animals every day' }];
+  const added = await fromPage({ type: 'promptNote', action: 'add', text: 'Questions only in English' });
+  assert.equal(added.ok, true);
+  let h = await fromPage({ type: 'helperData' });
+  assert.deepEqual(h.notes.map((n) => [n.text, n.pending]), [['Animals every day', false], ['Questions only in English', true]]);
+  await fromPage({ type: 'promptNote', action: 'remove', noteId: 'note-0001-aaaa' });
+  h = await fromPage({ type: 'helperData' });
+  assert.deepEqual(h.notes.map((n) => n.text), ['Questions only in English']);
+  const evs = fake.store.outbox.filter((e) => e.type === 'prompt');
+  assert.deepEqual(evs.map((e) => e.action), ['add', 'remove']);
+  assert.equal(evs[0].noteId, evs[0].eventId);
+  assert.equal(h.rules.queueSize, 10);
+  assert.equal((await fromPage({ type: 'promptNote', action: 'add', text: '  ' })).ok, false);
+});
+
 test('kid mode: home is his list again', async () => {
   await fromPage({ type: 'kidHome' });
   assert.equal(fake.store.settings.mode, 'kid');

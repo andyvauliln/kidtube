@@ -4,6 +4,7 @@ import { ask } from '../lib/ask.js';
 import { checkPin } from '../lib/pin.js';
 import { say, listen, recordedUrl } from '../ui/voice.js';
 import { isCorrect, correctText } from '../lib/mark.js';
+import { renderMarkdown, promptSteps } from './markdown.js';
 
 const $ = (id) => document.getElementById(id);
 const view = $('view');
@@ -84,25 +85,61 @@ $('pinGo').addEventListener('click', async () => {
 $('pin').addEventListener('keydown', (e) => e.key === 'Enter' && $('pinGo').click());
 $('kid').addEventListener('click', () => ask({ type: 'kidHome' }));
 
-// --- routing: #today, #planned, #history, #v=<videoId> ----------------------------------------------
+// --- routing: #today, #planned, #history, #prompt, #settings, #v=<videoId> ---------------------------
+const TABS = ['today', 'planned', 'history', 'prompt', 'settings'];
 function route() {
   const h = location.hash.slice(1);
   const m = h.match(/^v=([A-Za-z0-9_-]{11})/);
-  return m ? { video: m[1] } : { tab: ['today', 'planned', 'history'].includes(h) ? h : 'today' };
+  return m ? { video: m[1] } : { tab: TABS.includes(h) ? h : 'today' };
 }
-let lastTab = 'today';
+let lastTab = 'today', shownTab = null;
 function render() {
   if (!data?.parentMode) return;
   const r = route();
-  for (const a of document.querySelectorAll('.tabs a')) a.classList.toggle('on', a.dataset.tab === (r.tab ?? lastTab));
-  if (r.video) return renderDetail(r.video);
-  lastTab = r.tab;
-  scrollTo(0, 0);
+  for (const a of document.querySelectorAll('.tabs a')) {
+    a.classList.toggle('on', a.dataset.tab === (r.tab ?? lastTab));
+    if (a.classList.contains('on')) a.scrollIntoView?.({ inline: 'center', block: 'nearest' });
+  }
+  if (r.video) { shownTab = null; return renderDetail(r.video); }
+  // The settings page keeps its own state: redrawn only when you come to the tab.
+  if (r.tab === 'settings' && shownTab === 'settings') return;
+  if (shownTab !== r.tab) scrollTo(0, 0);
+  lastTab = shownTab = r.tab;
   if (r.tab === 'planned') return renderPlanned();
   if (r.tab === 'history') return renderHistory();
+  if (r.tab === 'prompt') return renderPrompt();
+  if (r.tab === 'settings') return renderSettings();
   return renderToday();
 }
 addEventListener('hashchange', render);
+
+// Swipe left / right between the tabs (on a video's page, swipe right goes back).
+let touch = null;
+document.addEventListener('touchstart', (e) => {
+  const t = e.touches[0];
+  touch = e.touches.length === 1 && !e.target.closest?.('textarea, input, select, pre, .tabs, .noswipe') ? { x: t.clientX, y: t.clientY, at: Date.now() } : null;
+}, { passive: true });
+document.addEventListener('touchend', (e) => {
+  if (!touch || !data?.parentMode) return;
+  const t = e.changedTouches[0];
+  const dx = t.clientX - touch.x, dy = t.clientY - touch.y;
+  touch = null;
+  if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
+  slide(dx < 0 ? 1 : -1);
+}, { passive: true });
+function slide(dir) {
+  const r = route();
+  if (r.video) { if (dir < 0) { animate(-1); location.hash = lastTab; } return; }
+  const next = TABS[TABS.indexOf(r.tab) + dir];
+  if (!next) return;
+  animate(dir);
+  location.hash = next;
+}
+function animate(dir) {
+  view.classList.remove('from-left', 'from-right');
+  void view.offsetWidth;
+  view.classList.add(dir > 0 ? 'from-right' : 'from-left');
+}
 
 // --- shared pieces ---------------------------------------------------------------------------------
 
@@ -276,6 +313,171 @@ function renderHistory() {
   view.replaceChildren(...parts);
 }
 
+// --- Prompt: how the helper works, its settings, its prompt, and your changes to it ------------------
+
+const DAYS = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
+const ORDER = { first: 'must-watch videos first, the others wait', mix: 'one must-watch, then one free choice', off: 'the ⭐ is only a mark' };
+const ON_FAIL = { continue: 'he goes on', rewatch: 'he watches it again (once a day)', stopForToday: 'no more videos today' };
+
+// "30 3 * * *" in UTC → "every day at 06:30" in this tablet's time.
+function scheduleText(cron, tz) {
+  const m = String(cron).match(/^(\d+)\s+(\d+)\s+\*\s+\*\s+\*$/);
+  if (!m) return `cron “${cron}” (${tz})`;
+  const d = new Date();
+  if (tz === 'UTC') d.setUTCHours(Number(m[2]), Number(m[1]), 0, 0); else d.setHours(Number(m[2]), Number(m[1]), 0, 0);
+  return `every day at ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} (your time; ${m[2].padStart(2, '0')}:${m[1].padStart(2, '0')} ${tz})`;
+}
+
+function table(rows) {
+  const dl = el('dl', 'kv');
+  for (const [k, v] of rows) if (v !== undefined && v !== null && v !== '') dl.append(el('dt', '', k), el('dd', '', String(v)));
+  return dl;
+}
+function fold(title, ...body) {
+  const d = el('details', 'fold');
+  d.append(el('summary', '', title), ...body);
+  return d;
+}
+
+let promptDraft = '';
+async function renderPrompt() {
+  const h = await ask({ type: 'helperData' });
+  if (route().tab !== 'prompt') return;
+  if (!h?.ok) { view.replaceChildren(el('p', 'err', 'Could not load the helper’s description.')); return; }
+  const info = h.info;
+  const parts = [];
+  const box = (title, ...body) => { const b = el('div', 'box'); b.append(el('h2', '', title), ...body); parts.push(b); return b; };
+
+  // 1. When and how it runs.
+  const run = info?.run;
+  const howBody = [];
+  if (run) {
+    howBody.push(el('p', '', `Runs ${scheduleText(run.schedule, run.timezone)}. ${run.runner === 'claude'
+      ? `Claude Code (${run.model}) reads the prompt below and does the work with its toolkit and your Notion${run.maxTurns ? `, in up to ${run.maxTurns} steps` : ''}.`
+      : 'The fixed program (agent/run.mjs) does the work with OpenRouter text models.'}${run.fallbackToNode ? ' If Claude can’t run and nothing was saved that day, the backup program does the same steps with OpenRouter models.' : ''}`));
+  } else {
+    howBody.push(el('p', 'muted', h.hasToken ? 'The helper hasn’t published its description yet. It does on its next run.' : 'Needs the GitHub token for this account (Settings → Connection).'));
+  }
+  howBody.push(el('p', 'muted', h.lastRunAt ? `Last run: ${new Date(h.lastRunAt).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. It had read the tablets up to ${h.processedThrough ? new Date(h.processedThrough).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}.` : 'No run seen yet.'));
+  if (h.journal[0]) {
+    howBody.push(el('h3', '', 'Its latest diary'), el('p', '', h.journal[0].summary));
+    if (h.journal.length > 1) howBody.push(fold('Earlier days', ...h.journal.slice(1).map((j) => el('p', '', `${new Date(j.at).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}: ${j.summary}`))));
+  }
+  box('How the helper works', ...howBody);
+
+  // 2. Your changes to the prompt.
+  const list = el('ul', 'notes');
+  for (const n of h.notes) {
+    const li = el('li', 'pnote');
+    const text = el('span', '', n.text);
+    const meta = el('time', '', `${new Date(n.at).toLocaleDateString()}${n.pending ? ' · waiting for the next run' : ''}`);
+    li.append(meta, text, btn('Remove', async () => {
+      const r = await ask({ type: 'promptNote', action: 'remove', noteId: n.id });
+      if (!r?.ok) return toast('Could not remove it. Is parent mode still on?');
+      toast('Removed. The helper stops following it from its next run.');
+      renderPrompt();
+    }, 'small'));
+    list.append(li);
+  }
+  const ta = el('textarea');
+  ta.maxLength = 2000;
+  ta.value = promptDraft;
+  ta.placeholder = 'For example: “Every day one video about animals” · “Questions only in English” · “No videos longer than 8 minutes on school days”';
+  ta.addEventListener('input', () => { promptDraft = ta.value; });
+  const send = btn('Add to the prompt', async () => {
+    const text = ta.value.trim();
+    if (!text) return;
+    const r = await ask({ type: 'promptNote', action: 'add', text });
+    if (!r?.ok) return toast('Could not save it. Is parent mode still on?');
+    promptDraft = '';
+    toast('Added. The helper follows it from its next run, every run.');
+    renderPrompt();
+  }, 'primary');
+  box('Your changes to the prompt',
+    el('p', 'muted', 'Standing instructions the helper follows on every run, as part of its prompt. They win over its steps, but not over its safety rules. For one-off wishes use the notes on the other tabs.'),
+    h.notes.length ? list : el('p', 'muted', 'None yet.'), ta, send);
+
+  // 3. The run, step by step (straight from the prompt).
+  if (info?.prompt) {
+    const { steps, after } = promptSteps(info.prompt);
+    const ol = el('div', 'steps');
+    for (const st of steps) {
+      const d = el('details', 'step');
+      const sum = el('summary');
+      sum.append(el('span', 'n', String(st.n)), el('span', '', st.title));
+      d.append(sum, renderMarkdown(st.body));
+      ol.append(d);
+    }
+    box('What it does, step by step', el('p', 'muted', 'Tap a step to see exactly what the prompt tells it.'), ol, ...(after ? [renderMarkdown(after)] : []));
+  }
+
+  // 4. The settings it uses.
+  const r = h.rules;
+  const setBody = [];
+  if (info) {
+    const d = info.defaults ?? {};
+    setBody.push(el('h3', '', 'Its numbers'), el('p', 'muted', 'The “Numbers” section of Wishes and settings in Notion wins over these.'), table([
+      ['Videos per day', d.videosPerDay], ['New ideas per day', d.newIdeas],
+      ['Language minimums', Object.entries(d.languageMins ?? {}).map(([l, n]) => `${l}: ${n}`).join(', ') || 'none'],
+      ['Must-watch order', ORDER[d.requiredFirst] ?? d.requiredFirst], ['Questions per video', d.maxQuestions],
+      ['Results per search', d.searchResults], ['Videos it writes words for per run', d.contentPerRun], ['New study plan every', d.planEveryDays ? `${d.planEveryDays} days` : ''],
+    ]));
+    const t = info.transcripts ?? {};
+    setBody.push(el('h3', '', 'Watching videos (transcripts)'), table([
+      ['Done by', t.provider === 'gemini' ? 'Google Gemini (free tier), from the public video link' : t.provider],
+      ['Per day', `${t.maxVideosPerDay ?? '—'} videos, ${t.maxMinutesPerDay ?? '—'} minutes of video`], ['Waits per model', t.secondsPerRequest ? `${t.secondsPerRequest} s` : ''],
+      ['Models, in order', (t.models ?? []).join(', ')],
+    ]));
+    const v = info.voices ?? {};
+    setBody.push(el('h3', '', 'The friend’s recorded voice'), table([
+      ['Made by', { device: 'nobody: the tablet speaks every line itself', gemini: 'Gemini speech (free)', openrouter: 'OpenRouter (paid)' }[v.provider] ?? v.provider],
+      ['Voice', v.voice], ['Time it may spend per run', v.maxMinutes ? `${v.maxMinutes} min (the rest is spoken by the tablet)` : ''], ['How it sounds', v.style], ['Models', (v.models ?? []).join(', ')],
+    ]));
+    const b = info.backupText ?? {};
+    setBody.push(fold('Backup program (if Claude can’t run)', table([['OpenRouter mode', b.mode], ['Preferred models', (b.preferred ?? []).join(', ')], ['Paid model', b.paidModel ?? 'none'], ['Max calls per run', b.maxCallsPerRun]])));
+  }
+  setBody.push(el('h3', '', 'Tablet rules it reads (Settings tab)'), table([
+    ['Watching hours', r.hours.map((w) => `${w.days.length === 7 ? 'every day' : w.days.map((x) => DAYS[x] ?? x).join(' ')} ${w.from}–${w.to}`).join('; ')],
+    ['Minutes per day', r.maxMinutesPerDay || 'no limit'], ['Videos on the home screen', r.queueSize], ['Must-watch order', ORDER[r.requiredFirst] ?? r.requiredFirst],
+    ['Video length', `${r.minVideoMinutes || 0}–${r.maxVideoMinutes || '∞'} min`], ['Must watch before switching', `${r.minSecondsBeforeLeave} s`], ['Skipping inside a video', r.allowSkip ? 'allowed' : 'off'],
+    ['Questions', r.quiz.enabled ? `on, ${r.quiz.maxAttempts} tries, then ${ON_FAIL[r.quiz.onFail] ?? r.quiz.onFail}` : 'off'],
+    ['Talking friend', `${r.friend.name}: ${[r.friend.intro && 'hello before', r.friend.outro && 'what we learned after'].filter(Boolean).join(', ') || 'quiet'}${r.friend.recorded ? ', recorded voice' : ''}`],
+    ['Hearing his answers', r.friend.listen === 'openrouter' ? 'OpenRouter audio model' : 'the tablet’s speech recognition'], ['Other websites', r.blockSites ? 'blocked' : 'open'],
+  ]));
+  box('Settings it uses', ...setBody);
+
+  // 5. What it reads and writes, its toolkit, the full prompt.
+  if (info) {
+    const ul = (items) => { const u = el('ul'); u.append(...items.map((x) => el('li', '', x))); return u; };
+    box('What it reads and writes', el('h3', '', 'Reads'), ul(info.reads ?? []), el('h3', '', 'Writes'), ul(info.writes ?? []),
+      fold(`Its toolkit (${(info.commands ?? []).length} commands)`, table((info.commands ?? []).map((c) => [c.command, c.what]))));
+    box('The full prompt', el('p', 'muted', `agent/DAILY.md, as the helper uses it${info.updatedAt ? ` (published ${new Date(info.updatedAt).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''}. Your changes above are added to it.`),
+      fold('Read the whole prompt', renderMarkdown(info.prompt)));
+  }
+  view.replaceChildren(...parts);
+}
+
+// --- Settings: the same settings page, inside this tab (no second PIN in parent mode) --------------------
+
+function renderSettings() {
+  const frame = el('iframe', 'settings');
+  frame.src = '../options/options.html?embedded=1';
+  frame.title = 'Settings';
+  const fallback = el('p', 'muted');
+  fallback.hidden = true;
+  const a = el('a', '', 'Open the settings page');
+  a.href = '../options/options.html';
+  fallback.append('The settings didn’t show here. ', a);
+  const timer = setTimeout(() => { fallback.hidden = false; }, 4000);
+  addEventListener('message', function sized(e) {
+    if (e.source !== frame.contentWindow || e.data?.kidtube !== 'options-size') return;
+    clearTimeout(timer);
+    frame.style.height = `${Math.max(400, e.data.height + 20)}px`;
+    if (!frame.isConnected) removeEventListener('message', sized);
+  });
+  view.replaceChildren(fallback, frame);
+}
+
 // --- one video ---------------------------------------------------------------------------------------
 
 let detailFor = null;
@@ -409,7 +611,8 @@ function runQuiz(d, box, speakLine) {
 // Lists change when a sync brings a new plan, or another device changes it.
 chrome.storage.onChanged.addListener((ch) => {
   if ((ch.data || ch.planLog || ch.account || ch.memory || ch.history) && !route().video && !document.activeElement?.matches('textarea, input')) refresh();
-  if (ch.settings) refresh();
+  if (ch.settings && route().tab !== 'settings') refresh();
+  else if (ch.settings) ask({ type: 'parentData' }).then((r) => { if (r && !r.parentMode) refresh(); });
 });
 setInterval(() => { if (data?.parentMode && data.parentUntil && data.parentUntil < Date.now()) refresh(); }, 30000);
 refresh();

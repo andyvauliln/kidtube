@@ -82,7 +82,8 @@
               "blocked",
               "timeUp",
               "wish",
-              "plan"
+              "plan",
+              "prompt"
             ]
           },
           "at": {
@@ -320,7 +321,8 @@
                   "enum": [
                     "today",
                     "planned",
-                    "history"
+                    "history",
+                    "prompt"
                   ],
                   "description": "a parent's note for the AI about this list (parent mode)"
                 }
@@ -378,6 +380,60 @@
                   "then": {
                     "required": [
                       "value"
+                    ]
+                  }
+                }
+              ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "prompt"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "action",
+                "noteId"
+              ],
+              "additionalProperties": false,
+              "description": "the parent's change to the helper's instructions (parent screens → Prompt): add a standing note, or remove one",
+              "properties": {
+                "eventId": true,
+                "type": true,
+                "at": true,
+                "action": {
+                  "enum": [
+                    "add",
+                    "remove"
+                  ]
+                },
+                "noteId": {
+                  "type": "string",
+                  "minLength": 8,
+                  "maxLength": 64
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "const": "add"
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "text"
                     ]
                   }
                 }

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { applyActivity, applyNotionRow, composeToday, markToday, upcoming, freshCandidates } from '../agent/lib/plan.mjs';
+import { readFileSync } from 'node:fs';
+import { applyActivity, applyNotionRow, applyPromptNotes, composeToday, markToday, upcoming, freshCandidates } from '../agent/lib/plan.mjs';
 import { buildQuiz, TEMPLATES } from '../agent/lib/quiz.mjs';
 import { parseJson } from '../agent/lib/llm.mjs';
 import { isCorrect } from '../extension/lib/mark.js';
@@ -39,6 +40,31 @@ test('plan changes from the tablet apply, and Notion’s older values don’t un
   assert.equal(videos[vid(1)].status, 'no');
   assert.equal(videos[vid(3)].required, 'yes');
   assert.equal(videos[vid(3)].approved, true);   // a field the tablet didn't touch still comes from Notion
+});
+
+test('prompt notes from the tablet: added and removed, kept across runs', () => {
+  const news = applyActivity({}, [
+    { type: 'prompt', at: '2026-10-02T10:00:00Z', action: 'add', noteId: 'n-aaaaaaaa1', text: 'Animals every day' },
+    { type: 'prompt', at: '2026-10-02T10:01:00Z', action: 'add', noteId: 'n-aaaaaaaa2', text: 'English questions' },
+    { type: 'prompt', at: '2026-10-02T10:02:00Z', action: 'remove', noteId: 'n-aaaaaaaa0' },
+  ]);
+  const notes = applyPromptNotes([{ id: 'n-aaaaaaaa0', at: '2026-10-01T00:00:00Z', text: 'old' }], news.prompt);
+  assert.deepEqual(notes.map((n) => n.text), ['Animals every day', 'English questions']);
+});
+
+test('helper.json describes the real prompt, toolkit and config', async () => {
+  const { helperInfo } = await import('../agent/lib/info.mjs');
+  const info = helperInfo('.', JSON.parse(readFileSync('agent/config.json', 'utf8')));
+  assert.ok(info.prompt.includes('## Steps'));
+  assert.ok(info.commands.some((c) => c.command === 'start'));
+  assert.equal(info.run.schedule, '30 3 * * *');
+  assert.ok(!JSON.stringify(info).match(/sk-or-|AIza|ntn_|secret_/));   // no keys
+  const { promptSteps } = await import('../extension/parent/markdown.js');
+  const { steps, after } = promptSteps(info.prompt);
+  assert.equal(steps[0].title, 'Start');
+  assert.ok(steps.length >= 10);
+  assert.ok(steps.find((x) => x.title === 'Save').body.includes('kt.mjs save'));
+  assert.ok(after.startsWith('If a step fails'));
 });
 
 test('today: must-watch-today first, approved before the helper’s own picks', () => {

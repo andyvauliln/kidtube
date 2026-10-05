@@ -6,7 +6,7 @@ import { classifyUrl, homeUrl, watchUrl } from './lib/url.js';
 import { parseCaptions, captionsToText } from './lib/captions.js';
 import { TARGET } from './lib/target.js';
 import { accountFromSwitcher, accountKey } from './lib/account.js';
-import { PLAN_ACTIONS, applyPlan, applyPlanEvent, pendingPlan, entryFromRecord } from './lib/plan.js';
+import { PLAN_ACTIONS, applyPlan, applyPlanEvent, pendingPlan, entryFromRecord, applyPromptNotes } from './lib/plan.js';
 
 const SITE_RULE_ID = 100;
 const POLL_MINUTES = 15;
@@ -57,7 +57,7 @@ function withState(fn, { account } = {}) {
 // --- accounts: everything is kept per YouTube account (email) --------------------------------
 // The signed-in account's data lives under the usual keys; the others wait in "acct:<key>".
 // The parent PIN and the device id belong to the tablet, so they move along with every switch.
-const ACCOUNT_KEYS = [...KEYS.filter((k) => k !== 'parentPass'), 'memory'];
+const ACCOUNT_KEYS = [...KEYS.filter((k) => k !== 'parentPass'), 'memory', 'helperInfo'];
 const DEVICE_SETTINGS = ['pinHash', 'pinSalt', 'pinFails', 'pinLockedUntil', 'deviceId'];
 const currentAccount = async () => (await chrome.storage.local.get('account')).account?.key ?? null;
 
@@ -546,6 +546,25 @@ async function handle(msg, sender) {
       if (!fromExtensionPage(sender)) return { ok: false };
       return withState((s) => videoDetail(s, msg.videoId));
 
+    case 'helperData': // parent mode → Prompt: how the helper works, its prompt, your changes to it
+      if (!fromExtensionPage(sender)) return { ok: false };
+      return withState((s) => helperData(s));
+
+    case 'promptNote': // add a standing instruction for the helper, or remove one
+      if (!fromExtensionPage(sender)) return { ok: false };
+      return withState((s) => {
+        if (!parentMode(s)) return { ok: false };
+        const text = String(msg.text ?? '').trim().slice(0, 2000);
+        if (msg.action === 'add' && !text) return { ok: false };
+        if (msg.action === 'remove' && !/^[A-Za-z0-9-]{8,64}$/.test(msg.noteId ?? '')) return { ok: false };
+        if (!['add', 'remove'].includes(msg.action)) return { ok: false };
+        const ev = newEvent('prompt', { action: msg.action });
+        Object.assign(ev, msg.action === 'add' ? { noteId: ev.eventId, text } : { noteId: msg.noteId });
+        s.outbox.push(ev);
+        ((s.notes ??= {}).promptOps ??= []).push(ev);
+        return { ok: true, noteId: ev.noteId };
+      }).then(async (r) => { if (r.ok) sync(); return r; });
+
     case 'plan':
       if (!fromExtensionPage(sender)) return { ok: false };
       return withState((s) => planChange(s, msg)).then((r) => { if (r?.ok) sync(); return r; });
@@ -710,6 +729,33 @@ async function videoDetail(s, id) {
   };
 }
 
+// The Prompt tab: what the helper is (helper.json), what it did lately (memory.json), the tablet rules it reads.
+async function helperData(s) {
+  const { config } = await effective(s);
+  const memory = await getMemory();
+  const { helperInfo } = await chrome.storage.local.get('helperInfo');
+  const since = s.data.memoryMeta?.processedThrough ?? null;
+  const ops = (s.notes?.promptOps ?? []).filter((o) => !since || o.at > since).sort((a, b) => a.at.localeCompare(b.at));
+  const helperNotes = memory?.helper?.promptNotes ?? [];
+  const known = new Set(helperNotes.map((n) => n.id));
+  const p = config.presenter ?? {};
+  return {
+    ok: true, info: helperInfo ?? null, hasToken: !!s.settings.token, waiting: s.outbox.length,
+    lastRunAt: memory?.helper?.lastRunAt ?? null, processedThrough: since,
+    journal: (memory?.journal ?? []).slice(-7).reverse(),
+    notes: applyPromptNotes(helperNotes, ops).map((n) => ({ ...n, pending: !known.has(n.id) })),
+    removing: ops.filter((o) => o.action === 'remove').map((o) => o.noteId),
+    rules: {
+      maxMinutesPerDay: config.time?.maxMinutesPerDay ?? 0, hours: config.time?.allowed ?? [], queueSize: config.queueSize,
+      requiredFirst: config.requiredFirst ?? 'off', minSecondsBeforeLeave: config.minSecondsBeforeLeave ?? 0, allowSkip: !!config.allowSkip,
+      minVideoMinutes: Math.round((config.minVideoDurationSeconds ?? 0) / 60), maxVideoMinutes: Math.round((config.maxVideoDurationSeconds ?? 0) / 60),
+      quiz: { enabled: !!config.quiz?.enabled, maxAttempts: config.quiz?.maxAttempts ?? 3, onFail: config.quiz?.onFail ?? 'continue' },
+      friend: { name: p.name || 'Zippy', intro: !!p.intro, outro: !!p.outro, recorded: p.voice?.recorded !== false, listen: p.voice?.listen?.provider ?? 'device' },
+      blockSites: !!config.blockOutboundLinks,
+    },
+  };
+}
+
 // One change from the parent's screens. Taking an unwatched video off today's list brings the next planned one in.
 async function planChange(s, msg) {
   const id = msg.videoId;
@@ -835,6 +881,18 @@ async function doSync() {
       }
     } catch {}   // an older data repo may have none: parent mode then shows only today's list
   }
+  // helper.json: how the helper works and its prompt (parent mode → Prompt). Written by the helper each run.
+  let helperInfo = null;
+  if (token) {
+    try {
+      const r = await fetchDataFile(repo, token, 'helper.json', data.helperMeta ? etags['helper.json'] : null);
+      if (!r.notModified && r.json?.schemaVersion === 1 && typeof r.json.prompt === 'string') {
+        helperInfo = r.json;
+        etags['helper.json'] = r.etag;
+        update.helperMeta = { updatedAt: helperInfo.updatedAt ?? null };
+      }
+    } catch {}
+  }
   const done = await withState((s) => {
     Object.assign(s.data, update, { etags });
     s.syncStatus = status;
@@ -842,6 +900,7 @@ async function doSync() {
   }, { account: acct });
   if (!done) return status;
   if (memory) await chrome.storage.local.set({ memory });
+  if (helperInfo) await chrome.storage.local.set({ helperInfo });
   await applySiteRules();
   // One cause (usually the token) should show once, not once per file.
   const report = (prefix, msg) => { if (!status.errors.some((x) => msg.includes(x) || x.includes(msg))) status.errors.push(prefix + msg); };
@@ -876,13 +935,16 @@ async function pullPlan(repo, token, acct) {
   const found = [];
   for (const date of dates) {
     const f = await getRepoFile(repo, token, `activity/${date}.json`);
-    for (const e of f?.json?.events ?? []) if (e.type === 'plan' && PLAN_ACTIONS.includes(e.action) && (!since || e.at > since)) found.push(e);
+    for (const e of f?.json?.events ?? []) if (['plan', 'prompt'].includes(e.type) && (!since || e.at > since)) found.push(e);
   }
   const memory = await getMemory();
   await withState((s) => {
     const log = (s.planLog ??= { events: [], entries: {}, items: {} });
     const have = new Set((log.events ?? []).map((e) => e.eventId));
-    for (const e of found) {
+    const ops = ((s.notes ??= {}).promptOps ??= []);
+    for (const e of found.filter((x) => x.type === 'prompt')) if (!ops.some((o) => o.eventId === e.eventId)) ops.push(e);
+    s.notes.promptOps = ops.filter((o) => !since || o.at > since).slice(-100);
+    for (const e of found.filter((x) => x.type === 'plan' && PLAN_ACTIONS.includes(x.action))) {
       if (have.has(e.eventId)) continue;
       log.events.push(e);
       const rec = memory?.helper?.videos?.[e.videoId];

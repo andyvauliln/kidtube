@@ -15,13 +15,15 @@
 //   node agent/kt.mjs notes '<json>'             {noticed, plan, diary, wishesAdded}
 //   node agent/kt.mjs save                       voices, files, checks, commit + push; prints what Notion needs
 //   node agent/kt.mjs notion-done '<json>'       [{videoId, notionPageId}] after creating rows
+//   node agent/kt.mjs info                       publish helper.json now (what the parent sees in the Prompt tab)
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { syncClone, commitAndPush, readJson, writeJson, activitySince, transcript } from './lib/data.mjs';
-import { applyActivity, applyNotionRow, composeToday, markToday, upcoming, freshCandidates, OPEN } from './lib/plan.mjs';
+import { applyActivity, applyNotionRow, applyPromptNotes, composeToday, markToday, upcoming, freshCandidates, OPEN } from './lib/plan.mjs';
+import { helperInfo } from './lib/info.mjs';
 import { buildQuiz, templateCatalog } from './lib/quiz.mjs';
 import { tooHard } from './lib/prompts.mjs';
 import { createGemini } from './lib/gemini.mjs';
@@ -82,14 +84,16 @@ const commands = {
     const gem = createGemini({ apiKey: env.GEMINI_API_KEY ?? '', stateDir, config: config.transcripts, today, log: () => {} });
     const s = { today, tz, startedAt: iso(), videos: helper.videos, processedThrough: lastEvent && lastEvent > (since ?? '') ? lastEvent : since,
       newIds: [], todayIds: null, searchCache: {}, notes: null, rewritten: [], touched: [...new Set([...news.watched, ...news.quiz, ...news.notes, ...news.plan].map((x) => x.videoId).filter((id) => helper.videos[id]))],
-      quizTypes: devices.at(-1)?.quizTypes ?? ['text', 'choice'], wishes: news.wishes, tabletEdited: news.edited };
+      quizTypes: devices.at(-1)?.quizTypes ?? ['text', 'choice'], wishes: news.wishes, tabletEdited: news.edited,
+      promptNotes: applyPromptNotes(helper.promptNotes ?? [], news.prompt) };
     // Yesterday's new ideas lose their "Added today" mark in Notion.
     for (const [id, v] of Object.entries(helper.videos)) if (v.wasNew) s.touched.push(id);
     store(s);
     const counts = {};
     for (const v of Object.values(helper.videos)) counts[v.status] = (counts[v.status] ?? 0) + 1;
-    const { edited, ...tablet } = news;
+    const { edited, prompt, ...tablet } = news;
     out({ ok: true, today, timezone: tz, since,
+      promptNotes: s.promptNotes.map((n) => n.text),
       tablet: { device: devices.at(-1) ?? null, ...tablet },
       rules: { minutesPerDay: pc.time?.maxMinutesPerDay, hours: pc.time?.allowed, maxVideoMinutes: Math.round((pc.maxVideoDurationSeconds ?? 0) / 60), minVideoMinutes: Math.round((pc.minVideoDurationSeconds ?? 0) / 60),
         queueSize: pc.queueSize, requiredFirst: pc.requiredFirst ?? 'first', questionsOn: !!pc.quiz?.enabled, friend: pc.presenter?.name, blockedChannels: pc.blockedChannelIds ?? [] },
@@ -271,6 +275,7 @@ const commands = {
       if (it[k]?.startsWith('repo:') && !existsSync(join(dataDir, it[k].slice(5)))) delete it[k];
     }
     helper.processedThrough = s.processedThrough;
+    if (s.promptNotes) helper.promptNotes = s.promptNotes;
     memory.processedThrough = s.processedThrough ?? memory.processedThrough;
     helper.lastRunAt = iso();
     if (s.notes?.plan) helper.planAt = iso();
@@ -280,6 +285,7 @@ const commands = {
     writeJson(paths.queue, queue);
     writeJson(paths.config, pc);
     writeJson(paths.memory, memory);
+    writeJson(join(dataDir, 'helper.json'), helperInfo(ROOT, config));
     try { execFileSync(process.execPath, [join(ROOT, 'tools/validate.mjs'), dataDir], { encoding: 'utf8', stdio: 'pipe' }); }
     catch (e) {
       const why = `${e.stdout ?? ''}${e.stderr ?? ''}`.split('\n').filter((l) => /FAIL|^\s{4,}/.test(l)).slice(0, 20).join('\n');
@@ -315,6 +321,15 @@ const commands = {
     writeJson(paths.memory, memory);
     commitAndPush(dataDir, 'helper: Notion page links');
     out({ ok: true });
+  },
+
+  info() {
+    // A daily session works in the same clone: wait for it (save writes helper.json anyway).
+    const cur = existsSync(SESSION) ? JSON.parse(readFileSync(SESSION, 'utf8')) : null;
+    if (cur && !cur.saved && Date.now() - Date.parse(cur.startedAt) < 3 * 3600e3) fail('a daily session is running; its save publishes helper.json');
+    syncClone(dataDir, config.dataRepo);
+    writeJson(join(dataDir, 'helper.json'), helperInfo(ROOT, config));
+    out({ ok: true, pushed: commitAndPush(dataDir, 'helper: helper.json (how the helper works)') });
   },
 
   help() { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).join('\n')); },

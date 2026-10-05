@@ -16,11 +16,12 @@ import { createHash } from 'node:crypto';
 import { createLLM } from './lib/llm.mjs';
 import { createNotion } from './lib/notion.mjs';
 import { syncClone, commitAndPush, readJson, writeJson, activitySince, transcript } from './lib/data.mjs';
-import { applyActivity, applyNotionRow, composeToday, markToday, upcoming, freshCandidates, backlogText } from './lib/plan.mjs';
+import { applyActivity, applyNotionRow, applyPromptNotes, composeToday, markToday, upcoming, freshCandidates, backlogText } from './lib/plan.mjs';
 import { buildQuiz, templateCatalog } from './lib/quiz.mjs';
 import { understandPrompt, choosePrompt, contentPrompt, notesPrompt } from './lib/prompts.mjs';
 import { setupWorkspace, readVideoRows, readTemplates, videoProps, videoMarkdown } from './lib/workspace.mjs';
 import { search } from '../tools/video-info.mjs';
+import { helperInfo } from './lib/info.mjs';
 import { createGemini } from './lib/gemini.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -132,6 +133,7 @@ async function run() {
   for (const q of news.quiz) if (videos[q.videoId]) touched.add(q.videoId);
   for (const n of news.notes) if (videos[n.videoId]) touched.add(n.videoId);
   for (const p of news.plan) if (videos[p.videoId]) touched.add(p.videoId);
+  helper.promptNotes = applyPromptNotes(helper.promptNotes ?? [], news.prompt);
   const quizTypes = devices.at(-1)?.quizTypes ?? ['text', 'choice'];
   log(`activity: ${events.length} events, ${news.watched.length} watches, ${news.wishes.length} messages`);
 
@@ -187,6 +189,8 @@ async function run() {
     wishes = news.wishes.map((w) => `- ${w.text}`).join('\n');
   }
   if (comments.length) log(`parent comments: ${comments.length}`);
+  // The parent's changes to the helper's instructions (parent screens → Prompt) count as wishes here.
+  if (helper.promptNotes.length) wishes += `\n## The parent's standing instructions for the helper\n${helper.promptNotes.map((n) => `- ${n.text}`).join('\n')}`;
 
   const llm = createLLM({ apiKey: env.OPENROUTER_API_KEY, stateDir, config: { ...config.llm, openrouter: config.openrouter }, log });
 
@@ -336,6 +340,7 @@ async function run() {
   writeJson(paths.queue, queue);
   writeJson(paths.config, pc);
   writeJson(paths.memory, memory);
+  writeJson(join(dataDir, 'helper.json'), helperInfo(ROOT, config));
 
   if (DRY) {
     writeJson(join(stateDir, 'dry-run.json'), { today: todayIds, newIds, want, notes, videos: Object.fromEntries([...todayIds, ...newIds].map((id) => [id, videos[id]])) });

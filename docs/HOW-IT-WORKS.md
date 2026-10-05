@@ -1,6 +1,6 @@
 # KidTube: how it works
 
-*As of 2026-10-05 (version 0.7.0).*
+*As of 2026-10-05 (version 0.7.1).*
 
 ## Overview
 
@@ -76,6 +76,12 @@ You can steer from three places. All of them end up in the data repo or Notion, 
 | **Today** | Every video on his list today, watched ones marked ✓ | ⭐ must-watch on/off, **Remove** (back to Planned; the next planned video takes its place), a note for the AI about the video or the whole list |
 | **Planned** | The helper's next picks in its order, then its other ideas | ⭐ on/off, **Approve**, **→ Today**, **Remove** (never shown), notes for the AI (video or list) |
 | **History** | What he watched, by day: minutes, how it ended, his answers | 👍 / 👎, notes for the AI (video or the whole history) |
+| **Prompt** | How the helper works: when it runs, its latest diary, each step of its prompt, the settings and models it uses, the tablet rules it reads, what it reads and writes, the whole prompt | **Your changes to the prompt**: standing instructions it follows every run (they win over its steps, not over its safety rules); remove one any time |
+| **Settings** | The settings page (mode, rules, talking friend, connection) without a second PIN | everything the settings page does |
+
+Swipe left or right to move between the tabs; on a video's page, swipe right to go back.
+
+The Prompt tab reads `helper.json`, which the helper writes on every run from the real `agent/DAILY.md`, `agent/config.json` and its toolkit (`node agent/kt.mjs info` publishes it at once). Prompt changes go to the helper as `prompt` events; it keeps them in `memory.json` (`helper.promptNotes`) and gets them as `promptNotes` from `start`.
 
 Tap a video for its page: why it's on the list, what he learns, the summary, the intro and outro (🔊 hear the friend), the questions with their answers, **Try the quiz yourself**, things to talk about, and the notes for the AI. **Watch it yourself** plays it without his rules.
 

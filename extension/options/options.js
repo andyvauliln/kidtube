@@ -14,8 +14,18 @@ async function patchSettings(patch) {
 
 let settingPin = false;
 
+// Inside the parent screens (Settings tab): parent mode already asked for the PIN.
+const embedded = new URLSearchParams(location.search).has('embedded');
+if (embedded) {
+  document.body.classList.add('embedded');
+  const report = () => parent.postMessage({ kidtube: 'options-size', height: document.documentElement.scrollHeight }, '*');
+  new ResizeObserver(report).observe(document.body);
+  addEventListener('load', report);
+}
+
 async function initGate() {
   const s = await getSettings();
+  if (embedded && s.mode === 'parent' && (!s.parentUntil || s.parentUntil > Date.now()) && s.pinHash) return unlock();
   settingPin = !s.pinHash;
   $('gateTitle').textContent = settingPin ? 'Choose a parent PIN (4–8 digits)' : 'Enter PIN';
   $('pin2').hidden = !settingPin;

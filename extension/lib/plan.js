@@ -81,3 +81,14 @@ export function entryFromRecord(videoId, v) {
     ...(c.quizIds?.length ? { quizIds: c.quizIds } : {}), ...(v.why ? { note: String(v.why).slice(0, 500) } : {}),
   };
 }
+
+// The parent's changes to the helper's prompt (parent screens → Prompt): a list the helper follows
+// every run as part of its instructions. events: { action: add|remove, noteId, at, text }, oldest first.
+export function applyPromptNotes(notes = [], events = []) {
+  let out = [...notes];
+  for (const e of events) {
+    if (e.action === 'add' && e.text && !out.some((n) => n.id === e.noteId)) out.push({ id: e.noteId, at: e.at, text: String(e.text).slice(0, 2000) });
+    if (e.action === 'remove') out = out.filter((n) => n.id !== e.noteId);
+  }
+  return out.slice(-50);
+}

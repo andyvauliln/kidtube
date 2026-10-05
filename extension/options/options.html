@@ -48,6 +48,9 @@
   .win button { margin-top: 8px; padding: 6px 10px; }
   textarea { min-height: 84px; }
   [hidden] { display: none !important; }
+  body.embedded { padding: 0; background: transparent; }
+  body.embedded main > h1, body.embedded main > p.hint, body.embedded #openParent { display: none; }
+  body.embedded main { max-width: none; }
   a.install { display: block; text-align: center; padding: 12px; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; text-decoration: none; margin-top: 10px; }
 </style>
 <main>
@@ -66,8 +69,8 @@
     <section>
       <h2>Mode</h2>
       <p class="muted" id="account"></p>
-      <label class="check rules-like"><input type="radio" name="mode" value="kid"> <b>Kid mode</b>: his list, with all the rules</label>
-      <label class="check rules-like"><input type="radio" name="mode" value="parent"> <b>Parent mode</b>: YouTube opens your screens (Today, Planned, History); nothing is blocked or counted</label>
+      <label class="check rules-like"><input type="radio" name="mode" value="kid"> <span><b>Kid mode</b>: his list, with all the rules</span></label>
+      <label class="check rules-like"><input type="radio" name="mode" value="parent"> <span><b>Parent mode</b>: YouTube opens your screens (Today, Planned, History, Prompt, Settings); nothing is blocked or counted</span></label>
       <label for="parentMinutes">Parent mode turns itself off after (minutes)</label>
       <input id="parentMinutes" type="number" min="0" max="1440" inputmode="numeric">
       <p class="hint">0 = it stays on until you switch back. Then the tablet is open for him too, so keep a limit.</p>
