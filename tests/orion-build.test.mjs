@@ -21,9 +21,10 @@ test('the Orion build differs from extension/ only in the target and the manifes
   const m = JSON.parse(readFileSync(join(stage, 'manifest.json'), 'utf8'));
   assert.equal(m.update_url, undefined);
   assert.equal(m.minimum_chrome_version, undefined);
+  assert.equal(m.version_name, `${version} Orion`);
   assert.ok(!m.permissions.some((p) => p.startsWith('declarativeNetRequest')));
   assert.equal(readFileSync(join(stage, 'sw.js'), 'utf8'), readFileSync(join(src, 'sw.js'), 'utf8'));
-  assert.deepEqual(orionManifest({ permissions: ['storage', 'declarativeNetRequest'], update_url: 'x' }), { permissions: ['storage'] });
+  assert.deepEqual(orionManifest({ version: '1.2.3', permissions: ['storage', 'declarativeNetRequest'], update_url: 'x' }), { version: '1.2.3', permissions: ['storage'], version_name: '1.2.3 Orion' });
 });
 
 test('latest.json names the zip, the version and the source', () => {

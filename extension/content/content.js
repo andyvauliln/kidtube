@@ -11,7 +11,7 @@
   });
   let page = null;             // 'home' | 'watch'
   let videoId = null;
-  let frames = {};
+  let frames = {};             // our screens by name: extension iframes, or in-page panels (below)
 
   const style = document.createElement('style');
   style.textContent = `
@@ -23,21 +23,6 @@
     .ytwPlayerMiniplayerHost, ytm-pivot-bar-renderer { display: none !important; }
     iframe.kidtube-frame { position: fixed !important; border: 0 !important; margin: 0 !important; padding: 0 !important;
       z-index: ${Z} !important; background: #fff; color-scheme: normal; display: block !important; }
-    #kidtube-pagehome { position: fixed; inset: 0; z-index: ${Z}; background: #fff8ec; color: #2b2b2b;
-      font: 600 16px/1.3 system-ui, -apple-system, sans-serif; overflow: auto; }
-    #kidtube-pagehome .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; padding: 16px; }
-    #kidtube-pagehome .card { position: relative; background: #fff; border: 0; padding: 0; border-radius: 18px; overflow: hidden;
-      text-align: left; color: inherit; font: inherit; box-shadow: 0 3px 0 #0000000f, 0 6px 16px #00000014; cursor: pointer; }
-    #kidtube-pagehome .card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; background: #eee; }
-    #kidtube-pagehome .t { padding: 10px 12px 12px; font-size: 17px; }
-    #kidtube-pagehome .d { padding: 0 12px 12px; color: #8a7f70; font-size: 14px; font-weight: 500; }
-    #kidtube-pagehome .center { min-height: 100%; display: grid; place-items: center; text-align: center; padding: 24px; }
-    #kidtube-pagehome .big { font-size: 64px; line-height: 1; }
-    #kidtube-pagehome h1 { font-size: 28px; margin: 16px 0 8px; }
-    #kidtube-pagehome p { margin: 4px 0; color: #8a7f70; font-weight: 500; font-size: 18px; }
-    #kidtube-pagehome .gear { position: fixed; right: 12px; bottom: 12px; width: 44px; height: 44px; border: 0; border-radius: 50%;
-      background: #ffffffcc; font-size: 22px; }
-    #kidtube-pagehome .waiting { opacity: .45; filter: grayscale(.7); }
     /* allowSkip off: the seek bar can't be dragged (the video element is also guarded below) */
     html.kidtube-noskip .ytp-progress-bar-container, html.kidtube-noskip .ytp-progress-bar, html.kidtube-noskip .ytm-progress-bar,
     html.kidtube-noskip .YtmProgressBarHost, html.kidtube-noskip .ytp-scrubber-container, html.kidtube-noskip .player-controls-progress-bar,
@@ -46,7 +31,14 @@
   (document.head || document.documentElement).appendChild(style);
   document.documentElement.classList.add('kidtube-on');
 
+  // Where our screens are drawn. Normally extension iframes (ui/*.html), which YouTube's CSS can't touch.
+  // Orion doesn't show extension iframes on web pages (blank white), so its build (version_name "… Orion",
+  // tools/build-orion.mjs) draws the same screens in the page, inside a shadow root. Any other browser whose
+  // home frame stays silent switches to that too.
+  let inPage = /orion/i.test(chrome.runtime.getManifest().version_name ?? '');
+
   function frame(name, src) {
+    if (inPage) return panel(name, src);
     let f = frames[name];
     if (!f) {
       f = frames[name] = document.createElement('iframe');
@@ -58,6 +50,7 @@
     return f;
   }
   function drop(name) {
+    frames[name]?.stop?.();
     frames[name]?.remove();
     delete frames[name];
     if (name === 'home') { homeReady = false; clearTimeout(homeWatch); homeWatch = null; }
@@ -110,122 +103,180 @@
   function showHome() {
     [...COVERS, 'strip', 'lock'].forEach(drop);
     place(frame('home', 'ui/home.html'), 0, 0, innerWidth, innerHeight);
-    const pageHome = document.getElementById('kidtube-pagehome');
-    if (pageHome) document.documentElement.appendChild(pageHome); // stay above the iframe (same z-index)
-    if (!homeReady && !homeWatch) homeWatch = setTimeout(() => { if (!homeReady && page === 'home') showPageHome(); }, 1500);
+    if (!inPage && !homeReady && !homeWatch) homeWatch = setTimeout(() => { if (!homeReady && page === 'home') switchToPage(); }, 4000);
   }
 
-  // The home list normally lives in an extension iframe. On Orion that iframe is placed but never
-  // says it opened (0.6.3 on Mac: frame placed, promise sendMessage undefined, callback alive).
-  // Draw the same list in the page; the content script is the part that already runs.
-  let homeReady = false, homeWatch = null, pageHomeGen = 0;
-  function markHomeReady() {
-    homeReady = true;
-    clearTimeout(homeWatch);
-    homeWatch = null;
-    document.getElementById('kidtube-pagehome')?.remove();
-    document.getElementById('kidtube-fallback')?.remove();
-  }
+  // The home iframe says "frame-ready" (postMessage, or relayed by the background). Silence = draw in the page.
+  let homeReady = false, homeWatch = null;
+  function markHomeReady() { homeReady = true; clearTimeout(homeWatch); homeWatch = null; }
   window.addEventListener('message', (e) => {
     if (e.data?.kidtube !== 'frame-ready') return;
     if (e.source !== frames.home?.contentWindow) return;
     markHomeReady();
   });
   chrome.runtime.onMessage.addListener((msg) => { if (msg?.type === 'frameReady') markHomeReady(); });
+  function switchToPage() {
+    if (inPage) return;
+    inPage = true;
+    Object.keys(frames).forEach(drop);
+    route();
+  }
 
-  function pageHomeBox() {
-    let box = document.getElementById('kidtube-pagehome');
-    if (!box) {
-      box = document.createElement('div');
-      box.id = 'kidtube-pagehome';
-      const gear = document.createElement('button');
-      gear.className = 'gear';
-      gear.textContent = '⚙️';
-      gear.title = 'Parent settings';
-      gear.addEventListener('click', () => ask({ type: 'openSettings' }));
-      box.append(gear);
-      document.documentElement.appendChild(box);
+  // --- in-page screens: the same screens as ui/home.html, strip.html, cover.html, badge.html --------------
+  // In a closed shadow root, so YouTube's CSS can't reach them. Each panel is attached once and redrawn only
+  // when what it shows changes, so a list keeps its scroll position.
+  const PAGE_CSS = `
+    * { box-sizing: border-box; }
+    .panel { position: fixed; pointer-events: auto; overflow: hidden; background: #fff8ec; color: #2b2b2b;
+      font: 600 16px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent;
+      user-select: none; -webkit-user-select: none; }
+    .home, .strip { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; padding: 16px 16px 80px; align-content: start; }
+    .strip .grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; padding: 12px 16px 24px; }
+    .card { position: relative; background: #fff; border: 0; padding: 0; border-radius: 18px; overflow: hidden; text-align: left;
+      color: inherit; font: inherit; box-shadow: 0 3px 0 #0000000f, 0 6px 16px #00000014; cursor: pointer; }
+    .card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; background: #eee; }
+    .card .t { padding: 10px 12px 12px; font-size: 17px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+    .strip .card .t { font-size: 15px; }
+    .card .d { padding: 0 12px 12px; color: #8a7f70; font-size: 14px; font-weight: 500; }
+    .card .star { position: absolute; top: 6px; left: 6px; font-size: 30px; }
+    .card.waiting { opacity: .45; filter: grayscale(.7); }
+    .center { min-height: 100%; display: grid; place-items: center; text-align: center; padding: 24px; }
+    .lockbg { background: #efeaff; }
+    .big { font-size: 64px; line-height: 1; }
+    h1 { font-size: 28px; margin: 16px 0 8px; }
+    p { margin: 4px 0; color: #8a7f70; font-weight: 500; font-size: 18px; }
+    a { color: #6c63ff; font-size: 20px; display: inline-block; margin-top: 16px; }
+    .gear { position: fixed; right: 12px; bottom: 12px; width: 48px; height: 48px; border: 0; border-radius: 50%; background: #ffffffdd;
+      font-size: 24px; box-shadow: 0 2px 6px #0003; }
+    .bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px 0; }
+    .bar .gear { position: static; margin-left: auto; flex: none; }
+    .homebtn { border: 0; border-radius: 14px; background: #ff7a3d; color: #fff; font: inherit; font-size: 18px; padding: 10px 18px; flex: none; }
+    .homebtn:disabled { background: #d9d2c7; }
+    .wait { color: #8a7f70; font-weight: 500; }
+    .locked .grid .card { filter: grayscale(1); opacity: .45; pointer-events: none; }
+    .badge { background: #1b5e20; color: #fff; display: grid; place-items: center; font-size: 14px; border-radius: 8px; }
+  `;
+  let ui = null;
+  function shadow() {
+    if (!ui) {
+      const host = document.createElement('div');
+      host.id = 'kidtube-ui';
+      host.style.cssText = `position:fixed!important;inset:0!important;z-index:${Z}!important;pointer-events:none!important;display:block!important`;
+      ui = host.attachShadow({ mode: 'closed' });
+      ui.append(Object.assign(document.createElement('style'), { textContent: PAGE_CSS }));
     }
-    return box;
+    if (!ui.host.isConnected) document.documentElement.appendChild(ui.host);
+    return ui;
   }
-  function lockCopy(lock) {
-    const when = lock.reason === 'stopped' ? 'Let’s try again tomorrow' : lock.opens ? `See you ${lock.opens.day} at ${lock.opens.at}` : 'See you later';
-    const [icon, title] = lock.reason === 'dailyCap' ? ['🌙', 'That’s all for today']
-      : lock.reason === 'stopped' ? ['🌟', 'Good work today'] : ['⏰', 'Videos are sleeping'];
-    return { icon, title, when };
+  const el = (tag, cls, text) => Object.assign(document.createElement(tag), cls ? { className: cls } : {}, text != null ? { textContent: text } : {});
+  function button(cls, text, onTap) {
+    const b = el('button', cls, text);
+    b.addEventListener('click', onTap);
+    return b;
   }
-  async function showPageHome() {
-    if (homeReady || page !== 'home') return;
-    const gen = ++pageHomeGen;
-    const box = pageHomeBox();
-    const st = await ask({ type: 'state' });
-    if (gen !== pageHomeGen || homeReady || page !== 'home') return;
-    box.querySelectorAll('.grid, .center').forEach((n) => n.remove());
-    if (!st) return showFallback(box);
-    if (st.lock) {
-      const { icon, title, when } = lockCopy(st.lock);
-      const center = document.createElement('div');
-      center.className = 'center';
-      center.style.background = '#efeaff';
-      const inner = document.createElement('div');
-      inner.append(
-        Object.assign(document.createElement('div'), { className: 'big', textContent: icon }),
-        Object.assign(document.createElement('h1'), { textContent: title }),
-        Object.assign(document.createElement('p'), { textContent: when }),
-      );
-      center.append(inner);
-      box.append(center);
-      return;
-    }
-    if (!st.videos.length) {
-      const center = document.createElement('div');
-      center.className = 'center';
-      const inner = document.createElement('div');
-      inner.append(
-        Object.assign(document.createElement('div'), { className: 'big', textContent: '🌱' }),
-        Object.assign(document.createElement('h1'), { textContent: 'New videos are coming' }),
-        Object.assign(document.createElement('p'), { textContent: 'Ask a grown-up to check back later.' }),
-      );
-      center.append(inner);
-      box.append(center);
-      return;
-    }
-    const grid = document.createElement('div');
-    grid.className = 'grid';
-    for (const v of st.videos) {
-      const b = document.createElement('button');
-      b.className = 'card' + (v.waiting ? ' waiting' : '');
-      const img = document.createElement('img');
+
+  function panel(name, src) {
+    let p = frames[name];
+    if (!p) {
+      p = frames[name] = el('div', 'panel');
+      shadow().append(p);
+      if (src === 'ui/home.html') fillHome(p);
+      else if (src === 'ui/home.html?locked=1') fillLock(p);
+      else if (src === 'ui/strip.html') fillStrip(p);
+      else if (src === 'ui/badge.html') { p.classList.add('badge'); p.textContent = 'Parent view · skipping allowed'; }
+    } else shadow();
+    return p;
+  }
+  function every(p, ms) {
+    p.refresh();
+    const t = setInterval(p.refresh, ms);
+    p.stop = () => clearInterval(t);
+  }
+
+  function cards(videos, small) {
+    const grid = el('div', 'grid');
+    for (const v of videos) {
+      const b = el('button', 'card' + (v.waiting ? ' waiting' : ''));
+      const img = el('img');
       img.src = v.thumbnailUrl || `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`;
       img.alt = '';
-      const t = document.createElement('div');
-      t.className = 't';
-      t.textContent = v.title;
-      b.append(img, t);
-      if (v.durationSeconds) {
-        const d = document.createElement('div');
-        d.className = 'd';
-        d.textContent = `${Math.round(v.durationSeconds / 60)} min`;
-        b.append(d);
-      }
-      if (v.required) b.append(Object.assign(document.createElement('div'), { textContent: '⭐', style: 'position:absolute;top:6px;left:6px;font-size:30px' }));
+      b.append(img, el('div', 't', v.title));
+      if (!small && v.durationSeconds) b.append(el('div', 'd', `${Math.round(v.durationSeconds / 60)} min`));
+      if (v.required) b.append(el('div', 'star', '⭐'));
       if (!v.waiting) b.addEventListener('click', () => ask({ type: 'open', videoId: v.videoId }));
       grid.append(b);
     }
-    box.append(grid);
+    return grid;
   }
-  function showFallback(box) {
-    const center = document.createElement('div');
-    center.className = 'center';
-    center.style.cssText = 'display:block;text-align:left;padding:24px';
-    const line = (text, tag = 'p') => center.appendChild(Object.assign(document.createElement(tag), { textContent: text }));
-    line('KidTube’s screen didn’t open in this browser', 'h1');
-    line('Ask a grown-up to press the button below and send the result.');
-    const a = Object.assign(document.createElement('a'), { href: chrome.runtime.getURL('ui/check.html'), target: '_blank', textContent: 'Check this browser' });
-    a.style.cssText = 'display:inline-block;margin:12px 0;font-size:20px';
-    center.appendChild(a);
-    box.append(center);
-    line(`Details: home screen frame ${frames.home?.isConnected ? 'placed' : 'missing'}; the list did not load; ${navigator.userAgent}`);
+  function message(icon, title, text, cls = '') {
+    const box = el('div', `center ${cls}`);
+    const inner = el('div');
+    inner.append(el('div', 'big', icon), el('h1', '', title), el('p', '', text));
+    box.append(inner);
+    return box;
+  }
+  function lockView(lock) {
+    const when = lock.reason === 'stopped' ? 'Let’s try again tomorrow' : lock.opens ? `See you ${lock.opens.day} at ${lock.opens.at}` : 'See you later';
+    const [icon, title] = lock.reason === 'dailyCap' ? ['🌙', 'That’s all for today']
+      : lock.reason === 'stopped' ? ['🌟', 'Good work today'] : ['⏰', 'Videos are sleeping'];
+    return message(icon, title, when, 'lockbg');
+  }
+  function problemView() {
+    const box = message('🔧', 'KidTube can’t reach its background in this browser', 'Ask a grown-up to open the check below and send the result.');
+    const a = el('a', '', 'Check this browser');
+    a.href = chrome.runtime.getURL('ui/check.html');
+    a.target = '_blank';
+    box.firstChild.append(a);
+    return box;
+  }
+
+  function fillHome(p) {
+    p.classList.add('home');
+    const body = el('div');
+    p.append(body, button('gear', '⚙️', () => ask({ type: 'openSettings' })));
+    let shown = null;
+    p.refresh = async () => {
+      const st = await ask({ type: 'state' });
+      if (!p.isConnected) return;
+      if (!st) { if (shown === null) { shown = 'problem'; body.replaceChildren(problemView()); } return; }
+      const key = JSON.stringify([st.lock, st.videos.map((v) => [v.videoId, v.title, !!v.waiting, !!v.required])]);
+      if (key === shown) return;
+      shown = key;
+      body.replaceChildren(st.lock ? lockView(st.lock)
+        : st.videos.length ? cards(st.videos, false) : message('🌱', 'New videos are coming', 'Ask a grown-up to check back later.'));
+    };
+    every(p, 30000);
+  }
+  function fillLock(p) {
+    p.refresh = async () => {
+      const st = await ask({ type: 'state' });
+      if (p.isConnected) p.replaceChildren(lockView(st?.lock ?? { reason: 'dailyCap' }));
+    };
+    p.refresh();
+  }
+  const fmt = (s) => (s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s} s`);
+  function fillStrip(p) {
+    p.classList.add('strip');
+    const home = button('homebtn', '🏠 Home', () => ask({ type: 'goHome' }));
+    const wait = el('span', 'wait');
+    const bar = el('div', 'bar');
+    bar.append(home, wait, button('gear', '⚙️', () => ask({ type: 'openSettings' })));
+    const body = el('div');
+    p.append(bar, body);
+    let shown = null;
+    p.refresh = async () => {
+      const st = await ask({ type: 'state' });
+      if (!st || !p.isConnected) return;
+      const left = st.session?.secondsUntilUnlock ?? 0;
+      const locked = left > 0;
+      p.classList.toggle('locked', locked);
+      home.disabled = locked;
+      wait.textContent = locked ? `You can choose another video in ${fmt(left)}` : '';
+      const key = st.videos.map((v) => `${v.videoId}${v.waiting ? '-' : ''}`).join();
+      if (key !== shown) { shown = key; body.replaceChildren(cards(st.videos, true)); }
+    };
+    every(p, 1000);
   }
 
   function showLock() {
@@ -247,7 +298,6 @@
 
   function showParentView() {
     [...COVERS, 'strip', 'lock', 'home'].forEach(drop);
-    document.getElementById('kidtube-pagehome')?.remove();
     document.documentElement.classList.remove('kidtube-on');
     place(frame('badge', 'ui/badge.html'), 8, 8, 230, 40);
   }
@@ -268,11 +318,7 @@
     const u = new URL(location.href);
     const vid = u.pathname === '/watch' ? u.searchParams.get('v') : null;
     if (vid) {
-      if (page !== 'watch' || vid !== videoId) {
-        page = 'watch'; videoId = vid; drop('home'); drop('lock');
-        document.getElementById('kidtube-pagehome')?.remove();
-        played = 0; maxReached = 0; loadRules();
-      }
+      if (page !== 'watch' || vid !== videoId) { page = 'watch'; videoId = vid; drop('home'); drop('lock'); played = 0; maxReached = 0; loadRules(); }
       if (parentMode) return showParentView();
       document.documentElement.classList.add('kidtube-on');
       drop('badge');
@@ -326,7 +372,7 @@
   addEventListener('resize', () => (page === 'watch' ? route() : page === 'home' && showHome()));
   chrome.storage.onChanged.addListener((ch) => {
     if (ch.data || ch.localConfig || ch.parentPass) loadRules();
-    if (ch.data || ch.watched || ch.today) showPageHome();
+    if (ch.data || ch.watched || ch.today) for (const n of ['home', 'strip']) frames[n]?.refresh?.();
   });
   loadRules();
   document.addEventListener('fullscreenchange', () => page === 'watch' && route());
