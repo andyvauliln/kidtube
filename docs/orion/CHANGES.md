@@ -2,6 +2,11 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.8.5 (2026-10-05)
+
+- Fixes "something went wrong" when installing 0.8.3 and 0.8.4 in Orion.
+- On Orion, the GitHub connection is no longer kept on the install page; use Settings → Save settings to a file before reinstalling.
+
 ## 0.8.4 (2026-10-05)
 
 - If the parent screens fail to start, they now show a red box with the reason instead of a white page.
