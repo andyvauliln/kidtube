@@ -47,6 +47,7 @@ export function checkExtension(dir = join(ROOT, 'extension')) {
         const parts = m[1].replace(/\?/g, '').split('.');
         while (parts.length > 2 && EVENT_METHODS.has(parts.at(-1))) parts.pop();
         const api = parts.join('.');
+        if (parts.length < 2) continue;   // a bare namespace (chrome.alarms), used as an "is it there?" check
         (uses[api] ??= []).push(`${relative(ROOT, file)}:${i + 1}`);
       }
     });

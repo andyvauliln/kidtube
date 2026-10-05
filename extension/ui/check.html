@@ -1,0 +1,20 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KidTube · check this browser</title>
+<style>
+  body { font: 15px/1.4 system-ui, -apple-system, sans-serif; margin: 16px; color: #222; background: #fff; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+  td { border-top: 1px solid #ddd; padding: 6px 4px; vertical-align: top; word-break: break-word; }
+  td:first-child { width: 1.5em; } td:nth-child(2) { width: 40%; font-weight: 600; }
+  button { font: inherit; padding: 10px 16px; border-radius: 10px; border: 1px solid #999; background: #f4f4f4; }
+  #out { font-size: 13px; color: #555; }
+</style>
+<h1>KidTube: check this browser</h1>
+<p>Tests what KidTube needs in this browser. Wait until it says "Done", then press <b>Copy the result</b> and send it.</p>
+<p id="status">Running…</p>
+<button id="copy">Copy the result</button> <span id="out"></span>
+<table id="rows"></table>
+<script src="check-module.js" type="module"></script>
+<script src="check.js"></script>

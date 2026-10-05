@@ -218,6 +218,10 @@ async function handle(msg, sender) {
   const tabId = sender.tab?.id;
   const host = sender.tab?.url ? new URL(sender.tab.url).hostname : 'm.youtube.com';
   switch (msg.type) {
+    case 'ping': // "Check this browser" and the screens' fallbacks: is the background alive, and what does it have?
+      return { ok: true, version: chrome.runtime.getManifest().version, target: TARGET, at: new Date().toISOString(),
+        apis: ['alarms', 'storage', 'tabs', 'declarativeNetRequest', 'permissions', 'scripting'].filter((n) => !!chrome[n]) };
+
     case 'state':
       return withState((s) => viewState(s, tabId));
 

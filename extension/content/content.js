@@ -2,7 +2,7 @@
 // It never decides what is allowed: the service worker does, and also guards every URL change.
 (() => {
   const Z = '2147483647';
-  const ask = (msg) => chrome.runtime.sendMessage(msg).catch(() => null);
+  const ask = (msg) => Promise.resolve().then(() => chrome.runtime.sendMessage(msg)).catch(() => null);
   let page = null;             // 'home' | 'watch'
   let videoId = null;
   let frames = {};
@@ -85,6 +85,37 @@
   function showHome() {
     [...COVERS, 'strip', 'lock'].forEach(drop);
     place(frame('home', 'ui/home.html'), 0, 0, innerWidth, innerHeight);
+    if (!homeReady && !homeWatch) homeWatch = setTimeout(() => { if (!homeReady && page === 'home') showFallback(); }, 6000);
+  }
+
+  // A browser that can't show our screens would leave him a blank page. When the home screen hasn't said
+  // "frame-ready" after 6 s, say so on the page itself, with what the background answers.
+  let homeReady = false, homeWatch = null;
+  const extOrigin = new URL(chrome.runtime.getURL('')).origin;
+  window.addEventListener('message', (e) => {
+    if (e.origin !== extOrigin || e.data?.kidtube !== 'frame-ready') return;
+    homeReady = true;
+    document.getElementById('kidtube-fallback')?.remove();
+  });
+  async function showFallback() {
+    if (document.getElementById('kidtube-fallback')) return;
+    const box = document.createElement('div');
+    box.id = 'kidtube-fallback';
+    box.style.cssText = `position:fixed;inset:0;z-index:${Z};background:#fff;color:#222;font:16px/1.4 -apple-system,system-ui,sans-serif;padding:24px;overflow:auto`;
+    const line = (text, tag = 'p') => box.appendChild(Object.assign(document.createElement(tag), { textContent: text }));
+    line('KidTube’s screen didn’t open in this browser', 'h2');
+    line('Ask a grown-up to press the button below and send the result.');
+    const a = Object.assign(document.createElement('a'), { href: chrome.runtime.getURL('ui/check.html'), target: '_blank', textContent: 'Check this browser' });
+    a.style.cssText = 'display:inline-block;margin:12px 0;font-size:20px';
+    box.appendChild(a);
+    document.documentElement.appendChild(box);
+    const viaPromise = await Promise.race([ask({ type: 'ping' }), new Promise((r) => setTimeout(() => r('no answer'), 4000))]);
+    const viaCallback = await new Promise((resolve) => {
+      setTimeout(() => resolve('no answer'), 4000);
+      try { chrome.runtime.sendMessage({ type: 'ping' }, (x) => resolve(chrome.runtime.lastError?.message ?? x)); } catch (e) { resolve(String(e)); }
+    });
+    line(`Details: home screen frame ${frames.home?.isConnected ? 'placed' : 'missing'}; ` +
+      `background (promise): ${JSON.stringify(viaPromise)}; background (callback): ${JSON.stringify(viaCallback)}; ${navigator.userAgent}`);
   }
 
   function showLock() {

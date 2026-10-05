@@ -79,3 +79,9 @@ test('Orion build: updates are manual and come from orion/latest.json', async ()
   assert.equal(r.installPage, 'https://andyvauliln.github.io/kidtube/#orion');
   assert.ok(fetched.includes('https://andyvauliln.github.io/kidtube/orion/latest.json'));
 });
+
+test('Orion build: the background answers a ping with its build', async () => {
+  const r = await send({ type: 'ping' });
+  assert.equal(r.ok, true);
+  assert.equal(r.target, 'orion');
+});
