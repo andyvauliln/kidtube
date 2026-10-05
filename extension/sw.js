@@ -303,7 +303,8 @@ async function handle(msg, sender) {
       if (tabId != null && chrome.tabs.sendMessage) chrome.tabs.sendMessage(tabId, { type: 'frameReady' }, () => { void chrome.runtime.lastError; });
       return { ok: true };
 
-    case 'state':
+    case 'state': // a KidTube screen opened: fetch the newest list if the last sync is a few minutes old
+      syncIfStale(2);
       return withState((s) => viewState(s, tabId));
 
     case 'open':
@@ -355,6 +356,7 @@ async function handle(msg, sender) {
       });
 
     case 'quizResults':
+      syncSoon();
       return withState(async (s) => {
         const { config } = await effective(s);
         todayPlayed(s, config);
@@ -440,6 +442,7 @@ async function handle(msg, sender) {
       });
 
     case 'ended':
+      syncSoon();
       return withState(async (s) => {
         const ses = s.session;
         if (!ses || ses.videoId !== msg.videoId) return;
@@ -774,7 +777,7 @@ async function helperData(s) {
   const p = config.presenter ?? {};
   return {
     ok: true, info: helperInfo ?? null, hasToken: !!s.settings.token, waiting: s.outbox.length,
-    lastRunAt: memory?.helper?.lastRunAt ?? null, processedThrough: since,
+    lastRunAt: memory?.helper?.lastRunAt ?? null, processedThrough: since, runs: (s.data.runs ?? []).slice().reverse(),
     journal: (memory?.journal ?? []).slice(-7).reverse(),
     noticed: memory?.helper?.noticed ?? '', studyPlan: memory?.helper?.plan ?? '', studyPlanAt: memory?.helper?.planAt ?? null,
     messages: (memory?.helper?.wishes ?? []).slice(-15).reverse(),
@@ -898,6 +901,14 @@ const okQueue = (q) => q && q.schemaVersion === 1 && Array.isArray(q.videos) && 
 
 // Syncs run one after another, so a sync asked for after Save always uses the new token.
 let syncChain = Promise.resolve();
+// After he finishes a video or answers: one sync a little later, so what he did reaches the helper soon.
+let syncTimer = null;
+function syncSoon(ms = 20000) { clearTimeout(syncTimer); syncTimer = setTimeout(() => sync(), ms); }
+async function syncIfStale(minutes) {
+  const at = await withState((s) => s.syncStatus?.at ?? null);   // per account, like everything in the state
+  if (!at || Date.now() - Date.parse(at) > minutes * 60000) sync();
+}
+
 function sync() {
   const run = syncChain.then(doSync);
   syncChain = run.catch(() => {});
@@ -952,6 +963,10 @@ async function doSync() {
     try {
       const r = await fetchDataFile(repo, token, 'run-status.json', data.runStatus ? etags['run-status.json'] : null);
       if (!r.notModified && r.json?.schemaVersion === 1) { update.runStatus = r.json; etags['run-status.json'] = r.etag; }
+    } catch {}
+    try {   // runs.json: time, turns and cost of the latest runs (agent/runlog.mjs)
+      const r = await fetchDataFile(repo, token, 'runs.json', data.runs ? etags['runs.json'] : null);
+      if (!r.notModified && Array.isArray(r.json?.runs)) { update.runs = r.json.runs.slice(-10); etags['runs.json'] = r.etag; }
     } catch {}
   }
   if (token) { try { await pullContext(repo, token, etags); } catch (e) { status.errors.push('Context documents: ' + String(e.message ?? e)); } }

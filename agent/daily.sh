@@ -21,14 +21,21 @@ echo "=== $(date -u +%FT%TZ) daily run, runner=$RUNNER model=$MODEL"
 if [ "$RUNNER" = "claude" ] && command -v claude >/dev/null; then
   # Long steps (save makes voice recordings) must run in the foreground: in -p mode Claude ends
   # when it stops talking, and a backgrounded save was killed with it (Oct 3–5).
+  mkdir -p /tmp/kidtube-in "$STATE/runs" && rm -f /tmp/kidtube-in/*
+  OUT="$STATE/runs/$(date -u +%Y%m%dT%H%M%SZ).json"
+  # SYSTEM.md: who it is and the rules; DAILY.md: the steps; .claude/skills/helper-*: step details;
+  # .claude/agents/video-scout.md: searches on a cheaper model.
   CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 BASH_DEFAULT_TIMEOUT_MS=1800000 BASH_MAX_TIMEOUT_MS=1800000 \
-  mkdir -p /tmp/kidtube-in && rm -f /tmp/kidtube-in/*
   claude -p "$(cat agent/DAILY.md)" \
+    --append-system-prompt "$(cat agent/SYSTEM.md)" \
     --model "${MODEL:-sonnet}" \
     --permission-mode dontAsk \
-    --allowedTools "Bash(node agent/kt.mjs:*)" "Read" "Edit(//tmp/kidtube-in/**)" --add-dir /tmp/kidtube-in \
-    --output-format text
-  echo "=== claude exit $?"
+    --allowedTools "Bash(node agent/kt.mjs:*)" "Read" "Edit(//tmp/kidtube-in/**)" "Skill" "Agent" "Task" --add-dir /tmp/kidtube-in \
+    --output-format json > "$OUT"
+  code=$?
+  # The report goes to the log; time, turns and cost go to runs.json in kidtube-data (parent mode → Prompt).
+  node agent/runlog.mjs "$OUT" "${KIDTUBE_ON_DEMAND:+request}"
+  echo "=== claude exit $code"
 fi
 
 if [ "$(cat "$STATE/last-save" 2>/dev/null)" != "$TODAY" ] && { [ "$RUNNER" = "node" ] || [ "$FALLBACK" = "true" ]; }; then

@@ -1,13 +1,18 @@
 // helper.json in the data repo: what the helper is and how it works, for the parent screens (Prompt tab).
 // Made from the real files every run (the prompt, agent/config.json, the toolkit's command list), so it always
 // matches what runs. No secrets: config.json holds none (keys are in the env file).
-import { readFileSync } from 'node:fs';
+import { readFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 
 const iso = (d = new Date()) => d.toISOString().replace(/\.\d+Z$/, 'Z');
 
 export function helperInfo(root, config) {
-  const prompt = readFileSync(join(root, 'agent/DAILY.md'), 'utf8');
+  // What the helper reads: the system prompt, the steps, and the step details (skills), in that order.
+  const skills = ['helper-find-videos', 'helper-write-words', 'helper-notes'].map((n) => {
+    const f = join(root, '.claude/skills', n, 'SKILL.md');
+    return existsSync(f) ? { name: n, text: readFileSync(f, 'utf8').replace(/^---[\s\S]*?---\n/, '').trim() } : null;
+  }).filter(Boolean);
+  const prompt = [readFileSync(join(root, 'agent/SYSTEM.md'), 'utf8'), readFileSync(join(root, 'agent/DAILY.md'), 'utf8')].join('\n\n');
   const commands = readFileSync(join(root, 'agent/kt.mjs'), 'utf8').split('\n')
     .map((l) => l.match(/^\/\/\s+node agent\/kt\.mjs (\S+)(.*?)\s{2,}(\S.*)$/)).filter(Boolean)
     .map(([, cmd, args, what]) => ({ command: `${cmd}${args}`.trim(), what: what.trim() }));
@@ -15,7 +20,7 @@ export function helperInfo(root, config) {
   return {
     schemaVersion: 1,
     updatedAt: iso(),
-    prompt,
+    prompt, skills,
     run: {
       schedule: config.schedule ?? '30 3 * * *', timezone: config.timezone ?? 'UTC',
       runner: config.orchestrator?.runner ?? 'claude', model: config.orchestrator?.model ?? 'sonnet', maxTurns: config.orchestrator?.maxTurns ?? null,

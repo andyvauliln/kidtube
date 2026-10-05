@@ -477,6 +477,11 @@ async function renderPrompt() {
     howBody.push(el('p', 'muted', h.hasToken ? 'The helper hasn’t published its description yet. It does on its next run.' : 'Needs the GitHub token for this account (Settings → Connection).'));
   }
   howBody.push(el('p', 'muted', h.lastRunAt ? `Last run: ${new Date(h.lastRunAt).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. It had read the tablets up to ${h.processedThrough ? new Date(h.processedThrough).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}.` : 'No run seen yet.'));
+  if (h.runs?.length) {
+    const ul = el('ul', 'notes');
+    ul.append(...h.runs.slice(0, 7).map((r) => el('li', '', `${new Date(r.at).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} · ${r.kind === 'request' ? 'on request' : 'nightly'} · ${r.ok ? 'ok' : 'failed'}${r.minutes != null ? ` · ${r.minutes} min` : ''}${r.turns != null ? ` · ${r.turns} steps` : ''}${r.costUsd != null ? ` · $${r.costUsd}` : ''}`)));
+    howBody.push(fold('Latest runs (time, steps, cost)', ul));
+  }
   if (h.journal[0]) {
     howBody.push(el('h3', '', 'Its latest diary'), el('p', '', h.journal[0].summary));
     if (h.journal.length > 1) howBody.push(fold('Earlier days', ...h.journal.slice(1).map((j) => el('p', '', `${new Date(j.at).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}: ${j.summary}`))));
@@ -527,6 +532,10 @@ async function renderPrompt() {
       ol.append(d);
     }
     box('What it does, step by step', el('p', 'muted', 'Tap a step to see exactly what the prompt tells it.'), ol, ...(after ? [renderMarkdown(after)] : []));
+  }
+  if (info?.skills?.length) {
+    box('Step details (skills)', el('p', 'muted', 'The helper loads these when it reaches the step.'),
+      ...info.skills.map((s) => fold(s.text.match(/^# (.+)/m)?.[1] ?? s.name, renderMarkdown(s.text.replace(/^# .+\n/, '')))));
   }
 
   // 4. The settings it uses.
