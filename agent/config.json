@@ -4,7 +4,8 @@
     "model": "sonnet",
     "maxTurns": 250,
     "fallbackToNode": true,
-    "note": "runner: claude = Claude Code runs agent/DAILY.md with the tools in agent/kt.mjs; node = the old fixed program agent/run.mjs (OpenRouter text models)"
+    "note": "runner: claude = Claude Code runs agent/DAILY.md with the tools in agent/kt.mjs; node = the old fixed program agent/run.mjs (OpenRouter text models); onDemandPerDay: runs asked for from parent mode (Run now), at most this many a day",
+    "onDemandPerDay": 6
   },
   "dataRepo": "andyvauliln/kidtube-data",
   "dataDir": "~/.local/share/kidtube/kidtube-data",
@@ -72,7 +73,7 @@
       "note": "provider: device (tablet voice) | gemini (free tier) | openrouter (paid). Recordings are made for today's lines and played by the tablet."
     },
     "listen": {
-      "note": "How the tablet hears his answers is a tablet rule (parent page \u2192 Talking friend \u2192 Hearing his answers), saved in parent-config presenter.voice.listen."
+      "note": "How the tablet hears his answers is a tablet rule (parent page → Talking friend → Hearing his answers), saved in parent-config presenter.voice.listen."
     }
   },
   "openrouter": {

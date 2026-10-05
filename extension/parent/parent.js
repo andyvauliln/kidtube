@@ -65,6 +65,39 @@ async function showVersion() {
 }
 showVersion();
 
+// --- Update: run the helper now (header) ------------------------------------------------------------
+// Your notes go to GitHub first; the server starts the helper within a minute or two (agent/poll.sh).
+let runTimer = null;
+const RUN_TEXT = { queued: 'Waiting for the server…', running: 'Helper is working…', done: 'Updated', failed: 'Run failed' };
+async function showRun(fresh = false) {
+  const box = $('run');
+  if (fresh) await ask({ type: 'sync' });
+  const r = await ask({ type: 'runStatus' });
+  if (!r?.ok) return;
+  const working = r.state === 'queued' || r.state === 'running';
+  const when = r.at ? new Date(r.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
+  const state = el('span', `state ${working ? 'working' : r.state}`, r.state === 'none' ? '' : `${RUN_TEXT[r.state] ?? r.state}${when && !working ? ` ${when}` : ''}`);
+  state.title = r.message ?? '';
+  const b = btn(working ? '↻ …' : '↻ Update', async () => {
+    b.disabled = true;
+    toast('Sending your notes and asking the helper to run…');
+    const res = await ask({ type: 'runHelper' });
+    if (!res?.ok) { b.disabled = false; return toast(res?.error ?? 'Could not ask for a run.'); }
+    toast('Asked. The helper starts within a minute or two and takes about 10–30 minutes.');
+    showRun();
+  }, 'small');
+  b.disabled = working;
+  b.title = 'Run the helper now with your latest notes and what he watched';
+  box.replaceChildren(state, b);
+  clearTimeout(runTimer);
+  if (working) runTimer = setTimeout(async () => {
+    const before = r.state;
+    await showRun(true);
+    const now = await ask({ type: 'runStatus' });
+    if (now?.state === 'done' && before !== 'done') { toast('The helper finished: the lists are updated.'); refresh(); }
+  }, 30000);
+}
+
 // --- loading and the PIN ---------------------------------------------------------------------------
 async function refresh() {
   const r = await ask({ type: 'parentData' });
@@ -75,6 +108,7 @@ async function refresh() {
   if (!r.parentMode) return showGate();
   $('gate').hidden = true;
   $('tabs').hidden = false;
+  if ($('run').hidden) { $('run').hidden = false; showRun(); }
   $('nToday').textContent = r.today.filter((v) => !v.watchedAt).length;
   $('nPlanned').textContent = r.planned.length;
   render();
@@ -82,6 +116,7 @@ async function refresh() {
 
 async function showGate() {
   $('tabs').hidden = true;
+  $('run').hidden = true;
   view.replaceChildren();
   $('gate').hidden = false;
   const { settings = {} } = await chrome.storage.local.get('settings');

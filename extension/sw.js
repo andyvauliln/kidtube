@@ -565,6 +565,13 @@ async function handle(msg, sender) {
         return { ok: true, noteId: ev.noteId };
       }).then(async (r) => { if (r.ok) sync(); return r; });
 
+    case 'runHelper': // parent mode → Update: send everything, then ask the server to run the helper now
+      if (!fromExtensionPage(sender)) return { ok: false };
+      return requestRun();
+    case 'runStatus':
+      if (!fromExtensionPage(sender)) return { ok: false };
+      return withState((s) => ({ ok: true, ...runView(s) }));
+
     case 'plan':
       if (!fromExtensionPage(sender)) return { ok: false };
       return withState((s) => planChange(s, msg)).then((r) => { if (r?.ok) sync(); return r; });
@@ -901,6 +908,13 @@ async function doSync() {
       }
     } catch {}
   }
+  // run-status.json: a run asked for from parent mode (agent/poll.sh on the server writes it).
+  if (token) {
+    try {
+      const r = await fetchDataFile(repo, token, 'run-status.json', data.runStatus ? etags['run-status.json'] : null);
+      if (!r.notModified && r.json?.schemaVersion === 1) { update.runStatus = r.json; etags['run-status.json'] = r.etag; }
+    } catch {}
+  }
   const done = await withState((s) => {
     Object.assign(s.data, update, { etags });
     s.syncStatus = status;
@@ -964,6 +978,41 @@ async function pullPlan(repo, token, acct) {
     s.planLog = pendingPlan(log, since);
     if (!s.planLog.events.length) s.planLog = null;
   }, { account: acct });
+}
+
+// Parent mode → Update. Sends what is waiting (notes, what he watched), then writes requests/run.json;
+// the server checks every minute and runs the helper (agent/poll.sh), at most a few times a day.
+async function requestRun() {
+  const ok = await withState((s) => parentMode(s));
+  if (!ok) return { ok: false, error: 'Parent mode is off.' };
+  const { settings = {} } = await chrome.storage.local.get('settings');
+  if (!settings.token) return { ok: false, error: 'Needs the GitHub token (Settings → Connection).' };
+  const repo = settings.repo || DEFAULT_REPO;
+  await sync();
+  const left = await withState((s) => s.outbox.length);
+  if (left) return { ok: false, error: 'Could not send your notes to GitHub yet. Check the connection and try again.' };
+  const req = { schemaVersion: 1, id: crypto.randomUUID(), at: new Date().toISOString() };
+  try {
+    for (let i = 0; i < 3; i++) {
+      const old = await getRepoFile(repo, settings.token, 'requests/run.json');
+      if (await putRepoFile(repo, settings.token, 'requests/run.json', req, old?.sha, 'tablet: run the helper now')) {
+        await withState((s) => { s.data.runRequest = { id: req.id, at: req.at }; });
+        return { ok: true, ...(await withState((s) => runView(s))) };
+      }
+    }
+    return { ok: false, error: 'GitHub was busy. Try again.' };
+  } catch (e) {
+    return { ok: false, error: String(e.message ?? e) };
+  }
+}
+
+// What parent mode shows about the latest run asked for: waiting for the server, running, done, failed.
+function runView(s) {
+  const req = s.data.runRequest ?? null;
+  const st = s.data.runStatus ?? null;
+  if (req && st?.requestId !== req.id) return { state: 'queued', at: req.at, message: 'Asked. The server starts it within a minute or two.' };
+  if (!st) return { state: 'none' };
+  return { state: st.state, at: st.finishedAt ?? st.startedAt, message: st.message ?? '' };
 }
 
 // Reads a JSON file with its sha (null when it doesn't exist yet).

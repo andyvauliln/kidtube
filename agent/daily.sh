@@ -6,6 +6,11 @@ set -u
 cd "$(dirname "$0")/.."
 STATE="${KIDTUBE_STATE_DIR:-$HOME/.local/share/kidtube/state}"
 mkdir -p "$STATE"
+# One run at a time with runs asked for from parent mode (agent/poll.sh holds the lock and sets KIDTUBE_LOCKED).
+if [ -z "${KIDTUBE_LOCKED:-}" ]; then
+  exec 9>"$STATE/run.lock"
+  flock -w 3600 9 || { echo "=== another run held the lock for an hour, skipping"; exit 1; }
+fi
 cfg() { node -e "const c=require('./agent/config.json');const v=$1;process.stdout.write(String(v??''))"; }
 RUNNER=$(cfg "c.orchestrator?.runner")
 MODEL=$(cfg "c.orchestrator?.model")
