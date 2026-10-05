@@ -2,6 +2,12 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.8.2 (2026-10-05)
+
+- The tablet fetches the newest list whenever a KidTube screen opens (if the last check is over 2 minutes old), and sends what he watched and answered about 20 seconds after each video.
+- Parent mode → Prompt: **Latest runs** (when, nightly or on request, minutes, steps, cost) and **Step details (skills)** — everything the helper reads.
+- The helper now plans by subject: today's list follows the balance in the Strategy document, and new videos are searched from each subject document.
+
 ## 0.8.1 (2026-10-05)
 
 - Every place you write a note for the helper (Today, Planned, History, each video, Context, Prompt) now has the same three buttons:
