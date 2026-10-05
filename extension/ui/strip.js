@@ -1,15 +1,16 @@
 import { card } from './render.js';
+import { ask } from '../lib/ask.js';
 
 const grid = document.getElementById('grid');
 const home = document.getElementById('home');
 const wait = document.getElementById('wait');
 let shown = '';
 
-home.addEventListener('click', () => chrome.runtime.sendMessage({ type: 'goHome' }));
-document.getElementById('gear').addEventListener('click', () => chrome.runtime.sendMessage({ type: 'openSettings' }));
+home.addEventListener('click', () => ask({ type: 'goHome' }));
+document.getElementById('gear').addEventListener('click', () => ask({ type: 'openSettings' }));
 
 async function draw() {
-  const st = await chrome.runtime.sendMessage({ type: 'state' });
+  const st = await ask({ type: 'state' });
   if (!st) return;
   const left = st.session?.secondsUntilUnlock ?? 0;
   const locked = left > 0;
@@ -19,7 +20,7 @@ async function draw() {
   const key = st.videos.map((v) => v.videoId).join();
   if (key !== shown) {
     shown = key;
-    grid.replaceChildren(...st.videos.map((v) => card(v, () => chrome.runtime.sendMessage({ type: 'open', videoId: v.videoId }), { small: true })));
+    grid.replaceChildren(...st.videos.map((v) => card(v, () => ask({ type: 'open', videoId: v.videoId }), { small: true })));
   }
 }
 

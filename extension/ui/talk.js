@@ -4,9 +4,9 @@ import { say, listen, recordedUrl, recordAnswer, transcribeAnswer } from './voic
 import { createRig } from './rig.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { checkPin } from '../lib/pin.js';
+import { ask as send } from '../lib/ask.js';
 
 const $ = (id) => document.getElementById(id);
-const send = (msg) => chrome.runtime.sendMessage(msg);
 const q = new URLSearchParams(location.search);
 const mode = q.get('mode') === 'outro' ? 'outro' : 'intro';
 const videoId = q.get('v');

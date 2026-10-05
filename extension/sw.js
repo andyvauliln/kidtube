@@ -222,6 +222,10 @@ async function handle(msg, sender) {
       return { ok: true, version: chrome.runtime.getManifest().version, target: TARGET, at: new Date().toISOString(),
         apis: ['alarms', 'storage', 'tabs', 'declarativeNetRequest', 'permissions', 'scripting'].filter((n) => !!chrome[n]) };
 
+    case 'frameReady': // the home iframe loaded; the content script may not hear its postMessage (Orion)
+      if (tabId != null && chrome.tabs.sendMessage) chrome.tabs.sendMessage(tabId, { type: 'frameReady' }, () => { void chrome.runtime.lastError; });
+      return { ok: true };
+
     case 'state':
       return withState((s) => viewState(s, tabId));
 

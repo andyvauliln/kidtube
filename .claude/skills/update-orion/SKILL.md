@@ -11,7 +11,7 @@ The Orion build differs only in two ways, both done by `tools/build-orion.mjs`:
 - `lib/target.js` gets `TARGET = 'orion'`. Code that must behave differently checks `TARGET` (today: no blocking rules, manual updates, its own `orion/latest.json`).
 - The manifest has no `update_url`, no `minimum_chrome_version`, and no `declarativeNetRequest` permission.
 
-The published files are in `docs/orion/`: `kidtube-orion-<version>.zip` and `latest.json`, which records `sourceCommit` and `sourceHash`. The install page (`docs/index.html#orion`) links to them.
+The published files are in `docs/orion/`: `kidtube-orion-<version>.zip`, the same file as `kidtube-orion.zip` (a link that never changes, always the newest build) and `latest.json`, which records `sourceCommit` and `sourceHash`. The install page (`docs/index.html#orion`) links to them.
 
 ## Steps
 

@@ -33,6 +33,8 @@ test('latest.json names the zip, the version and the source', () => {
   assert.equal(latest.zipUrl, `https://example.test/orion/kidtube-orion-${version}.zip`);
   assert.match(latest.sourceHash, /^[0-9a-f]{64}$/);
   assert.ok(existsSync(join(out, `kidtube-orion-${version}.zip`)));
+  assert.deepEqual(readFileSync(join(out, 'kidtube-orion.zip')), readFileSync(join(out, `kidtube-orion-${version}.zip`)));
+  assert.equal(latest.stableZipUrl, 'https://example.test/orion/kidtube-orion.zip');
   assert.equal(built.previous, null);
 });
 

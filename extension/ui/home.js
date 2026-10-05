@@ -1,19 +1,15 @@
 import { renderLock, card } from './render.js';
+import { ask } from '../lib/ask.js';
 
 const root = document.getElementById('root');
 const forceLock = new URLSearchParams(location.search).has('locked');
 
-// Tells the YouTube page this screen runs (content.js shows a fallback when it never hears it).
-try { parent.postMessage({ kidtube: 'frame-ready' }, '*'); } catch {}
-
-// The background's answer: promise style first, then callback style (a browser may only have one).
-const within = (p, ms) => Promise.race([p, new Promise((r) => setTimeout(r, ms))]);
-async function ask(msg) {
-  const a = await within(Promise.resolve().then(() => chrome.runtime.sendMessage(msg)).catch(() => undefined), 5000);
-  if (a !== undefined) return a;
-  return within(new Promise((resolve) => {
-    try { chrome.runtime.sendMessage(msg, (x) => { void chrome.runtime.lastError; resolve(x); }); } catch { resolve(undefined); }
-  }), 5000);
+// Tells the YouTube page this screen runs. postMessage can be dropped or rejected on Orion;
+// the service worker relays frameReady to the content script, which is the path that works there.
+// The lock screen is the same file (?locked=1) and must not count as the home list opening.
+if (!forceLock) {
+  try { parent.postMessage({ kidtube: 'frame-ready' }, '*'); } catch {}
+  ask({ type: 'frameReady' });
 }
 
 // Instead of a blank screen: say what is wrong and where to look.
@@ -40,7 +36,7 @@ async function draw() {
   }
   const grid = document.createElement('div');
   grid.className = 'grid';
-  for (const v of st.videos) grid.appendChild(card(v, () => chrome.runtime.sendMessage({ type: 'open', videoId: v.videoId })));
+  for (const v of st.videos) grid.appendChild(card(v, () => ask({ type: 'open', videoId: v.videoId })));
   root.replaceChildren(grid);
 }
 

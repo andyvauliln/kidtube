@@ -73,9 +73,12 @@ export function buildOrion({ src = join(ROOT, 'extension'), out = join(ROOT, 'do
   mkdirSync(out, { recursive: true });
   const zipName = `kidtube-orion-${version}.zip`;
   for (const f of readdirSync(out)) if (/^kidtube-orion-.*\.zip$/.test(f) && f !== zipName) rmSync(join(out, f));
-  writeFileSync(join(out, zipName), zipDir(stage));
+  const zip = zipDir(stage);
+  writeFileSync(join(out, zipName), zip);
+  // The same file under a name that never changes, so one saved link always downloads the newest build.
+  writeFileSync(join(out, 'kidtube-orion.zip'), zip);
   const latest = {
-    version, target: 'orion', zipUrl: `${baseUrl.replace(/\/$/, '')}/${zipName}`,
+    version, target: 'orion', zipUrl: `${baseUrl.replace(/\/$/, '')}/${zipName}`, stableZipUrl: `${baseUrl.replace(/\/$/, '')}/kidtube-orion.zip`,
     sourceCommit: commit, sourceHash, builtAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
     quizTypes: readJson(join(src, 'quiz-types.json')) ?? [],
   };

@@ -1,8 +1,8 @@
 import { hashPin, checkPin } from '../lib/pin.js';
 import { say, listen, recordAnswer, transcribeAnswer } from '../ui/voice.js';
+import { ask as send } from '../lib/ask.js';
 
 const $ = (id) => document.getElementById(id);
-const send = (msg) => chrome.runtime.sendMessage(msg);
 
 async function getSettings() {
   return (await chrome.storage.local.get('settings')).settings ?? {};
