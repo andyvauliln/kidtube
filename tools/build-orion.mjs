@@ -30,6 +30,8 @@ export function orionManifest(manifest) {
   delete m.update_url;
   delete m.minimum_chrome_version;
   m.permissions = (m.permissions ?? []).filter((p) => !p.startsWith('declarativeNetRequest'));
+  // Orion 0.8.3/0.8.4 would not install ("something went wrong") once this content script was added.
+  m.content_scripts = (m.content_scripts ?? []).filter((c) => !c.js?.includes('content/backup.js'));
   // content.js reads this to draw its screens in the page: Orion shows extension iframes blank.
   m.version_name = `${m.version} Orion`;
   return m;
