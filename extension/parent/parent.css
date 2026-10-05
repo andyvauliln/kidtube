@@ -132,3 +132,5 @@ iframe.settings { width: 100%; border: 0; min-height: 400px; display: block; bac
   .chip.warn { background: #3a2a10; }
   .chip.bad { background: #3a1a1a; }
 }
+.noterow { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+.noterow .mic.on { background: #c0392b; color: #fff; }

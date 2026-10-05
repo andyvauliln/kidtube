@@ -2,7 +2,7 @@
 // Changes go to the background (sw.js → planChange), which applies them on this tablet at once and logs them for the helper.
 import { ask } from '../lib/ask.js';
 import { checkPin } from '../lib/pin.js';
-import { say, listen, recordedUrl } from '../ui/voice.js';
+import { say, listen, recordedUrl, recordAnswer, transcribeAnswer } from '../ui/voice.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { renderMarkdown, promptSteps } from './markdown.js';
 
@@ -69,6 +69,81 @@ showVersion();
 // Your notes go to GitHub first; the server starts the helper within a minute or two (agent/poll.sh).
 let runTimer = null;
 const RUN_TEXT = { queued: 'Waiting for the server…', running: 'Helper is working…', done: 'Updated', failed: 'Run failed' };
+// Sends every note waiting on any tab, then runs the helper. Returns false when it could not ask.
+async function runNow() {
+  toast('Sending your notes and asking the helper to run…');
+  const res = await ask({ type: 'runHelper' });
+  if (!res?.ok) { toast(res?.error ?? 'Could not ask for a run.'); return false; }
+  toast('Asked. The helper starts within a minute or two, reads all your notes and takes about 10–30 minutes.');
+  showRun();
+  return true;
+}
+
+// --- writing a note for the helper: type or dictate, then add it, or add it and run the helper now -------
+let dictating = null;   // the one recording in progress: { stop }
+function micButton(ta) {
+  const lang = navigator.language || 'en-US';
+  const b = btn('🎤', async () => {
+    if (dictating) return dictating.stop();
+    const add = (text) => { text = text.trim(); if (text) { ta.value = (ta.value.trim() ? ta.value.trim() + ' ' : '') + text; ta.dispatchEvent(new Event('input')); } };
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const { voiceKey = '' } = await chrome.storage.local.get('voiceKey');
+    b.classList.add('on');
+    b.textContent = '⏹';
+    const done = () => { dictating = null; b.classList.remove('on'); b.textContent = '🎤'; };
+    if (voiceKey) {
+      // Cloud: records until you tap ⏹ (at most 2 minutes), then writes it down.
+      const ctl = new AbortController();
+      dictating = { stop: () => ctl.abort() };
+      toast('Speak your note, then tap ⏹.');
+      const audio = await recordAnswer({ seconds: 120, stopSignal: ctl.signal, silenceStop: false });
+      b.textContent = '…';
+      const heard = audio ? await transcribeAnswer(audio, { key: voiceKey, models: ['openai/gpt-audio-mini', 'google/gemini-2.5-flash'], lang, maxTokens: 800,
+        instruction: 'A parent dictates a note about their child\'s videos and learning. Write down exactly what they say, with punctuation, in the language they speak. Nothing else.' }) : null;
+      done();
+      if (heard?.length) return add(heard[0]);
+      if (heard === null && !SR) return toast('Could not write it down. Use the 🎤 on the iPad keyboard instead.');
+      if (heard) return toast('Heard nothing.');
+    }
+    if (!SR) { done(); return toast('Dictation isn’t available here. Use the 🎤 on the iPad keyboard instead.'); }
+    // The device's own speech recognition: keeps listening until you tap ⏹.
+    const r = new SR();
+    r.lang = lang;
+    r.continuous = true;
+    r.interimResults = false;
+    dictating = { stop: () => { try { r.stop(); } catch {} } };
+    r.onresult = (e) => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) add(e.results[i][0].transcript); };
+    r.onerror = (e) => { if (e.error !== 'no-speech' && e.error !== 'aborted') toast('Dictation stopped. You can use the 🎤 on the iPad keyboard instead.'); };
+    r.onend = done;
+    try { r.start(); } catch { done(); toast('Dictation isn’t available here. Use the 🎤 on the iPad keyboard instead.'); }
+  }, 'small mic');
+  b.title = 'Dictate the note';
+  return b;
+}
+
+// textarea + 🎤 + "Add note" + "Add & ↻ Update". save(text) → true when saved.
+function noteInput({ placeholder, value = '', onInput, save, saveLabel = 'Add note' }) {
+  const ta = el('textarea');
+  ta.maxLength = 2000;
+  ta.placeholder = placeholder;
+  ta.value = value;
+  if (onInput) ta.addEventListener('input', () => onInput(ta.value));
+  const go = async (andRun) => {
+    if (dictating) dictating.stop();
+    const text = ta.value.trim();
+    if (!text) return andRun ? runNow() : undefined;
+    if (!(await save(text))) return toast('Could not save it. Is parent mode still on?');
+    ta.value = '';
+    onInput?.('');
+    if (andRun) await runNow(); else toast('Saved. The helper reads it on its next run (or tap ↻ Update).');
+  };
+  const row = el('div', 'noterow');
+  const update = btn('Add & ↻ Update', () => go(true));
+  update.title = 'Save this note, then run the helper now with all your notes';
+  row.append(micButton(ta), btn(saveLabel, () => go(false), 'primary'), update);
+  return { ta, row, nodes: [ta, row] };
+}
+
 async function showRun(fresh = false) {
   const box = $('run');
   if (fresh) await ask({ type: 'sync' });
@@ -78,14 +153,7 @@ async function showRun(fresh = false) {
   const when = r.at ? new Date(r.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
   const state = el('span', `state ${working ? 'working' : r.state}`, r.state === 'none' ? '' : `${RUN_TEXT[r.state] ?? r.state}${when && !working ? ` ${when}` : ''}`);
   state.title = r.message ?? '';
-  const b = btn(working ? '↻ …' : '↻ Update', async () => {
-    b.disabled = true;
-    toast('Sending your notes and asking the helper to run…');
-    const res = await ask({ type: 'runHelper' });
-    if (!res?.ok) { b.disabled = false; return toast(res?.error ?? 'Could not ask for a run.'); }
-    toast('Asked. The helper starts within a minute or two and takes about 10–30 minutes.');
-    showRun();
-  }, 'small');
+  const b = btn(working ? '↻ …' : '↻ Update', async () => { b.disabled = true; if (!(await runNow())) b.disabled = false; }, 'small');
   b.disabled = working;
   b.title = 'Run the helper now with your latest notes and what he watched';
   box.replaceChildren(state, b);
@@ -239,21 +307,18 @@ function noteBox(target, past = [], label = 'Note for the AI', buttonInto = null
   show(past);
   const box = el('div');
   box.hidden = true;
-  const ta = el('textarea');
-  ta.maxLength = 2000;
-  ta.placeholder = target.list ? `For example: “${target.list === 'history' ? 'He loved the animal videos, more like these' : 'Too many videos about space, more numbers please'}”` : 'For example: “Good one, more like this” or “Too fast for him”';
-  const send = btn('Send to the helper', async () => {
-    const text = ta.value.trim();
-    if (!text) return;
-    const r = target.list ? await ask({ type: 'wish', list: target.list, text }) : await ask({ type: 'note', videoId: target.videoId, comment: text });
-    if (!r?.ok) return toast('Could not save the note.');
-    past = [...past, { at: new Date().toISOString(), text }];
-    show(past);
-    ta.value = '';
-    box.hidden = true;
-    toast('Saved. The helper reads it on its next run.');
-  }, 'primary');
-  box.append(ta, send);
+  const input = noteInput({
+    placeholder: target.list ? `For example: “${target.list === 'history' ? 'He loved the animal videos, more like these' : 'Too many videos about space, more numbers please'}”` : 'For example: “Good one, more like this” or “Too fast for him”',
+    save: async (text) => {
+      const r = target.list ? await ask({ type: 'wish', list: target.list, text }) : await ask({ type: 'note', videoId: target.videoId, comment: text });
+      if (!r?.ok) return false;
+      past = [...past, { at: new Date().toISOString(), text }];
+      show(past);
+      return true;
+    },
+  });
+  const ta = input.ta;
+  box.append(...input.nodes);
   const open = btn(`📝 ${label}`, () => { box.hidden = !box.hidden; if (!box.hidden) ta.focus(); });
   if (buttonInto) buttonInto.append(open); else wrap.append(open);
   wrap.append(box, list);
@@ -441,23 +506,14 @@ async function renderPrompt() {
     }, 'small'));
     list.append(li);
   }
-  const ta = el('textarea');
-  ta.maxLength = 2000;
-  ta.value = promptDraft;
-  ta.placeholder = 'For example: “Every day one video about animals” · “Questions only in English” · “No videos longer than 8 minutes on school days”';
-  ta.addEventListener('input', () => { promptDraft = ta.value; });
-  const send = btn('Add to the prompt', async () => {
-    const text = ta.value.trim();
-    if (!text) return;
-    const r = await ask({ type: 'promptNote', action: 'add', text });
-    if (!r?.ok) return toast('Could not save it. Is parent mode still on?');
-    promptDraft = '';
-    toast('Added. The helper follows it from its next run, every run.');
-    renderPrompt();
-  }, 'primary');
+  const input = noteInput({
+    placeholder: 'For example: “Every day one video about animals” · “Questions only in English” · “No videos longer than 8 minutes on school days”',
+    value: promptDraft, onInput: (v) => { promptDraft = v; }, saveLabel: 'Add to the prompt',
+    save: async (text) => { const r = await ask({ type: 'promptNote', action: 'add', text }); if (r?.ok) setTimeout(renderPrompt, 300); return r?.ok; },
+  });
   box('Your changes to the prompt',
     el('p', 'muted', 'Standing instructions the helper follows on every run, as part of its prompt. They win over its steps, but not over its safety rules. For one-off wishes use the notes on the other tabs.'),
-    h.notes.length ? list : el('p', 'muted', 'None yet.'), ta, send);
+    h.notes.length ? list : el('p', 'muted', 'None yet.'), ...input.nodes);
 
   // 3. The run, step by step (straight from the prompt).
   if (info?.prompt) {
@@ -543,21 +599,13 @@ async function renderContext() {
     ul.append(...mine.map((x) => el('li', '', `${new Date(x.at).toLocaleDateString()} · waiting for the next run: ${x.text}`)));
     notes.append(ul);
   }
-  const ta = el('textarea');
-  ta.maxLength = 2000;
-  ta.value = contextDrafts[contextDoc] ?? '';
-  ta.placeholder = 'For example: “He already counts to 20” · “More dinosaurs” · “No videos about scary animals”';
-  ta.addEventListener('input', () => { contextDrafts[contextDoc] = ta.value; });
-  notes.append(el('p', 'muted', 'The helper works your notes into this document on its next run. Tap ↻ Update at the top to run it now.'), ta,
-    btn('Add note', async () => {
-      const text = ta.value.trim();
-      if (!text) return;
-      const r = await ask({ type: 'contextNote', doc: contextDoc, text });
-      if (!r?.ok) return toast('Could not save it. Is parent mode still on?');
-      contextDrafts[contextDoc] = '';
-      toast('Added. It goes into the document on the next run.');
-      renderContext();
-    }, 'primary'));
+  const doc_ = contextDoc;
+  const input = noteInput({
+    placeholder: 'For example: “He already counts to 20” · “More dinosaurs” · “No videos about scary animals”',
+    value: contextDrafts[doc_] ?? '', onInput: (v) => { contextDrafts[doc_] = v; },
+    save: async (text) => { const r = await ask({ type: 'contextNote', doc: doc_, text }); if (r?.ok) setTimeout(renderContext, 300); return r?.ok; },
+  });
+  notes.append(el('p', 'muted', 'Add as many notes as you like (type or 🎤 dictate). The helper works them into this document on its next run; “Add & ↻ Update” runs it now with all your notes from every tab.'), ...input.nodes);
   view.replaceChildren(chips, notes, body);
 }
 

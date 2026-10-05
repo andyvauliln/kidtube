@@ -87,7 +87,7 @@ export async function recordedUrl(ref) {
 // --- listening through OpenRouter (when the parent chose it and stored a key on this tablet) ------
 
 // Records one answer as 16 kHz mono WAV. Stops after `seconds`, or after a short silence once he has spoken.
-export async function recordAnswer({ seconds = 6, onLevel } = {}) {
+export async function recordAnswer({ seconds = 6, onLevel, stopSignal, silenceStop = true } = {}) {
   let stream;
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
   catch { return null; }
@@ -100,6 +100,7 @@ export async function recordAnswer({ seconds = 6, onLevel } = {}) {
   await new Promise((resolve) => {
     const stop = () => { node.onaudioprocess = null; resolve(); };
     const timer = setTimeout(stop, seconds * 1000);
+    stopSignal?.addEventListener('abort', () => { clearTimeout(timer); stop(); });
     node.onaudioprocess = (e) => {
       const d = e.inputBuffer.getChannelData(0);
       chunks.push(new Float32Array(d));
@@ -109,7 +110,7 @@ export async function recordAnswer({ seconds = 6, onLevel } = {}) {
       onLevel?.(level);
       const now = performance.now();
       if (level > 0.03) { spoke = true; quietSince = 0; }
-      else if (spoke) { quietSince ||= now; if (now - quietSince > 1200 && now - started > 1500) { clearTimeout(timer); stop(); } }
+      else if (spoke && silenceStop) { quietSince ||= now; if (now - quietSince > 1200 && now - started > 1500) { clearTimeout(timer); stop(); } }
     };
     src.connect(node);
     node.connect(ctx.destination);
@@ -135,15 +136,15 @@ function wav(chunks, rate) {
 const b64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
 
 // Sends the recording to the audio models in order. Returns [text] | [] (nothing said) | null (failed: use the device).
-export async function transcribeAnswer(audio, { key, models = ['openai/gpt-audio-mini'], lang = 'en-US', question = '' } = {}) {
+export async function transcribeAnswer(audio, { key, models = ['openai/gpt-audio-mini'], lang = 'en-US', question = '', instruction = '', maxTokens = 60 } = {}) {
   if (!audio) return null;
   if (!audio.length) return [];
   for (const model of models) {
     try {
       const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'X-Title': 'KidTube tablet' },
-        body: JSON.stringify({ model, max_tokens: 60, temperature: 0, messages: [{ role: 'user', content: [
-          { type: 'text', text: `A small child answers this question out loud${question ? `: "${question}"` : ''}. The language is ${lang}. Write down exactly the words the child says, nothing else. Numbers as digits. If nothing is said, reply with nothing.` },
+        body: JSON.stringify({ model, max_tokens: maxTokens, temperature: 0, messages: [{ role: 'user', content: [
+          { type: 'text', text: instruction || `A small child answers this question out loud${question ? `: "${question}"` : ''}. The language is ${lang}. Write down exactly the words the child says, nothing else. Numbers as digits. If nothing is said, reply with nothing.` },
           { type: 'input_audio', input_audio: { data: b64(audio), format: 'wav' } }] }] }),
         signal: AbortSignal.timeout(15000),
       });
