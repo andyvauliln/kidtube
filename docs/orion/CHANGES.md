@@ -2,6 +2,12 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.7.2 (2026-10-05)
+- Parent mode shows the app version at the top; when a newer one exists, a "⬆ Download" link gets the new .zip directly.
+- The home screen refills itself: when he watches a video or you remove one, the next ready video takes its place (up to 10 on screen).
+- Parent mode → Today shows only the current 10 (plus watched); the spares wait in Planned.
+- Parent mode → Prompt shows what the helper noticed, its study plan, and the messages it keeps in mind. Notion is no longer used.
+
 ## 0.7.1 (2026-10-05)
 
 - Parent screens: swipe left or right between the tabs (swipe right on a video's page to go back).
