@@ -1,11 +1,11 @@
 {
-  "version": "0.8.0",
+  "version": "0.8.1",
   "target": "orion",
-  "zipUrl": "https://andyvauliln.github.io/kidtube/orion/kidtube-orion-0.8.0.zip",
+  "zipUrl": "https://andyvauliln.github.io/kidtube/orion/kidtube-orion-0.8.1.zip",
   "stableZipUrl": "https://andyvauliln.github.io/kidtube/orion/kidtube-orion.zip",
-  "sourceCommit": "88edfa1234d1cc33250549dde06d166e0ad7b3a8",
-  "sourceHash": "834a8cb4aa97a1f073dd6be7d8e03908c662f70e3eb5964378a8276f0d75d403",
-  "builtAt": "2026-10-05T14:41:31Z",
+  "sourceCommit": "9941a21567921f54971ce52bfeecdd3409e7a75c",
+  "sourceHash": "5f1a959ca02cac0b33ccfe5b7cfee40448ccf9da9cd6719c25efb3dc774d4a20",
+  "builtAt": "2026-10-05T14:48:16Z",
   "quizTypes": [
     "text",
     "choice",

@@ -2,6 +2,13 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.8.1 (2026-10-05)
+
+- Every place you write a note for the helper (Today, Planned, History, each video, Context, Prompt) now has the same three buttons:
+  - **🎤** dictate the note (tap ⏹ to stop);
+  - **Add note** — save it; add as many as you like;
+  - **Add & ↻ Update** — save it and run the helper now with all your notes from every tab.
+
 ## 0.8.0 (2026-10-05)
 
 - New **Context** tab in parent mode: the documents the helper plans from — About him, Strategy, Math, Letters, World. Read them and add notes; the helper works your notes into the document on its next run (tap ↻ Update to run it now).
