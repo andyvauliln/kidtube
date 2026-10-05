@@ -2,6 +2,10 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.8.4 (2026-10-05)
+
+- If the parent screens fail to start, they now show a red box with the reason instead of a white page.
+
 ## 0.8.3 (2026-10-05)
 
 - Your GitHub connection and parent PIN now survive removing and reinstalling KidTube. KidTube keeps a copy on its install page; after a fresh install it opens that page and takes the copy back by itself ("✓ KidTube: your GitHub connection and parent PIN are back").
