@@ -9,7 +9,7 @@ It uses free AI models on OpenRouter and rotates between them. A paid model can 
 
 ## How it runs (since 0.6.0)
 
-Cron starts `agent/daily.sh` at 03:30 UTC. It runs **Claude Code (Sonnet)**: `claude -p DAILY.md --append-system-prompt SYSTEM.md`. `SYSTEM.md` has the rules and tools, `DAILY.md` the steps, and the skills `helper-find-videos`, `helper-write-words` and `helper-notes` the details of three steps. Searches run in the `video-scout` subagent (Haiku).
+Cron starts `agent/daily.sh` at 03:30 UTC. It runs **Claude Code (Opus 5.5, effort medium; `orchestrator.model` and `.effort` in config.json)**: `claude -p DAILY.md --append-system-prompt SYSTEM.md`. `SYSTEM.md` has the rules and tools, `DAILY.md` the steps, and the skills `helper-find-videos`, `helper-write-words` and `helper-notes` the details of three steps. Searches run in the `video-scout` subagent (Haiku).
 
 - Claude does the thinking and the writing.
 - Claude calls `node agent/kt.mjs …` for data, YouTube search, Gemini (transcripts and questions about a video), the friend's recordings, the checks and saving.

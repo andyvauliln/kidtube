@@ -14,9 +14,10 @@ fi
 cfg() { node -e "const c=require('./agent/config.json');const v=$1;process.stdout.write(String(v??''))"; }
 RUNNER=$(cfg "c.orchestrator?.runner")
 MODEL=$(cfg "c.orchestrator?.model")
+EFFORT=$(cfg "c.orchestrator?.effort")
 FALLBACK=$(cfg "c.orchestrator?.fallbackToNode")
 TODAY=$(date -u +%F)
-echo "=== $(date -u +%FT%TZ) daily run, runner=$RUNNER model=$MODEL"
+echo "=== $(date -u +%FT%TZ) daily run, runner=$RUNNER model=$MODEL effort=${EFFORT:-default}"
 
 if [ "$RUNNER" = "claude" ] && command -v claude >/dev/null; then
   # Long steps (save makes voice recordings) must run in the foreground: in -p mode Claude ends
@@ -28,7 +29,7 @@ if [ "$RUNNER" = "claude" ] && command -v claude >/dev/null; then
   CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 BASH_DEFAULT_TIMEOUT_MS=1800000 BASH_MAX_TIMEOUT_MS=1800000 \
   claude -p "$(cat agent/DAILY.md)" \
     --append-system-prompt "$(cat agent/SYSTEM.md)" \
-    --model "${MODEL:-sonnet}" \
+    --model "${MODEL:-sonnet}" ${EFFORT:+--effort "$EFFORT"} \
     --permission-mode dontAsk \
     --allowedTools "Bash(node agent/kt.mjs:*)" "Read" "Edit(//tmp/kidtube-in/**)" "Skill" "Agent" "Task" --add-dir /tmp/kidtube-in \
     --output-format json > "$OUT"

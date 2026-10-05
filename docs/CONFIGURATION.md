@@ -57,7 +57,7 @@ Changed in parent mode → Settings (or the options page); the helper also write
 
 ### 2.1 How it runs
 
-- Crontab `30 3 * * *` (03:30 UTC) → `agent/daily.sh` → `claude -p "<agent/DAILY.md>" --append-system-prompt "<agent/SYSTEM.md>"`, model Sonnet, background tasks off, commands up to 30 min, output as JSON.
+- Crontab `30 3 * * *` (03:30 UTC) → `agent/daily.sh` → `claude -p "<agent/DAILY.md>" --append-system-prompt "<agent/SYSTEM.md>"`, model and effort from `orchestrator` (now Opus 5.5, effort medium), background tasks off, commands up to 30 min, output as JSON.
 - `SYSTEM.md` is who the helper is, its tools and the rules. `DAILY.md` is the steps. Details of three steps are in skills (2.3).
 - Allowed tools: `Bash(node agent/kt.mjs:*)`, `Read`, `Edit(//tmp/kidtube-in/**)`, `Skill`, `Agent` / `Task`. Long JSON is written to `/tmp/kidtube-in/*.json` and passed as `@/tmp/kidtube-in/<file>.json`. Nothing else can be written.
 - Searches run in the `video-scout` subagent (`.claude/agents/video-scout.md`, Haiku, tool `Bash` only).

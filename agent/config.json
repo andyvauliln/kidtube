@@ -1,11 +1,12 @@
 {
   "orchestrator": {
     "runner": "claude",
-    "model": "sonnet",
+    "model": "claude-opus-5-5",
     "maxTurns": 250,
     "fallbackToNode": true,
-    "note": "runner: claude = Claude Code runs agent/DAILY.md with the tools in agent/kt.mjs; node = the old fixed program agent/run.mjs (OpenRouter text models); onDemandPerDay: runs asked for from parent mode (Run now), at most this many a day",
-    "onDemandPerDay": 6
+    "note": "runner: claude = Claude Code runs agent/DAILY.md with the tools in agent/kt.mjs; node = the old fixed program agent/run.mjs (OpenRouter text models); onDemandPerDay: runs asked for from parent mode (Run now), at most this many a day; effort: low|medium|high|xhigh|max (claude --effort)",
+    "onDemandPerDay": 6,
+    "effort": "medium"
   },
   "dataRepo": "andyvauliln/kidtube-data",
   "dataDir": "~/.local/share/kidtube/kidtube-data",
