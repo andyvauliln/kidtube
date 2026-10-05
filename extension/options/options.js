@@ -126,7 +126,7 @@ $('update').addEventListener('click', async () => {
     parts.push(r.sync?.errors?.length ? `sync problem: ${r.sync.errors.join('; ')}` : 'video list and rules are up to date');
     $('updateOut').textContent = parts.join(' · ');
     $('install').hidden = !r.installPage;
-    if (r.installPage) $('install').href = r.installPage;
+    if (r.installPage) $('install').href = r.download ?? r.installPage;
   } finally {
     $('update').disabled = false;
     renderStatus();

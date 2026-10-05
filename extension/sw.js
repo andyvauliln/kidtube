@@ -587,6 +587,8 @@ async function handle(msg, sender) {
 
     case 'checkUpdate':
       return checkUpdate();
+    case 'version':
+      return appVersion();
 
     case 'status':
       return withState(async (s) => {
@@ -1233,7 +1235,17 @@ async function checkUpdate() {
   try { latest = await (await fetch(LATEST_URL, { cache: 'no-store' })).json(); } catch {}
   const newer = latest && cmpVersion(latest.version, installed) > 0;
   const sync = await sync_();
-  return { installed, check, latest: latest?.version ?? null, installPage: newer ? INSTALL_PAGE : null, sync };
+  return { installed, check, latest: latest?.version ?? null, installPage: newer ? INSTALL_PAGE : null, download: newer ? latest.zipUrl ?? null : null, sync };
+}
+
+// The installed version and the newest release, with a direct download link (parent mode header).
+async function appVersion() {
+  const installed = chrome.runtime.getManifest().version;
+  let latest = null;
+  try { latest = await (await fetch(LATEST_URL, { cache: 'no-store' })).json(); } catch {}
+  const newer = !!latest && cmpVersion(latest.version, installed) > 0;
+  return { ok: true, installed, target: TARGET, latest: latest?.version ?? null, newer,
+    download: latest?.zipUrl ?? null, installPage: INSTALL_PAGE };
 }
 
 function cmpVersion(a, b) {

@@ -48,6 +48,23 @@ $('toastUndo').addEventListener('click', async () => {
   if (undoFn) { await undoFn(); undoFn = null; await refresh(); }
 });
 
+// --- the app version: installed, and a download link when there is a newer one -------------------
+async function showVersion() {
+  const v = await ask({ type: 'version' });
+  if (!v?.ok) return;
+  const box = $('ver');
+  box.replaceChildren(document.createTextNode(`v${v.installed}`));
+  box.title = v.latest ? `Newest: ${v.latest}` : 'Could not check for a newer version';
+  if (v.newer && v.download) {
+    const a = el('a', '', `⬆ ${v.latest} — Download`);
+    a.href = v.download;
+    a.target = '_blank';
+    a.title = 'Download the new .zip, then install it in Orion the same way as the first time';
+    box.append(a);
+  }
+}
+showVersion();
+
 // --- loading and the PIN ---------------------------------------------------------------------------
 async function refresh() {
   const r = await ask({ type: 'parentData' });
