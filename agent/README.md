@@ -9,11 +9,14 @@ It uses free AI models on OpenRouter and rotates between them. A paid model can 
 
 ## How it runs (since 0.6.0)
 
-Cron starts `agent/daily.sh` at 03:30 UTC. It runs **Claude Code (Sonnet)** with the instructions in `agent/DAILY.md`.
+Cron starts `agent/daily.sh` at 03:30 UTC. It runs **Claude Code (Sonnet)**: `claude -p DAILY.md --append-system-prompt SYSTEM.md`. `SYSTEM.md` has the rules and tools, `DAILY.md` the steps, and the skills `helper-find-videos`, `helper-write-words` and `helper-notes` the details of three steps. Searches run in the `video-scout` subagent (Haiku).
 
 - Claude does the thinking and the writing.
 - Claude calls `node agent/kt.mjs …` for data, YouTube search, Gemini (transcripts and questions about a video), the friend's recordings, the checks and saving.
-- If Claude can't run (logged out, out of usage) and nothing was saved that day, the old program `agent/run.mjs` runs the same steps with OpenRouter text models.
+- It plans from the context documents in `kidtube-data` (`context/`: kid, strategy, math, letters, world) and the notes you add in parent mode → Context.
+- `agent/runlog.mjs` adds each run (time, turns, cost) to `runs.json`, shown in parent mode → Prompt.
+- **↻ Update** in parent mode runs it on request: `agent/poll.sh` (crontab, every minute) sees `requests/run.json`, at most 6 a day (`onDemandPerDay`), status in `run-status.json`.
+- If Claude can't run (logged out, out of usage) and nothing was saved that day, the old program `agent/run.mjs` runs the same steps with OpenRouter text models (it does not use the context documents, subjects or spares yet).
 
 Settings in `config.json`:
 
