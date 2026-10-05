@@ -572,6 +572,26 @@ async function handle(msg, sender) {
       if (!fromExtensionPage(sender)) return { ok: false };
       return withState((s) => ({ ok: true, ...runView(s) }));
 
+    case 'contextData': // parent mode → Context: the documents and your notes the helper hasn't read yet
+      if (!fromExtensionPage(sender)) return { ok: false };
+      return withState(async (s) => {
+        const { contextDocs = {} } = await chrome.storage.local.get('contextDocs');
+        const since = s.data.memoryMeta?.processedThrough ?? null;
+        return { ok: true, docs: contextDocs, notes: (s.notes?.contextNotes ?? []).filter((n) => !since || n.at > since) };
+      });
+    case 'contextNote':
+      if (!fromExtensionPage(sender)) return { ok: false };
+      return withState((s) => {
+        if (!parentMode(s)) return { ok: false };
+        const text = String(msg.text ?? '').trim().slice(0, 2000);
+        if (!text || !CONTEXT_DOCS.includes(msg.doc)) return { ok: false };
+        const ev = newEvent('context', { doc: msg.doc, text });
+        s.outbox.push(ev);
+        ((s.notes ??= {}).contextNotes ??= []).push(ev);
+        s.notes.contextNotes = s.notes.contextNotes.slice(-100);
+        return { ok: true };
+      }).then((r) => { if (r.ok) sync(); return r; });
+
     case 'plan':
       if (!fromExtensionPage(sender)) return { ok: false };
       return withState((s) => planChange(s, msg)).then((r) => { if (r?.ok) sync(); return r; });
@@ -838,6 +858,25 @@ async function fetchDataFile(repo, token, path, etag) {
   return { json: await r.json(), etag: r.headers.get('etag') };
 }
 
+// Context documents (parent mode → Context): Markdown in kidtube-data context/, written by the helper.
+const CONTEXT_DOCS = ['kid', 'strategy', 'math', 'letters', 'world'];
+async function pullContext(repo, token, etags) {
+  const { contextDocs = {} } = await chrome.storage.local.get('contextDocs');
+  let changed = false;
+  for (const d of CONTEXT_DOCS) {
+    const path = `context/${d}.md`;
+    const headers = ghHeaders(token);
+    if (contextDocs[d] && etags[path]) headers['If-None-Match'] = etags[path];
+    const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, { headers, cache: 'no-store' });
+    if (r.status === 304 || r.status === 404) continue;
+    if (!r.ok) throw new Error(await explainHttp(r.status, repo, token, path));
+    contextDocs[d] = { text: await r.text(), at: new Date().toISOString() };
+    etags[path] = r.headers.get('etag');
+    changed = true;
+  }
+  if (changed) await chrome.storage.local.set({ contextDocs });
+}
+
 // GitHub says 404 both for "no such file" and "this token can't see the repo". Tell them apart.
 async function explainHttp(status, repo, token, path) {
   if (status === 401) return 'GitHub says the token is wrong or expired. Make a new one and paste it again.';
@@ -915,6 +954,7 @@ async function doSync() {
       if (!r.notModified && r.json?.schemaVersion === 1) { update.runStatus = r.json; etags['run-status.json'] = r.etag; }
     } catch {}
   }
+  if (token) { try { await pullContext(repo, token, etags); } catch (e) { status.errors.push('Context documents: ' + String(e.message ?? e)); } }
   const done = await withState((s) => {
     Object.assign(s.data, update, { etags });
     s.syncStatus = status;

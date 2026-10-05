@@ -16,7 +16,7 @@ export const PLAN_FIELDS = { today: ['status', 'approved'], notToday: ['status']
 
 // Folds tablet activity into the records. Returns what the model should hear about.
 export function applyActivity(videos, events, { minSecondsBeforeLeave = 120 } = {}) {
-  const news = { watched: [], notes: [], quiz: [], wishes: [], blocked: [], plan: [], edited: {}, prompt: [] };
+  const news = { watched: [], notes: [], quiz: [], wishes: [], blocked: [], plan: [], edited: {}, prompt: [], context: [] };
   for (const e of [...events].sort((a, b) => a.at.localeCompare(b.at))) {
     const v = e.videoId ? videos[e.videoId] : null;
     if (e.type === 'watch') {
@@ -40,6 +40,8 @@ export function applyActivity(videos, events, { minSecondsBeforeLeave = 120 } = 
       news.plan.push({ videoId: e.videoId, title: v?.title, action: e.action, ...(typeof e.value === 'boolean' ? { value: e.value } : {}), at: e.at });
     } else if (e.type === 'prompt') {
       news.prompt.push({ action: e.action, noteId: e.noteId, at: e.at, ...(e.text ? { text: e.text } : {}) });
+    } else if (e.type === 'context') {
+      news.context.push({ doc: e.doc, text: e.text, at: e.at });
     } else if (e.type === 'blocked') {
       news.blocked.push({ target: e.target, url: e.url });
     }

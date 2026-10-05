@@ -58,6 +58,13 @@ function readEnv(path) {
 const out = (x) => { console.log(JSON.stringify(x, null, 1)); };
 const fail = (msg) => { out({ ok: false, error: msg }); process.exit(1); };
 const parse = (s, what) => { try { return JSON.parse(s); } catch { return fail(`${what}: not valid JSON`); } };
+// Context documents in kidtube-data context/: about him, the overall strategy, one per subject.
+const CONTEXT_DOCS = ['kid', 'strategy', 'math', 'letters', 'world'];
+const SUBJECTS = ['math', 'letters', 'world', 'other'];
+const readContext = () => Object.fromEntries(CONTEXT_DOCS.map((d) => {
+  const f = join(dataDir, 'context', `${d}.md`);
+  return [d, existsSync(f) ? readFileSync(f, 'utf8') : ''];
+}));
 const load = () => (existsSync(SESSION) ? JSON.parse(readFileSync(SESSION, 'utf8')) : fail('no session: run `start` first'));
 const store = (s) => writeFileSync(SESSION, JSON.stringify(s));
 function localDate(tz) {
@@ -65,7 +72,7 @@ function localDate(tz) {
   catch { return new Date().toISOString().slice(0, 10); }
 }
 const paths = { memory: join(dataDir, 'memory.json'), queue: join(dataDir, 'queue.json'), config: join(dataDir, 'parent-config.json') };
-const brief = (id, v) => ({ videoId: id, title: v.title, lang: v.lang, status: v.status, approved: !!v.approved, required: v.required ?? null, day: v.day ?? null,
+const brief = (id, v) => ({ videoId: id, title: v.title, lang: v.lang, subject: v.subject ?? null, status: v.status, approved: !!v.approved, required: v.required ?? null, day: v.day ?? null,
   minutes: Math.round((v.durationSeconds ?? 0) / 6) / 10, channel: v.channelTitle, topics: v.topics ?? [],
   transcript: transcript(dataDir, id)?.available ? (transcript(dataDir, id).source ?? 'tablet') : null,
   words: v.content ? v.content.source : null, tooHard: v.content?.tooHard ?? null });
@@ -99,9 +106,11 @@ const commands = {
     store(s);
     const counts = {};
     for (const v of Object.values(helper.videos)) counts[v.status] = (counts[v.status] ?? 0) + 1;
-    const { edited, prompt, ...tablet } = news;
+    const { edited, prompt, context: contextNotes, ...tablet } = news;
     out({ ok: true, today, timezone: tz, since,
       promptNotes: s.promptNotes.map((n) => n.text),
+      // Context documents (kidtube-data context/*.md) and the parent's new notes on them (parent mode → Context).
+      context: readContext(), contextNotes,
       tablet: { device: devices.at(-1) ?? null, ...tablet },
       rules: { minutesPerDay: pc.time?.maxMinutesPerDay, hours: pc.time?.allowed, maxVideoMinutes: Math.round((pc.maxVideoDurationSeconds ?? 0) / 60), minVideoMinutes: Math.round((pc.minVideoDurationSeconds ?? 0) / 60),
         queueSize: pc.queueSize, requiredFirst: pc.requiredFirst ?? 'first', questionsOn: !!pc.quiz?.enabled, friend: pc.presenter?.name, blockedChannels: pc.blockedChannelIds ?? [] },
@@ -246,7 +255,17 @@ const commands = {
 
   notes() {
     const s = load();
-    s.notes = { ...(s.notes ?? {}), ...parse(args[0], 'notes') };
+    const n = parse(args[0], 'notes');
+    for (const [doc, text] of Object.entries(n.context ?? {})) {
+      if (!CONTEXT_DOCS.includes(doc)) fail(`context: unknown document "${doc}" (${CONTEXT_DOCS.join(', ')})`);
+      if (typeof text !== 'string' || text.trim().length < 20) fail(`context.${doc}: the whole document as Markdown`);
+    }
+    for (const [id, sub] of Object.entries(n.subjects ?? {})) {
+      if (!SUBJECTS.includes(sub)) fail(`subjects.${id}: one of ${SUBJECTS.join(', ')}`);
+      if (!s.videos[id]) fail(`subjects.${id}: no such video`);
+      s.videos[id].subject = sub;
+    }
+    s.notes = { ...(s.notes ?? {}), ...n, context: { ...(s.notes?.context ?? {}), ...(n.context ?? {}) } };
     store(s);
     out({ ok: true });
   },
@@ -300,6 +319,10 @@ const commands = {
     writeJson(paths.config, pc);
     writeJson(paths.memory, memory);
     writeJson(join(dataDir, 'helper.json'), helperInfo(ROOT, config));
+    for (const [doc, text] of Object.entries(s.notes?.context ?? {})) {
+      mkdirSync(join(dataDir, 'context'), { recursive: true });
+      writeFileSync(join(dataDir, 'context', `${doc}.md`), text.trim() + '\n');
+    }
     try { execFileSync(process.execPath, [join(ROOT, 'tools/validate.mjs'), dataDir], { encoding: 'utf8', stdio: 'pipe' }); }
     catch (e) {
       const why = `${e.stdout ?? ''}${e.stderr ?? ''}`.split('\n').filter((l) => /FAIL|^\s{4,}/.test(l)).slice(0, 20).join('\n');

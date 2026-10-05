@@ -83,7 +83,8 @@
               "timeUp",
               "wish",
               "plan",
-              "prompt"
+              "prompt",
+              "context"
             ]
           },
           "at": {
@@ -438,6 +439,42 @@
                   }
                 }
               ]
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "context"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "doc",
+                "text"
+              ],
+              "additionalProperties": false,
+              "description": "the parent's note on one context document (parent mode → Context); the helper works it into the document",
+              "properties": {
+                "eventId": true,
+                "type": true,
+                "at": true,
+                "doc": {
+                  "enum": [
+                    "kid",
+                    "strategy",
+                    "math",
+                    "letters",
+                    "world"
+                  ]
+                },
+                "text": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 2000
+                }
+              }
             }
           }
         ]

@@ -30,8 +30,10 @@ You do all the thinking and writing yourself. Gemini only watches videos.
    - `rules` are the tablet rules;
    - `wishesHistory` are the parent's earlier messages (newest last): they still count unless a newer one says otherwise;
    - `noticed`, `studyPlan` and `recentDiary` are your own notes from earlier runs.
+   - `context` holds the context documents: `kid` (about him), `strategy` (how content is chosen overall), and one per subject: `math`, `letters`, `world`. They are your main guide for what to search and plan. `contextNotes` are the parent's new notes on them (parent mode → Context): they win over the documents.
+   - Each video has a `subject` (`math`, `letters`, `world`, `other`, or null when not set yet).
 
-2. **Decide what today needs** from the parent's messages and Prompt-tab notes, your study plan, what he watched and how he answered.
+2. **Decide what today needs** from the context documents, the parent's messages and Prompt-tab notes, your study plan, what he watched and how he answered.
    - Videos per day is `rules.queueSize` (parent mode → Settings → videos on the home screen). Other numbers (minimum Russian videos, must-watch order) come from the parent's messages and notes; otherwise use `defaults`.
    - Look at what is already planned: `node agent/kt.mjs videos`.
 
@@ -72,6 +74,12 @@ You do all the thinking and writing yourself. Gemini only watches videos.
    - `diary`: 2–4 sentences for the parent on what changed today and why, plus any problems;
    - `noticed`: rewrite "What I noticed" with these sections: What he likes, What he doesn't like, How he does with questions (by skill), Parent's preferences I learned, Open questions for the parent. Keep what is still true from `noticed`, add what is new, and write only what the data shows;
    - `plan`: only on the first run (no `studyPlan` yet), on Mondays, or when the parent's messages or notes changed what he should learn. A realistic 4-week plan from the wishes and the tablet rules (minutes per day, hours): Goals, This week, Weeks 2–4, How we check progress (which quiz templates), Healthy screen time;
+   - `context`: only documents that need a change, each as the whole new Markdown document (`{"kid":"…"}`). Work every one of `contextNotes` into its document, and add what the data shows. Keep each document's sections:
+     - `kid`: About him, Likes, Dislikes, Skills now (math, letters, world), Languages, Parent's rules and wishes;
+     - `strategy`: Goals, Balance between subjects (share of the daily list), Languages, Good and bad channels, What to avoid;
+     - `math`, `letters`, `world`: Goal, Where he is now, Next steps, Good search queries, Good channels, Question ideas.
+     If a document is empty, write it from what you know.
+   - `subjects`: `{"<videoId>":"math|letters|world|other"}` for today's videos, new ideas and any open video without a subject;
    - `requiredFirst`: only if the parent changed the must-watch order (`first`, `mix` or `off`).
 
 8. **Save.** `node agent/kt.mjs save` — run it in the foreground and wait for it (it can take 10+ minutes); never send it to the background, the session ends when you stop. It makes the recordings of today's lines, checks every file, and pushes to GitHub; the tablet gets the new list and parent mode the new notes. Report its `voices` numbers as they are (`made`, `kept`, `skipped`, `errors`; `skipped` lines ran out of recording time); lines without a recording are spoken by the tablet and are recorded on a later run.

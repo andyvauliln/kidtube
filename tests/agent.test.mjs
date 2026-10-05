@@ -156,3 +156,8 @@ test('a recording’s file name changes with the text and the voice settings', a
   assert.equal(audioPath('Hi!', 'en', cfg), audioPath('Hi!', 'en', { ...cfg }));
   assert.notEqual(audioPath('Hi!', 'en', cfg), audioPath('Hi!', 'en', { ...cfg, pitch: 1.3 }));
 });
+
+test('parent notes on context documents reach the helper', () => {
+  const news = applyActivity({}, [{ eventId: 'e1', type: 'context', at: '2026-10-05T10:00:00Z', doc: 'math', text: 'He counts to 20' }]);
+  assert.deepEqual(news.context, [{ doc: 'math', text: 'He counts to 20', at: '2026-10-05T10:00:00Z' }]);
+});

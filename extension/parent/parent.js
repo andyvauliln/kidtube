@@ -138,7 +138,7 @@ $('pin').addEventListener('keydown', (e) => e.key === 'Enter' && $('pinGo').clic
 $('kid').addEventListener('click', () => ask({ type: 'kidHome' }));
 
 // --- routing: #today, #planned, #history, #prompt, #settings, #v=<videoId> ---------------------------
-const TABS = ['today', 'planned', 'history', 'prompt', 'settings'];
+const TABS = ['today', 'planned', 'history', 'context', 'prompt', 'settings'];
 function route() {
   const h = location.hash.slice(1);
   const m = h.match(/^v=([A-Za-z0-9_-]{11})/);
@@ -159,6 +159,7 @@ function render() {
   lastTab = shownTab = r.tab;
   if (r.tab === 'planned') return renderPlanned();
   if (r.tab === 'history') return renderHistory();
+  if (r.tab === 'context') return renderContext();
   if (r.tab === 'prompt') return renderPrompt();
   if (r.tab === 'settings') return renderSettings();
   return renderToday();
@@ -516,6 +517,48 @@ async function renderPrompt() {
       fold('Read the whole prompt', renderMarkdown(info.prompt)));
   }
   view.replaceChildren(...parts);
+}
+
+// --- Context: the documents the helper plans from (kidtube-data context/*.md), and your notes on them -------
+const CONTEXT = [['kid', 'About him'], ['strategy', 'Strategy'], ['math', 'Math'], ['letters', 'Letters'], ['world', 'World']];
+let contextDoc = 'kid';
+const contextDrafts = {};
+async function renderContext() {
+  const c = await ask({ type: 'contextData' });
+  if (route().tab !== 'context') return;
+  if (!c?.ok) { view.replaceChildren(el('p', 'err', 'Could not load the context documents.')); return; }
+  const chips = el('div', 'chips noswipe');
+  for (const [id, name] of CONTEXT) {
+    const n = c.notes.filter((x) => x.doc === id).length;
+    chips.append(btn(n ? `${name} · ${n}` : name, () => { contextDoc = id; renderContext(); }, id === contextDoc ? 'small primary' : 'small'));
+  }
+  const doc = c.docs[contextDoc];
+  const body = el('div', 'box');
+  body.append(doc?.text ? renderMarkdown(doc.text) : el('p', 'muted', 'Not written yet. It appears after the next sync, or the helper writes it on its next run.'));
+  const mine = c.notes.filter((x) => x.doc === contextDoc);
+  const notes = el('div', 'box');
+  notes.append(el('h2', '', 'Your notes on this document'));
+  if (mine.length) {
+    const ul = el('ul', 'notes');
+    ul.append(...mine.map((x) => el('li', '', `${new Date(x.at).toLocaleDateString()} · waiting for the next run: ${x.text}`)));
+    notes.append(ul);
+  }
+  const ta = el('textarea');
+  ta.maxLength = 2000;
+  ta.value = contextDrafts[contextDoc] ?? '';
+  ta.placeholder = 'For example: “He already counts to 20” · “More dinosaurs” · “No videos about scary animals”';
+  ta.addEventListener('input', () => { contextDrafts[contextDoc] = ta.value; });
+  notes.append(el('p', 'muted', 'The helper works your notes into this document on its next run. Tap ↻ Update at the top to run it now.'), ta,
+    btn('Add note', async () => {
+      const text = ta.value.trim();
+      if (!text) return;
+      const r = await ask({ type: 'contextNote', doc: contextDoc, text });
+      if (!r?.ok) return toast('Could not save it. Is parent mode still on?');
+      contextDrafts[contextDoc] = '';
+      toast('Added. It goes into the document on the next run.');
+      renderContext();
+    }, 'primary'));
+  view.replaceChildren(chips, notes, body);
 }
 
 // --- Settings: the same settings page, inside this tab (no second PIN in parent mode) --------------------
