@@ -141,6 +141,35 @@ $('save').addEventListener('click', async () => {
   renderStatus();
 });
 
+// Backup of the connection and PIN: chrome.storage is erased when the extension is removed (Orion updates).
+const BACKUP_KEYS = ['repo', 'token', 'pinSalt', 'pinHash'];
+$('backup').addEventListener('click', async () => {
+  const s = await getSettings();
+  const keep = Object.fromEntries(BACKUP_KEYS.filter((k) => s[k]).map((k) => [k, s[k]]));
+  const blob = new Blob([JSON.stringify({ kidtubeSettings: 1, savedAt: new Date().toISOString(), ...keep }, null, 2)], { type: 'application/json' });
+  const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'kidtube-settings.json' });
+  document.body.append(a); a.click(); a.remove();
+  $('backupOut').textContent = 'Saved as kidtube-settings.json (Downloads / Files).';
+});
+$('restore').addEventListener('change', async (e) => {
+  const f = e.target.files?.[0];
+  if (!f) return;
+  try {
+    const j = JSON.parse(await f.text());
+    if (j.kidtubeSettings !== 1) throw new Error('not a KidTube settings file');
+    await patchSettings(Object.fromEntries(BACKUP_KEYS.filter((k) => typeof j[k] === 'string').map((k) => [k, j[k]])));
+    const s = await getSettings();
+    $('repo').value = s.repo ?? ''; $('token').value = s.token ?? '';
+    $('backupOut').textContent = 'Loaded. Syncing…';
+    const r = await send({ type: 'sync' });
+    $('backupOut').textContent = r?.errors?.length ? `Loaded, but: ${r.errors.join('; ')}` : 'Loaded and synced ✓ (the PIN is the one from the file)';
+    renderStatus();
+  } catch (err) {
+    $('backupOut').textContent = `Could not load it: ${err.message}`;
+  }
+  e.target.value = '';
+});
+
 $('resetToday').addEventListener('click', async () => { await send({ type: 'resetToday' }); renderStatus(); });
 
 $('changePin').addEventListener('click', async () => {

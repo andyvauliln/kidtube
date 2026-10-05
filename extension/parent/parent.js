@@ -536,6 +536,17 @@ function renderSettings() {
     frame.style.height = `${Math.max(400, e.data.height + 20)}px`;
     if (!frame.isConnected) removeEventListener('message', sized);
   });
+  // Same extension origin: also measure the page directly (the message above didn't arrive on Orion).
+  frame.addEventListener('load', () => {
+    clearTimeout(timer);
+    try {
+      const doc = frame.contentDocument;
+      const fit = () => { frame.style.height = `${Math.max(400, doc.documentElement.scrollHeight + 20)}px`; };
+      fit();
+      new ResizeObserver(fit).observe(doc.body);
+      doc.addEventListener('click', () => setTimeout(fit, 50));
+    } catch {}
+  });
   view.replaceChildren(fallback, frame);
 }
 

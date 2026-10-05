@@ -47,6 +47,7 @@
   .win .two input { padding: 8px; }
   .win button { margin-top: 8px; padding: 6px 10px; }
   textarea { min-height: 84px; }
+  .filebtn span { display: inline-block; cursor: pointer; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--muted); margin-left: 6px; }
   [hidden] { display: none !important; }
   body.embedded { padding: 0; background: transparent; }
   body.embedded main > h1, body.embedded main > p.hint, body.embedded #openParent { display: none; }
@@ -206,6 +207,11 @@
       <input id="token" type="password" autocomplete="off" placeholder="github_pat_…">
       <button class="primary" id="save">Save</button>
       <span id="saveOut" class="muted"></span>
+      <p class="muted">Reinstalling KidTube (a new version on Orion) erases these settings. Save them to a file once; after a reinstall, set a PIN and load the file.
+        The file holds your GitHub token: keep it on this device only.</p>
+      <button id="backup">Save settings to a file</button>
+      <label class="filebtn"><input id="restore" type="file" accept=".json,application/json" hidden><span>Load settings from a file</span></label>
+      <span id="backupOut" class="muted"></span>
     </section>
 
     <section>
