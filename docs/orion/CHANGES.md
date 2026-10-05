@@ -2,6 +2,11 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.7.4 (2026-10-05)
+
+- Settings → Connection: **Save settings to a file** and **Load settings from a file**. Removing the extension erases the GitHub key and PIN; after a reinstall, set any PIN, then load the file to get both back.
+- The Settings tab in parent mode now uses the full page height instead of a small box that scrolls inside.
+
 ## 0.7.3 (2026-10-05)
 
 - **↻ Update** button at the top of parent mode: sends your notes and what he watched, then the helper runs right away (it starts within a minute or two and takes about 10–30 minutes).
