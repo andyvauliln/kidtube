@@ -788,4 +788,5 @@ chrome.storage.onChanged.addListener((ch) => {
   else if (ch.settings) ask({ type: 'parentData' }).then((r) => { if (r && !r.parentMode) refresh(); });
 });
 setInterval(() => { if (data?.parentMode && data.parentUntil && data.parentUntil < Date.now()) refresh(); }, 30000);
+window.kidtubeParentReady = true;   // boot.js: the script ran
 refresh();
