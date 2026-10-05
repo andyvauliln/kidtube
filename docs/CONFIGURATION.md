@@ -69,24 +69,24 @@ Changed in parent mode → Settings (or the options page); the helper also write
 Nothing is substituted into the prompt text itself; these numbers reach Claude through the `start` output (`defaults`, `newIdeas`, `geminiLeftToday`) and are enforced by the tools.
 
 
-| Parameter                                          | Now                          | Meaning                                                                   |
-| -------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------- |
-| `orchestrator.runner` / `model`                    | claude / sonnet              | Who runs the day (`node` = backup only).                                  |
-| `orchestrator.fallbackToNode`                      | true                         | Run the backup if nothing was saved.                                      |
-| `defaults.videosPerDay`                            | 10                           | Fallback only: today's list size is "Videos on the home screen" (`queueSize`).           |
-| `defaults.planTarget`                              | 50                           | No searching once the plan has this many open videos.                     |
-| `defaults.newIdeas`                                | 10                           | Upper bound for the backup script; Claude's limit = `ideas.stillAllowed`. |
-| `defaults.spares`                                  | 10                           | Ready videos sent after today's list.                                     |
-| `defaults.languageMins`                            | {}                           | Minimum videos per language (e.g. `{ "ru": 2 }`).                         |
-| `defaults.requiredFirst`                           | first                        | Must-watch order default.                                                 |
-| `defaults.maxQuestions`                            | 2                            | Questions per video.                                                      |
-| `defaults.searchResults`                           | 8                            | Results per search (backup).                                              |
-| `transcripts.maxVideosPerDay` / `maxMinutesPerDay` | 10 / 120                     | Gemini free-tier budget for transcripts.                                  |
-| `transcripts.models`                               | 3.5-flash-lite, 3.7-flash, … | Tried in order.                                                           |
-| `voices.speak.provider`                            | gemini                       | `device` / `gemini` (free) / `openrouter` (paid).                         |
-| `voices.speak.voice`, `pitch`, `style`             | Puck, 1.15, cartoon voice    | Pikachu's recorded voice.                                                 |
-| `voices.speak.maxMinutes`                          | 8                            | Recording budget per run; the rest is spoken by the tablet.               |
-| `llm.*`, `openrouter.*`                            | free models first            | Text models for the backup script only.                                   |
+| Parameter                                          | Now                          | Meaning                                                                        |
+| -------------------------------------------------- | ---------------------------- | ------------------------------------------------------------------------------ |
+| `orchestrator.runner` / `model`                    | claude / sonnet              | Who runs the day (`node` = backup only).                                       |
+| `orchestrator.fallbackToNode`                      | true                         | Run the backup if nothing was saved.                                           |
+| `defaults.videosPerDay`                            | 10                           | Fallback only: today's list size is "Videos on the home screen" (`queueSize`). |
+| `defaults.planTarget`                              | 50                           | No searching once the plan has this many open videos.                          |
+| `defaults.newIdeas`                                | 10                           | Upper bound for the backup script; Claude's limit = `ideas.stillAllowed`.      |
+| `defaults.spares`                                  | 10                           | Ready videos sent after today's list.                                          |
+| `defaults.languageMins`                            | {}                           | Minimum videos per language (e.g. `{ "ru": 2 }`).                              |
+| `defaults.requiredFirst`                           | first                        | Must-watch order default.                                                      |
+| `defaults.maxQuestions`                            | 2                            | Questions per video.                                                           |
+| `defaults.searchResults`                           | 8                            | Results per search (backup).                                                   |
+| `transcripts.maxVideosPerDay` / `maxMinutesPerDay` | 10 / 120                     | Gemini free-tier budget for transcripts.                                       |
+| `transcripts.models`                               | 3.5-flash-lite, 3.7-flash, … | Tried in order.                                                                |
+| `voices.speak.provider`                            | gemini                       | `device` / `gemini` (free) / `openrouter` (paid).                              |
+| `voices.speak.voice`, `pitch`, `style`             | Puck, 1.15, cartoon voice    | Pikachu's recorded voice.                                                      |
+| `voices.speak.maxMinutes`                          | 8                            | Recording budget per run; the rest is spoken by the tablet.                    |
+| `llm.*`, `openrouter.*`                            | free models first            | Text models for the backup script only.                                        |
 
 
 **New-idea rule:** `allowed = 0` if open videos ≥ 50; else `min(50 − open, max(Gemini videos left today, 10 − open))`. The `add` tool refuses anything beyond it.
@@ -198,20 +198,20 @@ If a step fails, note it, carry on with the rest, and mention it in the diary. O
 Every command prints JSON; `"ok": false` means fix the input and retry.
 
 
-| Command                                 | What it does                                                                                               |
-| --------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `start`                                 | Sync data, apply tablet activity, print the context above.                                                 |
-| `videos [status…]`                      | Compact list of the helper's videos (transcript? words? too hard?).                                        |
-| `ideas`                                 | How many new ideas are still allowed today.                                                                |
-| `search "<words>" [n] [lang]`           | YouTube search (below).                                                                                    |
-| `add '<json>'`                          | Add picked search results as ideas (capped by `ideas`).                                                    |
-| `transcribe [id…]`                      | Gemini transcripts within today's limit, likely-today videos first.                                        |
-| `transcript <id>` / `ask <id> "<q>"`    | Read a transcript / ask Gemini about the video.                                                            |
-| `today --suggest N ru=n` / `today id,…` | Suggested order (ready videos first in each group) / set the list.                                         |
-| `words <id> '<json>'`                   | Summary, intro, outro, talk-about, quiz — checked for length, language, easy answers, quiz types.          |
-| `notes '<json>'`                        | Diary and must-watch order change.                                                                         |
-| `save`                                  | Today + spares → queue, recordings (8-min budget), file checks, git push.                                  |
-| `info`                                  | Publish what parent mode's Prompt tab shows.                                                               |
+| Command                                 | What it does                                                                                      |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `start`                                 | Sync data, apply tablet activity, print the context above.                                        |
+| `videos [status…]`                      | Compact list of the helper's videos (transcript? words? too hard?).                               |
+| `ideas`                                 | How many new ideas are still allowed today.                                                       |
+| `search "<words>" [n] [lang]`           | YouTube search (below).                                                                           |
+| `add '<json>'`                          | Add picked search results as ideas (capped by `ideas`).                                           |
+| `transcribe [id…]`                      | Gemini transcripts within today's limit, likely-today videos first.                               |
+| `transcript <id>` / `ask <id> "<q>"`    | Read a transcript / ask Gemini about the video.                                                   |
+| `today --suggest N ru=n` / `today id,…` | Suggested order (ready videos first in each group) / set the list.                                |
+| `words <id> '<json>'`                   | Summary, intro, outro, talk-about, quiz — checked for length, language, easy answers, quiz types. |
+| `notes '<json>'`                        | Diary and must-watch order change.                                                                |
+| `save`                                  | Today + spares → queue, recordings (8-min budget), file checks, git push.                         |
+| `info`                                  | Publish what parent mode's Prompt tab shows.                                                      |
 
 
 
