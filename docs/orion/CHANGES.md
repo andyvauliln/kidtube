@@ -2,6 +2,11 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.8.3 (2026-10-05)
+
+- Your GitHub connection and parent PIN now survive removing and reinstalling KidTube. KidTube keeps a copy on its install page; after a fresh install it opens that page and takes the copy back by itself ("✓ KidTube: your GitHub connection and parent PIN are back").
+- "⬆ Download" in parent mode now opens the install page (download the .zip there); that also refreshes the copy.
+
 ## 0.8.2 (2026-10-05)
 
 - The tablet fetches the newest list whenever a KidTube screen opens (if the last check is over 2 minutes old), and sends what he watched and answered about 20 seconds after each video.
