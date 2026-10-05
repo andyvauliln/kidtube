@@ -1,6 +1,6 @@
 # KidTube on Safari: research
 
-*As of 2026-10-02 (version 0.6.0). Research only: nothing here is built yet.*
+*As of 2026-10-02 (version 0.6.1). Research only: nothing here is built yet. For Orion, the other WebKit browser on iPad, see [ORION.md](ORION.md).*
 
 The question: what would it take for KidTube to run in Safari, mainly on an **iPad**? What can we reuse from the current project, and what can't work there?
 
@@ -27,17 +27,17 @@ The tablet part is a Chrome MV3 extension in Quetta (Android). These are the pie
 
 | Piece today | File | Safari extension (option A) | Web page (option B) |
 | --- | --- | --- | --- |
-| Install a signed `.crx` from GitHub Pages; self-update via `update_url`, `requestUpdateCheck` and `onUpdateAvailable` | `manifest.json`, `sw.js:803`, `sw.js:818`, `tools/pack.mjs` | ❌ Not possible. Install via TestFlight or the App Store only, and updates come the same way. | ✅ Every push to GitHub Pages is live on the next reload. |
+| Install a signed `.crx` from GitHub Pages; self-update via `update_url`, `requestUpdateCheck` and `onUpdateAvailable` | `manifest.json`, `sw.js:822`, `sw.js:837`, `tools/pack.mjs` | ❌ Not possible. Install via TestFlight or the App Store only, and updates come the same way. | ✅ Every push to GitHub Pages is live on the next reload. |
 | Service worker holds the rules, state and 15-min sync (`chrome.alarms`) | `sw.js` | ⚠️ Supported. On iOS the worker is stopped often, and alarms don't fire while Safari is in the background. Sync has to happen when a page asks (see changes). | ✅ The page holds the logic. It syncs on open and every 15 min while open. |
 | Content script covers youtube.com with iframes (`ui/*.html`), hides the end screen and suggestions, blocks seeking and speed-up, counts played seconds | `content/content.js` | ✅ Should work as it is: content scripts at `document_start` and `web_accessible_resources` iframes are standard. | ➖ Not needed. Our page is the screen; YouTube's player is one iframe inside it. |
 | `world: "MAIN"` script reads the real channel and length | `content/main.js` | ✅ Supported since Safari 16.4. | ⚠️ The embed API gives the duration and the title, but not the channel ID. The helper already checks channels on the server. |
-| URL guard on every tab change (`tabs.onUpdated`, `tabs.update`) | `sw.js:195` | ⚠️ Should work after a parent grants KidTube "Allow on every website". Needs a test for YouTube's in-page navigation. | ➖ Not needed: there is no youtube.com page to escape to. |
-| Site allowlist: block every other site (`declarativeNetRequest`, `excludedRequestDomains`, `main_frame`) | `sw.js:784` | ⚠️ Blocking works in Safari, but domain conditions have known failures ("Failed to apply rules"). Don't rely on it; use Screen Time instead. | ❌ A page can't block other sites. Use Screen Time or Guided Access. |
+| URL guard on every tab change (`tabs.onUpdated`, `tabs.update`) | `sw.js:196` | ⚠️ Should work after a parent grants KidTube "Allow on every website". Needs a test for YouTube's in-page navigation. | ➖ Not needed: there is no youtube.com page to escape to. |
+| Site allowlist: block every other site (`declarativeNetRequest`, `excludedRequestDomains`, `main_frame`) | `sw.js:786` | ⚠️ Blocking works in Safari, but domain conditions have known failures ("Failed to apply rules"). Since 0.6.1 a failed rule falls back to the navigation guard (`externalGuard`, `sw.js:807`). Use Screen Time as well. | ❌ A page can't block other sites. Use Screen Time or Guided Access. |
 | Talking friend: `speechSynthesis`, recorded mp3 from Cache Storage, `<audio>` | `ui/voice.js`, `ui/talk.js`, `sw.js` `syncAudio` | ✅ Works after a tap, which the friend screen already asks for. | ✅ Same code. |
 | Hearing answers: `webkitSpeechRecognition`; or recording to WAV and sending it to OpenRouter | `ui/voice.js` | ⚠️ Safari on iPad has speech recognition (via Apple's service, with a permission prompt). Whether it works on an extension page needs a test. The typing fallback already exists. | ✅ Works on an `https://` page. Safari asks for the microphone once per site. |
 | PIN (PBKDF2 via `crypto.subtle`), time zones (`Intl`), `crypto.randomUUID` | `lib/pin.js`, `lib/time.js` | ✅ | ✅ |
 | GitHub sync: Contents API with a fine-grained token, ETags | `sw.js` sync functions | ✅ Needs host permission for `api.github.com`. | ✅ GitHub's API allows calls from web pages (CORS). The token sits on the iPad, same as today. |
-| Captions fetched on the tablet (`fetchTranscript`, `credentials: 'include'` to youtube.com) | `sw.js:660` | ⚠️ May fail because of Safari's cookie and tracking rules. Not needed any more: Gemini makes the transcripts. | ❌ Blocked by CORS. Not needed (Gemini). |
+| Captions fetched on the tablet (`fetchTranscript`, `credentials: 'include'` to youtube.com) | `sw.js:661` | ⚠️ May fail because of Safari's cookie and tracking rules. Not needed any more: Gemini makes the transcripts. | ❌ Blocked by CORS. Not needed (Gemini). |
 | Optional OpenRouter permission (`chrome.permissions.request`) | `options/options.js:278` | ⚠️ Safari handles host access per site; needs a test. Simplest is to list `openrouter.ai` in `host_permissions`. | ✅ No permission needed. |
 | Parent page (`options_page`) | `options/` | ✅ Opens from Safari's extension menu. | ✅ A `#parent` view behind the PIN. |
 
@@ -55,12 +55,12 @@ The tablet part is a Chrome MV3 extension in Quetta (Android). These are the pie
 
 | Change | Where | Why |
 | --- | --- | --- |
-| Guard `chrome.runtime.onUpdateAvailable` (and `reload`, `requestUpdateCheck`) with `?.` | `sw.js:818`, `sw.js:803` | If an API is missing, a call at the top level throws, and the whole worker fails to start. |
-| Replace the "Install vX →" CRX link with "Update in TestFlight" when running in Safari | `sw.js:809`, options page | A CRX can't be installed in Safari. |
+| Guard `chrome.runtime.onUpdateAvailable` (and `reload`, `requestUpdateCheck`) with `?.` | `sw.js:837`, `sw.js:822` | If an API is missing, a call at the top level throws, and the whole worker fails to start. |
+| Replace the "Install vX →" CRX link with "Update in TestFlight" when running in Safari | `sw.js:828`, options page | A CRX can't be installed in Safari. |
 | Sync when a screen asks for `state` and the last sync is older than 15 min | `sw.js` `handle('state')` | On iOS the alarm may never fire. The child opening the list must be enough to pull a new list. |
 | Assume the worker can stop at any time: no state kept only in variables (today only `bundled`, which is reloaded anyway) | `sw.js` | iOS stops idle extension workers. A known iOS 17.4–17.6 bug killed them for good, so require iPadOS 18 or later. |
-| Turn the DNR site allowlist off on Safari and rely on Screen Time | `sw.js:784` | Domain conditions in Safari's DNR are unreliable. A rule that fails to load gives an error and blocks nothing. |
-| Turn off tablet captions (`fetchTranscript`) | `sw.js:660` | They're likely blocked, and Gemini already does this job. |
+| Check that the site allowlist really blocks in Safari, and rely on Screen Time too | `sw.js:786`, `sw.js:807` | A rule that throws already falls back to the navigation guard (0.6.1). A rule that is accepted but ignored would turn the guard off and block nothing. |
+| Turn off tablet captions (`fetchTranscript`) | `sw.js:661` | They're likely blocked, and Gemini already does this job. |
 | Move `openrouter.ai` from optional to `host_permissions` | `manifest.json` | Avoids the per-site permission flow. |
 | Add icons (at least 512 px) | `manifest.json` | The App Store app needs them. The manifest has none today. |
 | Ignored by Safari, harmless: `key`, `update_url`, `minimum_chrome_version` | `manifest.json` | The packager only warns about them. |
