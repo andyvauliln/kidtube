@@ -612,6 +612,9 @@ async function handle(msg, sender) {
       try { await chrome.runtime.openOptionsPage(); } catch { await chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') }); }
       return { ok: true };
 
+    case 'settingsBackup': // content/backup.js on the install page: take the copy back, or refresh it
+      return settingsBackup(sender, msg.saved);
+
     case 'sync':
       return sync();
 
@@ -1360,6 +1363,21 @@ function cmpVersion(a, b) {
 
 chrome.runtime.onUpdateAvailable?.addListener(() => chrome.runtime.reload());
 
+// The copy of the connection kept on the install page (content/backup.js). Only that page may ask.
+const BACKUP_KEYS = ['repo', 'token', 'pinSalt', 'pinHash'];
+async function settingsBackup(sender, saved) {
+  if (!String(sender?.url ?? '').startsWith('https://andyvauliln.github.io/kidtube/')) return { ok: false };
+  const { settings = {} } = await chrome.storage.local.get('settings');
+  if (!settings.token && saved?.kidtubeSettings === 1 && typeof saved.token === 'string' && saved.token) {
+    const back = Object.fromEntries(BACKUP_KEYS.filter((k) => typeof saved[k] === 'string').map((k) => [k, saved[k]]));
+    await chrome.storage.local.set({ settings: { ...settings, ...back } });
+    sync();
+    return { ok: true, restored: true };
+  }
+  if (!settings.token) return { ok: true };
+  return { ok: true, backup: { kidtubeSettings: 1, savedAt: new Date().toISOString(), ...Object.fromEntries(BACKUP_KEYS.filter((k) => settings[k]).map((k) => [k, settings[k]])) } };
+}
+
 // --- lifecycle -----------------------------------------------------------------------------
 
 async function start() {
@@ -1367,9 +1385,12 @@ async function start() {
   await applySiteRules();
   sync();
 }
-chrome.runtime.onInstalled.addListener(async () => {
+chrome.runtime.onInstalled.addListener(async ({ reason } = {}) => {
   await chrome.storage.local.remove('report'); // left over from the M0 spike
   await start();
+  // A fresh install without a connection: open the install page, where content/backup.js gives it back.
+  const { settings = {} } = await chrome.storage.local.get('settings');
+  if (reason === 'install' && !settings.token) chrome.tabs.create({ url: INSTALL_PAGE }).catch(() => {});
 });
 chrome.runtime.onStartup.addListener(start);
 chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'poll') sync(); });

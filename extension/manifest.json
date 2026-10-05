@@ -42,6 +42,15 @@
       ],
       "run_at": "document_start",
       "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://andyvauliln.github.io/kidtube/*"
+      ],
+      "js": [
+        "content/backup.js"
+      ],
+      "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [

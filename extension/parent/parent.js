@@ -57,9 +57,10 @@ async function showVersion() {
   box.title = v.latest ? `Newest: ${v.latest}` : 'Could not check for a newer version';
   if (v.newer && v.download) {
     const a = el('a', '', `⬆ ${v.latest} — Download`);
-    a.href = v.download;
+    // The install page, not the .zip itself: opening it refreshes the copy of your connection (content/backup.js).
+    a.href = v.installPage || v.download;
     a.target = '_blank';
-    a.title = 'Download the new .zip, then install it in Orion the same way as the first time';
+    a.title = 'Opens the install page: download the new .zip there, then install it in Orion the same way as the first time';
     box.append(a);
   }
 }
