@@ -45,8 +45,39 @@ async function unlock() {
   const s = await getSettings();
   $('repo').value = s.repo ?? '';
   $('token').value = s.token ?? '';
-  await Promise.all([renderStatus(), renderRules()]);
+  await Promise.all([renderStatus(), renderRules(), renderMode()]);
 }
+
+// --- mode and account ------------------------------------------------------------------------
+
+async function renderMode() {
+  const { settings: s = {}, account } = await chrome.storage.local.get(['settings', 'account']);
+  const on = s.mode === 'parent' && (!s.parentUntil || s.parentUntil > Date.now());
+  for (const r of document.querySelectorAll('input[name=mode]')) r.checked = r.value === (on ? 'parent' : 'kid');
+  $('parentMinutes').value = s.parentMinutes ?? 60;
+  $('account').textContent = account
+    ? `YouTube account: ${account.email || account.name || account.key}. Every setting on this page, the lists and the history belong to this account; another account has its own. The PIN is the same for all.`
+    : 'No YouTube account seen yet: open YouTube once. Settings are kept per YouTube account.';
+  $('modeOut').textContent = on && s.parentUntil ? `Parent mode is on until ${new Date(s.parentUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` : '';
+}
+
+async function saveMode() {
+  const n = Number($('parentMinutes').value);
+  if (!Number.isFinite(n) || n < 0 || n > 1440) { $('modeOut').textContent = 'Minutes: use a number from 0 to 1440.'; return null; }
+  await patchSettings({ parentMinutes: Math.round(n) });
+  const mode = document.querySelector('input[name=mode]:checked')?.value ?? 'kid';
+  await send({ type: 'setMode', mode });
+  await renderMode();
+  return mode;
+}
+$('saveMode').addEventListener('click', async () => {
+  const mode = await saveMode();
+  if (mode) $('modeOut').textContent = mode === 'parent' ? `${$('modeOut').textContent} Open YouTube to see your screens.` : 'Kid mode: YouTube shows his list.';
+});
+$('openParent').addEventListener('click', async () => {
+  document.querySelector('input[name=mode][value=parent]').checked = true;
+  if (await saveMode()) location.href = '../parent/parent.html';
+});
 
 // --- app ----------------------------------------------------------------------------------
 
@@ -64,35 +95,6 @@ async function renderStatus() {
   ];
   $('status').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', k), el('dd', v)]));
   for (const e of st.sync?.errors ?? []) $('status').append(el('dt', 'Problem'), el('dd', e, 'err'));
-
-  $('recent').replaceChildren(...(st.recent.length ? st.recent.map(row) : [el('p', 'Nothing yet.', 'muted')]));
-}
-
-function row(r) {
-  const d = el('div', '', 'row');
-  const thumb = el('button', '', 'thumb');
-  thumb.title = 'Watch it yourself';
-  const img = Object.assign(document.createElement('img'), { src: r.thumbnailUrl, alt: '', loading: 'lazy' });
-  thumb.append(img, el('span', '▶'));
-  thumb.onclick = () => send({ type: 'parentWatch', videoId: r.videoId });
-  const info = el('div', '');
-  const meta = [r.channelTitle, r.durationSeconds ? `${Math.round(r.durationSeconds / 60)} min` : '', `watched ${new Date(r.at).toLocaleString()}`].filter(Boolean).join(' · ');
-  info.append(el('div', r.title, 'title'), el('div', meta, 'muted'));
-  d.append(thumb, info);
-  const up = el('button', '👍'), down = el('button', '👎'), say = el('button', 'Comment');
-  up.onclick = () => note(r.videoId, { liked: true }, d);
-  down.onclick = () => note(r.videoId, { liked: false }, d);
-  say.onclick = () => {
-    const text = prompt(`Comment for the agent about “${r.title}”`);
-    if (text) note(r.videoId, { comment: text }, d);
-  };
-  info.append(up, down, say);
-  return d;
-}
-
-async function note(videoId, fields, rowEl) {
-  await send({ type: 'note', videoId, ...fields });
-  rowEl.append(el('div', 'Saved ✓', 'ok'));
 }
 
 function el(tag, text, cls) {

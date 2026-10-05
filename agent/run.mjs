@@ -131,6 +131,7 @@ async function run() {
   for (const w of news.watched) if (videos[w.videoId]) touched.add(w.videoId);
   for (const q of news.quiz) if (videos[q.videoId]) touched.add(q.videoId);
   for (const n of news.notes) if (videos[n.videoId]) touched.add(n.videoId);
+  for (const p of news.plan) if (videos[p.videoId]) touched.add(p.videoId);
   const quizTypes = devices.at(-1)?.quizTypes ?? ['text', 'choice'];
   log(`activity: ${events.length} events, ${news.watched.length} watches, ${news.wishes.length} messages`);
 
@@ -148,7 +149,7 @@ async function run() {
       const v = videos[id];
       if (!v) continue;
       v.notionPageId = row.pageId;
-      if (applyNotionRow(v, row)) comments.push({ videoId: id, title: v.title, comment: v.parentComment, approved: v.approved, status: v.status });
+      if (applyNotionRow(v, row, news.edited[id])) comments.push({ videoId: id, title: v.title, comment: v.parentComment, approved: v.approved, status: v.status });
       if (row.isNew) touched.add(id); // clears the "Added today" mark
     }
     // Comments written on the pages themselves (needs the connection's "Read comments" permission).
@@ -177,7 +178,7 @@ async function run() {
       ...custom.filter((t) => t.kind === 'Custom').map((t) => ({ id: t.answer === 'choice' ? 'video-choice' : 'video-voice', title: t.name, howItWorks: `${t.howItWorks} (custom template “${t.name}” from the parent)`, params: {}, example: t.example }))];
     // Messages sent from the tablet go to the wishes page, so everything the parent wants is in one place.
     if (news.wishes.length && !DRY) {
-      const md = news.wishes.map((w) => `- ${w.at.slice(0, 10)}: ${w.text.replace(/\n+/g, ' ')}`).join('\n');
+      const md = news.wishes.map((w) => `- ${w.at.slice(0, 10)}: ${w.aboutList ? `(about the ${w.aboutList} list) ` : ''}${w.text.replace(/\n+/g, ' ')}`).join('\n');
       await notion.addMarkdown(ws.wishesPage, md).catch((e) => problems.push(`wishes page: ${e.message}`));
       wishes += `\n${md}`;
     }

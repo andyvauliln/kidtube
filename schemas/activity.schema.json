@@ -81,7 +81,8 @@
               "parentNote",
               "blocked",
               "timeUp",
-              "wish"
+              "wish",
+              "plan"
             ]
           },
           "at": {
@@ -314,8 +315,73 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 2000
+                },
+                "list": {
+                  "enum": [
+                    "today",
+                    "planned",
+                    "history"
+                  ],
+                  "description": "a parent's note for the AI about this list (parent mode)"
                 }
               }
+            }
+          },
+          {
+            "if": {
+              "properties": {
+                "type": {
+                  "const": "plan"
+                }
+              }
+            },
+            "then": {
+              "required": [
+                "videoId",
+                "action"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "eventId": true,
+                "type": true,
+                "at": true,
+                "videoId": {
+                  "$ref": "common.schema.json#/$defs/videoId"
+                },
+                "action": {
+                  "enum": [
+                    "today",
+                    "notToday",
+                    "drop",
+                    "restore",
+                    "required",
+                    "approve"
+                  ],
+                  "description": "the parent changed the plan on the tablet (parent mode): today = move onto today's list, notToday = take it off (back to planned), drop = remove for good, restore = undo drop, required/approve with value"
+                },
+                "value": {
+                  "type": "boolean"
+                }
+              },
+              "allOf": [
+                {
+                  "if": {
+                    "properties": {
+                      "action": {
+                        "enum": [
+                          "required",
+                          "approve"
+                        ]
+                      }
+                    }
+                  },
+                  "then": {
+                    "required": [
+                      "value"
+                    ]
+                  }
+                }
+              ]
             }
           }
         ]

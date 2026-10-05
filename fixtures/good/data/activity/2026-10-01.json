@@ -59,6 +59,28 @@
       "at": "2026-10-01T16:40:00Z",
       "reason": "dailyCap",
       "playedMinutes": 40
+    },
+    {
+      "eventId": "plan-0001-aaaa",
+      "type": "plan",
+      "at": "2026-10-01T17:00:00Z",
+      "videoId": "AAAAAAAAAA1",
+      "action": "required",
+      "value": true
+    },
+    {
+      "eventId": "plan-0002-aaaa",
+      "type": "plan",
+      "at": "2026-10-01T17:00:05Z",
+      "videoId": "AAAAAAAAAA1",
+      "action": "notToday"
+    },
+    {
+      "eventId": "wish-0003-aaaa",
+      "type": "wish",
+      "at": "2026-10-01T17:01:00Z",
+      "text": "More counting videos",
+      "list": "planned"
     }
   ]
 }

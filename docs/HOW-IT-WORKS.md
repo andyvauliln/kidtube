@@ -1,6 +1,6 @@
 # KidTube: how it works
 
-*As of 2026-10-02 (version 0.6.0).*
+*As of 2026-10-05 (version 0.7.0).*
 
 ## Overview
 
@@ -68,6 +68,20 @@ You can steer from three places. All of them end up in the data repo or Notion, 
 | 👍 / 👎 / comment on a watched video | Saved as a `parentNote`. The helper uses it for *What the helper noticed* and future picks. |
 | Tap a watched video's picture | You watch it yourself with skipping allowed. It doesn't count for him. |
 | **Reset today** | Gives back today's minutes and undoes "no more videos today" |
+
+**Parent mode** (since 0.7.0). In the settings (⚙️ + PIN) → **Mode**, choose *Parent mode*, or press **Open parent screens**. While it is on, YouTube's home opens your screens instead of his list, any YouTube video plays, nothing is blocked and nothing counts for him. It turns itself off after *N minutes* (60 by default; 0 = never), or press **Kid mode**.
+
+| Tab | What you see | What you can do |
+| --- | --- | --- |
+| **Today** | Every video on his list today, watched ones marked ✓ | ⭐ must-watch on/off, **Remove** (back to Planned; the next planned video takes its place), a note for the AI about the video or the whole list |
+| **Planned** | The helper's next picks in its order, then its other ideas | ⭐ on/off, **Approve**, **→ Today**, **Remove** (never shown), notes for the AI (video or list) |
+| **History** | What he watched, by day: minutes, how it ended, his answers | 👍 / 👎, notes for the AI (video or the whole history) |
+
+Tap a video for its page: why it's on the list, what he learns, the summary, the intro and outro (🔊 hear the friend), the questions with their answers, **Try the quiz yourself**, things to talk about, and the notes for the AI. **Watch it yourself** plays it without his rules.
+
+Every change works on the tablet at once and is saved as a `plan` event in `activity/<day>.json` (notes as `parentNote`, list notes as `wish` with `list`). The other devices pick it up on their next sync. The helper applies them on its next run, ahead of the Notion values for the same fields, and then writes them to Notion.
+
+**Per YouTube account.** KidTube reads which YouTube account is signed in (its email, from YouTube's own account switcher). Every setting, rule, list, history, note and the GitHub connection belong to that account: sign in with another account and it starts fresh, with its own settings. Signing out keeps the last account. The parent PIN is the same for all accounts on the tablet.
 
 **In Notion** (Kids Content Manager):
 

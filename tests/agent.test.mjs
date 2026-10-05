@@ -21,6 +21,26 @@ test('watch events mark videos watched; short peeks do not', () => {
   assert.deepEqual(news.wishes.map((w) => w.text), ['friendship today']);
 });
 
+test('plan changes from the tablet apply, and Notion’s older values don’t undo them', () => {
+  const videos = { [vid(1)]: V({ status: 'today', approved: true }), [vid(2)]: V({ status: 'idea' }), [vid(3)]: V() };
+  const news = applyActivity(videos, [
+    { type: 'plan', at: '2026-10-02T10:00:00Z', videoId: vid(1), action: 'drop' },
+    { type: 'plan', at: '2026-10-02T10:00:01Z', videoId: vid(2), action: 'today' },
+    { type: 'plan', at: '2026-10-02T10:00:02Z', videoId: vid(3), action: 'required', value: true },
+    { type: 'wish', at: '2026-10-02T10:01:00Z', text: 'more numbers', list: 'planned' },
+  ]);
+  assert.equal(videos[vid(1)].status, 'no');
+  assert.equal(videos[vid(2)].approved, true);
+  assert.equal(videos[vid(3)].required, 'yes');
+  assert.equal(news.plan.length, 3);
+  assert.equal(news.wishes[0].aboutList, 'planned');
+  applyNotionRow(videos[vid(1)], { status: 'today', approved: true, required: null }, news.edited[vid(1)]);
+  applyNotionRow(videos[vid(3)], { status: 'planned', approved: true, required: null }, news.edited[vid(3)]);
+  assert.equal(videos[vid(1)].status, 'no');
+  assert.equal(videos[vid(3)].required, 'yes');
+  assert.equal(videos[vid(3)].approved, true);   // a field the tablet didn't touch still comes from Notion
+});
+
 test('today: must-watch-today first, approved before the helper’s own picks', () => {
   const videos = {
     [vid(1)]: V({ approved: false, status: 'idea' }),

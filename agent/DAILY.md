@@ -21,6 +21,9 @@ You do all the thinking and writing yourself. Gemini only watches videos.
 
 1. **Start.** `node agent/kt.mjs start`. Read the output carefully:
    - `tablet` lists what he watched, his answers, thumbs and comments, and the parent's messages (`wishes`);
+   - `tablet.plan` are changes the parent made on the tablet in parent mode (moved to today, took off today, removed, restored, must-watch on/off, approved). They are already applied to the videos and win over the Notion values of the same fields in this run; `save` writes them to Notion. A removed video (status "no") never goes back on a list;
+   - a wish with `aboutList` (`today`, `planned` or `history`) is the parent's note for you about that list: follow it like any message, and add it to the Wishes page with the list named;
+   - comments in `tablet.notes` are the parent's notes for you about one video;
    - `rules` are the tablet rules;
    - `notion` has the page and table ids.
 
@@ -29,7 +32,7 @@ You do all the thinking and writing yourself. Gemini only watches videos.
    - Read all rows of the Videos table: `notion-query-data-sources` in rows mode, `data_source_url: collection://<videosDataSource>`, limit 100.
    - Read comments on the plan page, the about page, and the video pages of status Today, Planned or Idea (`notion-get-comments`).
    - Pass the parent's fields of every row with a known Video ID to `node agent/kt.mjs set '<json>'`. Use one object per row: `{videoId, notionPageId, approved, status, required, day, parentComment}`. Here `status` is idea, planned, today, watched or no (lowercase); `required` is `yes` for "Must watch", `today` for "Must watch today", otherwise null.
-   - Messages from the tablet (`tablet.wishes`): add each as a line `- <date>: <text>` at the end of the Wishes page under "Messages from the tablet", then follow them.
+   - Messages from the tablet (`tablet.wishes`): add each as a line `- <date>: <text>` (with `(about the <list> list)` when it has `aboutList`) at the end of the Wishes page under "Messages from the tablet", then follow them.
 
 3. **Decide what today needs** from the wishes ("Today", "This week", "This month", "Numbers"), the study plan, what he watched and how he answered.
    - Numbers come from the "Numbers" section: videos per day, new ideas per day, minimum Russian videos, must-watch order. Otherwise use `defaults`.
@@ -72,7 +75,7 @@ You do all the thinking and writing yourself. Gemini only watches videos.
    - `diary`: 2–4 sentences for the parent on what changed today and why;
    - `requiredFirst`: only if the wishes changed the must-watch order (`first`, `mix` or `off`).
 
-9. **Save.** `node agent/kt.mjs save` — run it in the foreground and wait for it (it can take 10+ minutes); never send it to the background, the session ends when you stop. Report its `voices` numbers as they are (`made`, `kept`, `errors`); lines without a recording are spoken by the tablet and are recorded on a later run. It makes the recordings of today's lines (if switched on), checks every file, and pushes to GitHub. It prints `notion.rows`; for each row:
+9. **Save.** `node agent/kt.mjs save` — run it in the foreground and wait for it (it can take 10+ minutes); never send it to the background, the session ends when you stop. Report its `voices` numbers as they are (`made`, `kept`, `skipped`, `errors`; `skipped` lines ran out of recording time); lines without a recording are spoken by the tablet and are recorded on a later run. It makes the recordings of today's lines (if switched on), checks every file, and pushes to GitHub. It prints `notion.rows`; for each row:
    - New row (`notionPageId` null): create a page in the Videos data source with `properties`, and with the content of `pageFile` when there is one. Collect `{videoId, notionPageId}` pairs.
    - Existing row: update its properties. If `pageFile` is set, replace the page content with that file's text.
    - Then run `node agent/kt.mjs notion-done '<json of the new pairs>'`.

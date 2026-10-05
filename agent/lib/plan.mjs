@@ -5,11 +5,16 @@
 // status: idea (suggested) | planned | today | watched | no (parent said no)
 // required: null | 'yes' (must watch, any day) | 'today' (must watch on `day`, or as soon as possible)
 
+import { applyPlanEvent } from '../../extension/lib/plan.js';
+
 export const OPEN = new Set(['idea', 'planned', 'today']);
+
+// Fields each tablet plan change sets; Notion's older values must not undo them in the same run.
+export const PLAN_FIELDS = { today: ['status', 'approved'], notToday: ['status'], drop: ['status'], restore: ['status'], required: ['required'], approve: ['approved', 'status'] };
 
 // Folds tablet activity into the records. Returns what the model should hear about.
 export function applyActivity(videos, events, { minSecondsBeforeLeave = 120 } = {}) {
-  const news = { watched: [], notes: [], quiz: [], wishes: [], blocked: [] };
+  const news = { watched: [], notes: [], quiz: [], wishes: [], blocked: [], plan: [], edited: {} };
   for (const e of [...events].sort((a, b) => a.at.localeCompare(b.at))) {
     const v = e.videoId ? videos[e.videoId] : null;
     if (e.type === 'watch') {
@@ -23,7 +28,14 @@ export function applyActivity(videos, events, { minSecondsBeforeLeave = 120 } = 
       if (v) (v.quiz ??= []).push({ quizId: e.quizId, result: e.result, attempts: e.attempts, at: e.at });
       news.quiz.push({ videoId: e.videoId, title: v?.title, quizId: e.quizId, result: e.result, attempts: e.attempts, answers: e.answers, answeredBy: e.answeredBy });
     } else if (e.type === 'wish') {
-      news.wishes.push({ at: e.at, text: e.text });
+      news.wishes.push({ at: e.at, text: e.text, ...(e.list ? { aboutList: e.list } : {}) });
+    } else if (e.type === 'plan') {
+      // The parent changed the plan on the tablet (parent mode): it already works there, and wins here.
+      if (v && PLAN_FIELDS[e.action]) {
+        applyPlanEvent(v, e);
+        news.edited[e.videoId] = [...new Set([...(news.edited[e.videoId] ?? []), ...PLAN_FIELDS[e.action]])];
+      }
+      news.plan.push({ videoId: e.videoId, title: v?.title, action: e.action, ...(typeof e.value === 'boolean' ? { value: e.value } : {}), at: e.at });
     } else if (e.type === 'blocked') {
       news.blocked.push({ target: e.target, url: e.url });
     }
@@ -31,14 +43,20 @@ export function applyActivity(videos, events, { minSecondsBeforeLeave = 120 } = 
   return news;
 }
 
-// Parent edits in Notion win over the helper's own fields.
-export function applyNotionRow(v, row) {
-  if (row.status === 'no') v.status = 'no';
-  else if (row.status === 'planned' && v.status === 'idea') v.status = 'planned';
-  else if (row.status === 'watched' && v.status !== 'watched') { v.status = 'watched'; v.watchedAt ??= new Date().toISOString(); }
-  if (typeof row.approved === 'boolean') v.approved = row.approved;
-  if (row.approved && v.status === 'idea') v.status = 'planned';
-  v.required = row.required ?? null;
+// Parent edits in Notion win over the helper's own fields. keep: fields the parent changed on the tablet
+// since the last run (newer than Notion, which the helper hasn't updated yet).
+export function applyNotionRow(v, row, keep = []) {
+  const k = new Set(keep);
+  if (!k.has('status')) {
+    if (row.status === 'no') v.status = 'no';
+    else if (row.status === 'planned' && v.status === 'idea') v.status = 'planned';
+    else if (row.status === 'watched' && v.status !== 'watched') { v.status = 'watched'; v.watchedAt ??= new Date().toISOString(); }
+  }
+  if (!k.has('approved')) {
+    if (typeof row.approved === 'boolean') v.approved = row.approved;
+    if (row.approved && v.status === 'idea' && !k.has('status')) v.status = 'planned';
+  }
+  if (!k.has('required')) v.required = row.required ?? null;
   v.day = row.day ?? v.day ?? null;
   const commentChanged = (row.comment ?? '') !== (v.parentComment ?? '');
   v.parentComment = row.comment ?? '';

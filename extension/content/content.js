@@ -184,7 +184,11 @@
       if (src === 'ui/home.html') fillHome(p);
       else if (src === 'ui/home.html?locked=1') fillLock(p);
       else if (src === 'ui/strip.html') fillStrip(p);
-      else if (src === 'ui/badge.html') { p.classList.add('badge'); p.textContent = 'Parent view · skipping allowed'; }
+      else if (src === 'ui/badge.html') {
+        p.classList.add('badge');
+        p.textContent = 'Parent view ▸ KidTube';
+        p.addEventListener('click', () => ask({ type: 'openParent' }));
+      }
     } else shadow();
     return p;
   }
@@ -286,13 +290,19 @@
 
   // allowSkip off: no jumping forward and no speed above 1x. Going back is fine.
   // parentMode: a parent opened this video from the parent page; no covers, no counting, skipping allowed.
-  let allowSkip = false, maxReached = 0, parentMode = false;
+  // parentOn: parent mode (settings): YouTube's home becomes the parent's screens and nothing is covered.
+  let allowSkip = false, maxReached = 0, parentMode = false, parentOn = false;
   async function loadRules() {
     const st = await ask({ type: 'state' });
     if (!st?.rules) return;
     allowSkip = st.rules.allowSkip;
     parentMode = !!st.parent;
+    const was = parentOn;
+    parentOn = !!st.parentMode;
     document.documentElement.classList.toggle('kidtube-noskip', !allowSkip);
+    // Parent mode just ended (switched off or timed out): the kid's rules check this page again.
+    if (was && !parentOn) ask({ type: 'recheck', url: location.href });
+    if (parentOn && page === 'home') ask({ type: 'openParent' });
     if (page === 'watch') route();
   }
 
@@ -324,15 +334,16 @@
       drop('badge');
       layoutWatch();
     } else {
-      if (page !== 'home') { page = 'home'; videoId = null; parentMode = false; document.documentElement.classList.add('kidtube-on'); drop('badge'); }
+      if (page !== 'home') { page = 'home'; videoId = null; parentMode = false; document.documentElement.classList.add('kidtube-on'); drop('badge'); if (parentOn) ask({ type: 'openParent' }); }
       showHome();
       silenceVideos();
     }
   }
 
   // Playback time: only while the video plays and the page is visible (PLAN.md §3.1).
-  let played = 0, last = performance.now(), hooked = new WeakSet();
+  let played = 0, last = performance.now(), hooked = new WeakSet(), beat = 0;
   setInterval(async () => {
+    if (++beat % 30 === 0) loadRules();   // parent mode can time out without any storage change
     route();
     const now = performance.now(), dt = (now - last) / 1000;
     last = now;
@@ -353,6 +364,29 @@
     }
   }, 1000);
 
+  // Who is signed in (content/main.js reads YouTube's config). The email comes from YouTube's own account
+  // switcher, asked from this page so it carries the YouTube sign-in; the background picks that account's data.
+  let accountSeen = false;
+  window.addEventListener('message', (e) => {
+    if (e.source !== window || e.data?.kidtube !== 'account') return;
+    accountSeen = true;
+    reportAccount(e.data.loggedIn, e.data.datasyncId);
+  });
+  // The page-world script may not run (Orion): read the same two values from YouTube's own page text.
+  setTimeout(() => {
+    if (accountSeen) return;
+    const text = [...document.scripts].map((x) => x.textContent).find((t) => t.includes('"LOGGED_IN"')) ?? '';
+    const loggedIn = text.match(/"LOGGED_IN":(true|false)/)?.[1];
+    if (loggedIn) reportAccount(loggedIn === 'true', text.match(/"DATASYNC_ID":"([^"]*)"/)?.[1] ?? '');
+  }, 4000);
+  async function reportAccount(loggedIn, datasyncId) {
+    let switcher = '';
+    if (loggedIn) {
+      try { switcher = (await (await fetch(`${location.origin}/getAccountSwitcherEndpoint`, { credentials: 'include' })).text()).slice(0, 400000); } catch {}
+    }
+    ask({ type: 'account', loggedIn: !!loggedIn, datasyncId: String(datasyncId ?? '').slice(0, 200), switcher });
+  }
+
   // Player data from the page world (content/main.js): the real channel and length.
   window.addEventListener('message', (e) => {
     if (e.source !== window || e.data?.kidtube !== 'details') return;
@@ -371,7 +405,7 @@
 
   addEventListener('resize', () => (page === 'watch' ? route() : page === 'home' && showHome()));
   chrome.storage.onChanged.addListener((ch) => {
-    if (ch.data || ch.localConfig || ch.parentPass) loadRules();
+    if (ch.data || ch.localConfig || ch.parentPass || ch.settings || ch.account) loadRules();
     if (ch.data || ch.watched || ch.today) for (const n of ['home', 'strip']) frames[n]?.refresh?.();
   });
   loadRules();

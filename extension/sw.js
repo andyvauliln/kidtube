@@ -5,6 +5,8 @@ import { visibleVideos, waitingIds } from './lib/queue.js';
 import { classifyUrl, homeUrl, watchUrl } from './lib/url.js';
 import { parseCaptions, captionsToText } from './lib/captions.js';
 import { TARGET } from './lib/target.js';
+import { accountFromSwitcher, accountKey } from './lib/account.js';
+import { PLAN_ACTIONS, applyPlan, applyPlanEvent, pendingPlan, entryFromRecord } from './lib/plan.js';
 
 const SITE_RULE_ID = 100;
 const POLL_MINUTES = 15;
@@ -28,10 +30,19 @@ async function loadBundled() {
 // seen: title/channel of videos he opened, for the parent's list after the queue has moved on.
 // parentPass: one tab where a parent watches a video without the kid's rules.
 // pendingTalk: the talking friend's screen he is on (before or after a video).
-const KEYS = ['settings', 'data', 'watched', 'today', 'session', 'outbox', 'syncStatus', 'localConfig', 'seen', 'parentPass', 'pendingTalk', 'quizTurn', 'transcripts', 'character'];
+// planLog: the parent's changes to today's list and the planned videos (lib/plan.js).
+// history: what he watched, newest last (parent mode → History). notes: the parent's notes for the AI.
+const KEYS = ['settings', 'data', 'watched', 'today', 'session', 'outbox', 'syncStatus', 'localConfig', 'seen', 'parentPass', 'pendingTalk', 'quizTurn', 'transcripts', 'character', 'planLog', 'history', 'notes'];
 let chain = Promise.resolve();
-function withState(fn) {
-  const run = chain.then(async () => {
+function serial(fn) {
+  const run = chain.then(fn);
+  chain = run.catch(() => {});
+  return run;
+}
+// opts.account: run only if that account is still the signed-in one (a sync that started before a switch).
+function withState(fn, { account } = {}) {
+  return serial(async () => {
+    if (account !== undefined && ((await chrome.storage.local.get('account')).account?.key ?? null) !== account) return undefined;
     const s = await chrome.storage.local.get(KEYS);
     s.settings ??= {}; s.data ??= {}; s.watched ??= {}; s.outbox ??= []; s.syncStatus ??= {}; s.seen ??= {};
     const before = Object.fromEntries(KEYS.map((k) => [k, JSON.stringify(s[k] ?? null)]));
@@ -41,14 +52,70 @@ function withState(fn) {
     if (changed.length) await chrome.storage.local.set(Object.fromEntries(changed.map((k) => [k, s[k] ?? null])));
     return result;
   });
-  chain = run.catch(() => {});
-  return run;
 }
+
+// --- accounts: everything is kept per YouTube account (email) --------------------------------
+// The signed-in account's data lives under the usual keys; the others wait in "acct:<key>".
+// The parent PIN and the device id belong to the tablet, so they move along with every switch.
+const ACCOUNT_KEYS = [...KEYS.filter((k) => k !== 'parentPass'), 'memory'];
+const DEVICE_SETTINGS = ['pinHash', 'pinSalt', 'pinFails', 'pinLockedUntil', 'deviceId'];
+const currentAccount = async () => (await chrome.storage.local.get('account')).account?.key ?? null;
+
+async function useAccount(info) {
+  const key = accountKey(info);
+  if (!key) return { ok: false };
+  const me = { key, email: info.email ?? null, name: info.name ?? null, datasyncId: info.datasyncId ?? null };
+  const r = await serial(async () => {
+    const g = await chrome.storage.local.get(['account', 'accounts']);
+    const accounts = g.accounts ?? {};
+    const cur = g.account;
+    const remember = () => { accounts[key] = { ...(accounts[key] ?? {}), email: me.email, name: me.name, datasyncId: me.datasyncId, lastSeen: new Date().toISOString() }; };
+    // The first account seen on this tablet keeps what is already here.
+    // A profile known only by YouTube's id becomes the same profile under its email.
+    const same = cur && (cur.key === key || (me.datasyncId && cur.key === accountKey({ datasyncId: me.datasyncId })));
+    if (!cur || same) {
+      if (cur && cur.key !== key) delete accounts[cur.key];
+      remember();
+      await chrome.storage.local.set({ account: me, accounts });
+      return { switched: false };
+    }
+    const work = await chrome.storage.local.get(ACCOUNT_KEYS);
+    const alias = me.datasyncId ? `acct:${accountKey({ datasyncId: me.datasyncId })}` : null;
+    const saved = await chrome.storage.local.get([`acct:${key}`, ...(alias ? [alias] : [])]);
+    const next = saved[`acct:${key}`] ?? (alias && saved[alias]) ?? {};
+    const device = Object.fromEntries(DEVICE_SETTINGS.filter((k) => work.settings?.[k] != null).map((k) => [k, work.settings[k]]));
+    next.settings = { ...(next.settings ?? {}), ...device };
+    remember();
+    await chrome.storage.local.set({ [`acct:${cur.key}`]: work, ...next, account: me, accounts });
+    await chrome.storage.local.remove([`acct:${key}`, ...(alias ? [alias] : []), ...ACCOUNT_KEYS.filter((k) => !(k in next))]);
+    return { switched: true };
+  });
+  if (r.switched) { await applySiteRules(); sync(); }
+  return { ok: true, ...r };
+}
+
+// --- parent mode: the parent's screens instead of his list, no rules, nothing counted ----------
+
+const PARENT_PAGE = 'parent/parent.html';
+function parentMode(s) {
+  const st = s.settings ?? {};
+  return st.mode === 'parent' && (!st.parentUntil || st.parentUntil > Date.now());
+}
+// Messages that change the plan or the mode come only from the extension's own pages.
+// (Some browsers leave out sender.url; a content script always comes with its YouTube tab.)
+function fromExtensionPage(sender) {
+  const base = chrome.runtime.getURL('');
+  if (sender.url) return sender.url.startsWith(base);
+  return !sender.tab?.url || sender.tab.url.startsWith(base);
+}
+let lastHost = 'm.youtube.com';
 
 async function effective(s) {
   const b = await loadBundled();
-  const config = mergeConfig(mergeConfig(b.config, s.data?.config), s.localConfig);
-  const queue = s.data.queue ?? b.queue;
+  let config = mergeConfig(mergeConfig(b.config, s.data?.config), s.localConfig);
+  const queue = applyPlan(s.data?.queue ?? b.queue, s.planLog);
+  // Questions of planned videos the parent moved onto today's list.
+  if (Object.keys(s.planLog?.items ?? {}).length) config = mergeConfig(config, { quiz: { items: s.planLog.items } });
   return { config, queue };
 }
 
@@ -89,10 +156,16 @@ function sessionUnlocked(s, cfg) {
 function endSession(s, endReason) {
   const ses = s.session;
   if (!ses) return;
-  s.outbox.push(newEvent('watch', {
+  const ev = newEvent('watch', {
     videoId: ses.videoId, watchedSeconds: Math.round(ses.playedSeconds),
     ...(ses.durationSeconds ? { durationSeconds: ses.durationSeconds } : {}), endReason,
-  }));
+  });
+  s.outbox.push(ev);
+  // For the parent's History: kept on the tablet, per account.
+  if (ses.playedSeconds >= 5 || endReason === 'ended') {
+    s.history = [...(s.history ?? []), { videoId: ses.videoId, title: s.seen?.[ses.videoId]?.title ?? '', at: ev.at,
+      watchedSeconds: ev.watchedSeconds, ...(ses.durationSeconds ? { durationSeconds: ses.durationSeconds } : {}), endReason }].slice(-300);
+  }
   s.session = null;
 }
 
@@ -108,7 +181,7 @@ async function viewState(s, tabId) {
   const now = new Date();
   const played = todayPlayed(s, config, now);
   const reason = lockNow(s, config, now);
-  const parent = parentTab(s, tabId);
+  const parent = parentTab(s, tabId) || parentMode(s);
   const ses = s.session;
   const min = config.minSecondsBeforeLeave ?? 0;
   return {
@@ -118,6 +191,7 @@ async function viewState(s, tabId) {
     session: ses ? { videoId: ses.videoId, secondsUntilUnlock: ses.ended ? 0 : Math.max(0, Math.ceil(min - ses.playedSeconds)) } : null,
     rules: { allowSkip: parent || !!config.allowSkip },
     parent,
+    parentMode: parentMode(s),
   };
 }
 
@@ -153,6 +227,9 @@ async function guard(s, tabId, href) {
   const c = classifyUrl(href);
   if (c.kind === 'internal') return null;
   if (c.kind === 'external') return externalGuard(c.host);         // normally DNR blocks them; this is the fallback
+  lastHost = c.host || lastHost;
+  // Parent mode: YouTube's home is the parent's screens; everything else on YouTube is open.
+  if (parentMode(s)) return c.kind === 'home' ? chrome.runtime.getURL(PARENT_PAGE) : null;
   // A parent watching from the parent page: that one video in that one tab, no kid rules.
   const pass = s.parentPass;
   if (pass) {
@@ -293,6 +370,8 @@ async function handle(msg, sender) {
             ...(['typed', 'tapped', 'spoken'].includes(r.answeredBy) ? { answeredBy: r.answeredBy } : {}),
           }));
         }
+        const h = (s.history ?? []).findLast((x) => x.videoId === t.videoId);
+        if (h) h.quiz = [].concat(msg.results ?? []).filter((r) => t.quizIds.includes(r.quizId)).slice(0, 10).map((r) => ({ quizId: r.quizId, result: String(r.result), attempts: r.attempts | 0 }));
         const onFail = config.quiz?.onFail ?? 'continue';
         t.next = !failed ? 'home'
           : onFail === 'rewatch' && !(s.today.rewatched ?? []).includes(t.videoId) ? 'rewatch'
@@ -334,7 +413,7 @@ async function handle(msg, sender) {
 
     case 'tick':
       return withState(async (s) => {
-        if (parentTab(s, tabId)) return { action: 'none' }; // a parent watching doesn't count
+        if (parentTab(s, tabId) || parentMode(s)) return { action: 'none' }; // a parent watching doesn't count
         const { config } = await effective(s);
         const ses = s.session;
         const seconds = Math.min(Math.max(Number(msg.seconds) || 0, 0), 15);
@@ -369,7 +448,7 @@ async function handle(msg, sender) {
         markWatchedIfCounts(s, config);
         endSession(s, 'ended');
         // The talking friend says what we learned and asks the questions, if they are on.
-        const quizIds = config.quiz?.enabled ? pickQuiz(s, config, msg.videoId) : [];
+        const quizIds = config.quiz?.enabled ? pickQuiz(s, config, (await effective(s)).queue, msg.videoId) : [];
         if (config.presenter?.outro || quizIds.length) {
           s.pendingTalk = { mode: 'outro', videoId: msg.videoId, host, quizIds };
           if (await openTalk(tabId, 'outro', msg.videoId)) return;
@@ -395,21 +474,81 @@ async function handle(msg, sender) {
         await chrome.tabs.update(tabId, { url: homeUrl(host) });
       });
 
-    case 'note':
+    case 'note': // 👍 / 👎 / a note for the AI about one video
       return withState((s) => {
+        if (!/^[A-Za-z0-9_-]{11}$/.test(msg.videoId ?? '')) return { ok: false };
         const ev = newEvent('parentNote', { videoId: msg.videoId });
         if (typeof msg.liked === 'boolean') ev.liked = msg.liked;
-        if (msg.comment) ev.comment = String(msg.comment).slice(0, 2000);
+        if (msg.comment) ev.comment = String(msg.comment).trim().slice(0, 2000);
+        if (ev.liked === undefined && !ev.comment) return { ok: false };
         s.outbox.push(ev);
-      }).then(() => sync());
+        s.notes ??= {};
+        if (ev.comment) addNote(((s.notes.videos ??= {})[msg.videoId] ??= []), ev);
+        if (typeof ev.liked === 'boolean') (s.notes.liked ??= {})[msg.videoId] = ev.liked;
+        return { ok: true };
+      }).then(async (r) => { if (r.ok) sync(); return r; });
 
-    case 'wish': // "message to the helper" from the parent page; the daily helper reads it
+    case 'wish': // "message to the helper", or a note for the AI about a whole list (list: today | planned | history)
       return withState((s) => {
         const text = String(msg.text ?? '').trim().slice(0, 2000);
         if (!text) return { ok: false };
-        s.outbox.push(newEvent('wish', { text }));
+        const list = ['today', 'planned', 'history'].includes(msg.list) ? msg.list : null;
+        const ev = newEvent('wish', { text, ...(list ? { list } : {}) });
+        s.outbox.push(ev);
+        if (list) addNote((((s.notes ??= {}).lists ??= {})[list] ??= []), ev);
         return { ok: true };
       }).then(async (r) => { if (r.ok) await sync(); return r; });
+
+    case 'account': // from the YouTube page: who is signed in
+      if (!msg.loggedIn) return { ok: false };  // signed out: stay with the last account
+      return useAccount({ ...(accountFromSwitcher(msg.switcher ?? '') ?? {}), datasyncId: msg.datasyncId });
+
+    case 'setMode': // settings page or parent screens, after the PIN
+      if (!fromExtensionPage(sender) || !['kid', 'parent'].includes(msg.mode)) return { ok: false };
+      return withState((s) => {
+        const minutes = s.settings.parentMinutes ?? 60;
+        Object.assign(s.settings, { mode: msg.mode, parentUntil: msg.mode === 'parent' && minutes > 0 ? Date.now() + minutes * 60000 : 0 });
+        return { ok: true, until: s.settings.parentUntil };
+      });
+
+    case 'openParent': // a YouTube home tab in parent mode becomes the parent's screens
+      return withState(async (s) => {
+        if (!parentMode(s) || tabId == null) return { ok: false };
+        await chrome.tabs.update(tabId, { url: chrome.runtime.getURL(PARENT_PAGE) });
+        return { ok: true };
+      });
+
+    case 'recheck': // parent mode just ended on this page: the kid's rules apply to it again
+      return withState((s) => guard(s, tabId, msg.url ?? sender.tab?.url ?? '')).then((target) => {
+        if (target && tabId != null && target !== msg.url) chrome.tabs.update(tabId, { url: target });
+        return { ok: true };
+      });
+
+    case 'watchHere': // parent screens: open the video in this tab, no rules (parent mode)
+      if (!fromExtensionPage(sender) || !/^[A-Za-z0-9_-]{11}$/.test(msg.videoId ?? '')) return { ok: false };
+      return withState(async (s) => {
+        if (!parentMode(s)) return { ok: false };
+        await chrome.tabs.update(tabId, { url: watchUrl(lastHost, msg.videoId) });
+        return { ok: true };
+      });
+
+    case 'kidHome': // parent screens → kid mode: back to his list
+      if (!fromExtensionPage(sender)) return { ok: false };
+      await withState((s) => { Object.assign(s.settings, { mode: 'kid', parentUntil: 0 }); });
+      if (tabId != null) await chrome.tabs.update(tabId, { url: homeUrl(lastHost) });
+      return { ok: true };
+
+    case 'parentData':
+      if (!fromExtensionPage(sender)) return { ok: false };
+      return withState((s) => parentData(s));
+
+    case 'videoDetail':
+      if (!fromExtensionPage(sender)) return { ok: false };
+      return withState((s) => videoDetail(s, msg.videoId));
+
+    case 'plan':
+      if (!fromExtensionPage(sender)) return { ok: false };
+      return withState((s) => planChange(s, msg)).then((r) => { if (r?.ok) sync(); return r; });
 
     case 'getRules':
       return withState(async (s) => ({ config: (await effective(s)).config, pending: !!s.localConfig }));
@@ -463,9 +602,8 @@ async function handle(msg, sender) {
 }
 
 // The video's own questions, else the next ones from quiz.defaultIds in turn.
-function pickQuiz(s, config, videoId) {
+function pickQuiz(s, config, queue, videoId) {
   const items = config.quiz?.items ?? {};
-  const queue = s.data.queue ?? bundled.queue;
   const own = (queue.videos.find((v) => v.videoId === videoId)?.quizIds ?? []).filter((id) => items[id]);
   if (own.length) return own.slice(0, 5);
   const pool = (config.quiz?.defaultIds ?? []).filter((id) => items[id]);
@@ -474,6 +612,137 @@ function pickQuiz(s, config, videoId) {
   const start = s.quizTurn ?? 0;
   s.quizTurn = (start + n) % pool.length;
   return Array.from({ length: n }, (_, i) => pool[(start + i) % pool.length]);
+}
+
+// --- parent mode: Today, Planned, History and one video's details --------------------------
+
+function addNote(list, ev) {
+  list.push({ at: ev.at, text: ev.comment ?? ev.text });
+  list.splice(0, Math.max(0, list.length - 20));
+}
+
+const getMemory = async () => (await chrome.storage.local.get('memory')).memory ?? null;
+const thumb = (id) => `https://i.ytimg.com/vi/${id}/mqdefault.jpg`;
+
+// The helper's records (memory.json) with the parent's changes from this tablet on top.
+function records(memory, planLog, queue) {
+  const recs = structuredClone(memory?.helper?.videos ?? {});
+  for (const v of queue.videos) recs[v.videoId] ??= { title: v.title, channelTitle: v.channelTitle, durationSeconds: v.durationSeconds, lang: v.lang, status: 'today', approved: true, required: v.required ? 'yes' : null, why: v.note };
+  for (const u of queue.upcoming ?? []) recs[u.videoId] ??= { title: u.title, status: 'planned', approved: false, required: null };
+  for (const e of [...(planLog?.events ?? [])].sort((a, b) => a.at.localeCompare(b.at))) {
+    const entry = planLog.entries?.[e.videoId];
+    recs[e.videoId] ??= { title: entry?.title ?? '', channelTitle: entry?.channelTitle, durationSeconds: entry?.durationSeconds, status: 'planned', approved: false, required: null };
+    applyPlanEvent(recs[e.videoId], e);
+  }
+  return recs;
+}
+
+function cardOf(id, v = {}, r = {}, s) {
+  return {
+    videoId: id, title: v.title || r.title || s.seen?.[id]?.title || 'Video', channelTitle: v.channelTitle ?? r.channelTitle ?? '',
+    durationSeconds: v.durationSeconds || r.durationSeconds || null, thumbnailUrl: thumb(id), lang: v.lang ?? r.lang ?? 'en',
+    status: r.status ?? null, approved: !!r.approved, required: v.required !== undefined ? !!v.required : !!r.required, day: r.day ?? null,
+    why: r.why ?? v.note ?? '', tooHard: r.content?.tooHard ?? null, hasWords: !!(r.content || v.intro),
+    quizCount: (v.quizIds ?? r.content?.quizIds ?? []).length, notes: (s.notes?.videos?.[id] ?? []).length,
+    liked: s.notes?.liked?.[id] ?? r.liked ?? null, watchedAt: s.watched[id] ?? r.watchedAt ?? null,
+  };
+}
+
+async function parentData(s) {
+  const { config, queue } = await effective(s);
+  const memory = await getMemory();
+  const recs = records(memory, s.planLog, queue);
+  const todayIds = new Set(queue.videos.map((v) => v.videoId));
+  const today = queue.videos.map((v) => ({ ...cardOf(v.videoId, v, recs[v.videoId], s), required: !!v.required }));
+  // Planned: the helper's order (queue.upcoming) first, then its other open videos, newest first.
+  const order = [...(queue.upcoming ?? []).map((u) => u.videoId),
+    ...Object.entries(recs).sort((a, b) => (b[1].addedAt ?? '').localeCompare(a[1].addedAt ?? '')).map(([id]) => id)];
+  const planned = [...new Set(order)].filter((id) => !todayIds.has(id) && ['idea', 'planned', 'today'].includes(recs[id]?.status) && !s.watched[id])
+    .map((id) => cardOf(id, {}, recs[id], s));
+  return {
+    account: (await chrome.storage.local.get('account')).account ?? null,
+    parentUntil: s.settings.parentUntil || 0, parentMode: parentMode(s),
+    today, planned, history: historyDays(s, recs, config), lists: s.notes?.lists ?? {},
+    hasMemory: !!memory, memoryAt: memory?.updatedAt ?? null, queueUpdatedAt: queue.updatedAt ?? null,
+    hasToken: !!s.settings.token, waiting: s.outbox.length, sync: s.syncStatus,
+  };
+}
+
+// What he watched, by day: this tablet's own log, plus what the helper knows from the other devices and earlier.
+function historyDays(s, recs, config) {
+  const rows = [...(s.history ?? [])].map((h) => ({ ...h }));
+  const has = (id, at) => rows.some((h) => h.videoId === id && h.at.slice(0, 10) === at.slice(0, 10));
+  for (const [id, at] of Object.entries(s.watched)) if (!has(id, at)) rows.push({ videoId: id, at });
+  for (const [id, r] of Object.entries(recs)) if (r.watchedAt && !rows.some((h) => h.videoId === id)) rows.push({ videoId: id, at: r.watchedAt });
+  const days = {};
+  for (const h of rows) {
+    const r = recs[h.videoId] ?? {};
+    const quiz = (h.quiz ?? []).map((q) => ({ ...q, prompt: config.quiz?.items?.[q.quizId]?.prompt ?? r.content?.items?.[q.quizId]?.prompt ?? '' }));
+    const item = { ...cardOf(h.videoId, { title: h.title || undefined, durationSeconds: h.durationSeconds }, r, s), at: h.at,
+      watchedSeconds: h.watchedSeconds ?? null, endReason: h.endReason ?? null, quiz };
+    (days[localParts(new Date(h.at), config.timezone).date] ??= []).push(item);
+  }
+  return Object.entries(days).sort((a, b) => b[0].localeCompare(a[0])).slice(0, 60).map(([date, items]) => ({
+    date, minutes: Math.round(items.reduce((n, i) => n + (i.watchedSeconds ?? 0), 0) / 60),
+    items: items.sort((a, b) => b.at.localeCompare(a.at)),
+  }));
+}
+
+async function videoDetail(s, id) {
+  if (!/^[A-Za-z0-9_-]{11}$/.test(id ?? '')) return { ok: false };
+  const { config, queue } = await effective(s);
+  const memory = await getMemory();
+  const recs = records(memory, s.planLog, queue);
+  const r = recs[id] ?? {};
+  const v = queue.videos.find((x) => x.videoId === id);
+  const c = r.content ?? {};
+  const where = v ? 'today' : r.status === 'no' ? 'removed' : (s.watched[id] || r.status === 'watched') ? 'watched' : ['idea', 'planned', 'today'].includes(r.status) ? 'planned' : 'other';
+  const quizIds = v?.quizIds ?? c.quizIds ?? [];
+  const items = quizIds.map((q) => ({ quizId: q, ...(config.quiz?.items?.[q] ?? c.items?.[q] ?? {}) })).filter((i) => i.prompt);
+  const p = config.presenter ?? {};
+  const lang = fullLang(v?.lang ?? r.lang) ?? p.voice?.lang ?? 'en-US';
+  return {
+    ok: true, ...cardOf(id, v ?? {}, r, s), where, summary: c.summary ?? '', learned: c.learned ?? [], talkAbout: c.talkAbout ?? [],
+    madeFrom: c.source ?? null, intro: v?.intro ?? (c.intro ? { text: c.intro } : null), outro: v?.outro ?? (c.outro ? { text: c.outro } : null),
+    items: items.map((i) => ({ ...i, lang: fullLang(i.lang) ?? lang })), notes: s.notes?.videos?.[id] ?? [],
+    helperNotes: [r.comment, r.parentComment].filter(Boolean), history: (s.history ?? []).filter((h) => h.videoId === id),
+    friend: { name: p.name || 'Zippy', voice: { ...(p.voice ?? {}), lang }, recorded: p.voice?.recorded !== false },
+  };
+}
+
+// One change from the parent's screens. Taking an unwatched video off today's list brings the next planned one in.
+async function planChange(s, msg) {
+  const id = msg.videoId;
+  if (!parentMode(s) || !PLAN_ACTIONS.includes(msg.action) || !/^[A-Za-z0-9_-]{11}$/.test(id ?? '')) return { ok: false };
+  const memory = await getMemory();
+  const log = (s.planLog ??= { events: [], entries: {}, items: {} });
+  log.entries ??= {}; log.items ??= {};
+  const before = (await effective(s)).queue;
+  const recs = records(memory, log, before);
+  const remember = (vid) => {
+    const inQueue = before.videos.find((v) => v.videoId === vid);
+    const rec = memory?.helper?.videos?.[vid];
+    log.entries[vid] ??= inQueue ?? (rec ? entryFromRecord(vid, rec) : { videoId: vid, title: recs[vid]?.title || 'Video' });
+    for (const q of log.entries[vid].quizIds ?? []) if (rec?.content?.items?.[q]) log.items[q] = rec.content.items[q];
+  };
+  const add = (action, vid, value) => {
+    const ev = newEvent('plan', { videoId: vid, action, ...(typeof value === 'boolean' ? { value } : {}) });
+    remember(vid);
+    log.events.push(ev);
+    s.outbox.push(ev);
+  };
+  add(msg.action, id, msg.value);
+  let added = null;
+  const wasToday = before.videos.some((v) => v.videoId === id);
+  if (msg.refill !== false && wasToday && !s.watched[id] && ['notToday', 'drop'].includes(msg.action)) {
+    const after = applyPlan(before, log);
+    const inToday = new Set(after.videos.map((v) => v.videoId));
+    const open = (vid) => vid !== id && !inToday.has(vid) && !s.watched[vid] && ['idea', 'planned'].includes(recs[vid]?.status ?? 'planned');
+    added = (after.upcoming ?? []).map((u) => u.videoId).find(open)
+      ?? Object.entries(recs).filter(([vid, r]) => open(vid) && r.approved).map(([vid]) => vid)[0] ?? null;
+    if (added) add('today', added);
+  }
+  return { ok: true, added };
 }
 
 // The talking friend has its own page; the tab goes there and comes back when it is done.
@@ -536,7 +805,8 @@ function sync() {
 }
 
 async function doSync() {
-  const { settings = {}, data = {} } = await chrome.storage.local.get(['settings', 'data']);
+  const { settings = {}, data = {}, account } = await chrome.storage.local.get(['settings', 'data', 'account']);
+  const acct = account?.key ?? null;   // a switch to another account during this sync drops what it fetched
   const repo = settings.repo || DEFAULT_REPO;
   const token = settings.token || '';
   const etags = data.etags ?? {};
@@ -553,10 +823,25 @@ async function doSync() {
       status.errors.push(String(e.message ?? e));
     }
   }
-  await withState((s) => {
+  // memory.json: the helper's notes on every video (parent mode: planned videos, summaries, questions).
+  let memory = null;
+  if (token) {
+    try {
+      const r = await fetchDataFile(repo, token, 'memory.json', data.memoryMeta ? etags['memory.json'] : null);
+      if (!r.notModified && r.json?.schemaVersion === 1) {
+        memory = r.json;
+        etags['memory.json'] = r.etag;
+        update.memoryMeta = { updatedAt: memory.updatedAt ?? null, processedThrough: memory.helper?.processedThrough ?? memory.processedThrough ?? null };
+      }
+    } catch {}   // an older data repo may have none: parent mode then shows only today's list
+  }
+  const done = await withState((s) => {
     Object.assign(s.data, update, { etags });
     s.syncStatus = status;
-  });
+    return true;
+  }, { account: acct });
+  if (!done) return status;
+  if (memory) await chrome.storage.local.set({ memory });
   await applySiteRules();
   // One cause (usually the token) should show once, not once per file.
   const report = (prefix, msg) => { if (!status.errors.some((x) => msg.includes(x) || x.includes(msg))) status.errors.push(prefix + msg); };
@@ -564,13 +849,51 @@ async function doSync() {
   if (rules.saved === 'tablet' && token) report('Rules: ', rules.error.replace(/^Saved on this tablet\. GitHub: /, ''));
   try { await flushOutbox(repo, token); } catch (e) { if (token) report('Saving what he watched: ', String(e.message ?? e)); }
   if (token) {
+    try { await pullPlan(repo, token, acct); } catch (e) { report('Changes from other devices: ', String(e.message ?? e)); }
     try { await uploadTranscripts(repo, token); } catch (e) { report('Transcripts: ', String(e.message ?? e)); }
     try { await loadCharacter(repo, token); } catch (e) { report('Talking friend picture: ', String(e.message ?? e)); }
     try { await syncAudio(repo, token); } catch (e) { report('Talking friend recordings: ', String(e.message ?? e)); }
   }
   status.errors = [...new Set(status.errors)];
-  await withState((s) => { s.syncStatus = status; });
+  await withState((s) => { s.syncStatus = status; }, { account: acct });
   return status;
+}
+
+// The parent's plan changes made on another device (activity files since the helper last read them),
+// so every tablet shows the same lists. Changes the helper has read are already in its files: dropped here.
+async function pullPlan(repo, token, acct) {
+  const { data = {} } = await chrome.storage.local.get('data');
+  const since = data.memoryMeta?.processedThrough ?? null;
+  const tz = (await effective({ data })).config.timezone;
+  const today = localParts(new Date(), tz).date;
+  const from = since ? localParts(new Date(since), tz).date : today;
+  const dates = [];
+  for (let d = new Date(); dates.length < 4; d = new Date(d - 86400000)) {
+    const day = localParts(d, tz).date;
+    if (day < from) break;
+    dates.push(day);
+  }
+  const found = [];
+  for (const date of dates) {
+    const f = await getRepoFile(repo, token, `activity/${date}.json`);
+    for (const e of f?.json?.events ?? []) if (e.type === 'plan' && PLAN_ACTIONS.includes(e.action) && (!since || e.at > since)) found.push(e);
+  }
+  const memory = await getMemory();
+  await withState((s) => {
+    const log = (s.planLog ??= { events: [], entries: {}, items: {} });
+    const have = new Set((log.events ?? []).map((e) => e.eventId));
+    for (const e of found) {
+      if (have.has(e.eventId)) continue;
+      log.events.push(e);
+      const rec = memory?.helper?.videos?.[e.videoId];
+      if (e.action === 'today' && rec && !log.entries?.[e.videoId]) {
+        (log.entries ??= {})[e.videoId] = entryFromRecord(e.videoId, rec);
+        for (const q of rec.content?.quizIds ?? []) if (rec.content.items?.[q]) (log.items ??= {})[q] = rec.content.items[q];
+      }
+    }
+    s.planLog = pendingPlan(log, since);
+    if (!s.planLog.events.length) s.planLog = null;
+  }, { account: acct });
 }
 
 // Reads a JSON file with its sha (null when it doesn't exist yet).
@@ -604,7 +927,7 @@ async function saveRules(patch) {
 }
 
 async function uploadLocalConfig() {
-  const { settings = {}, localConfig } = await chrome.storage.local.get(['settings', 'localConfig']);
+  const { settings = {}, localConfig, account } = await chrome.storage.local.get(['settings', 'localConfig', 'account']);
   if (!localConfig) return { saved: 'github' };
   const repo = settings.repo || DEFAULT_REPO, token = settings.token || '';
   if (!token) return { saved: 'tablet', error: 'No GitHub token yet, so the rules are saved on this tablet only.' };
@@ -617,7 +940,7 @@ async function uploadLocalConfig() {
           s.data.config = next;
           if (s.data.etags) delete s.data.etags['parent-config.json'];
           s.localConfig = null;
-        });
+        }, { account: account?.key ?? null });
         return { saved: 'github' };
       }
     }
@@ -696,8 +1019,8 @@ export async function fetchTranscript(videoId) {
 }
 
 async function uploadTranscripts(repo, token) {
-  const { transcripts = {}, data = {} } = await chrome.storage.local.get(['transcripts', 'data']);
-  const queue = data.queue ?? (await loadBundled()).queue;
+  const { transcripts = {}, data = {}, account } = await chrome.storage.local.get(['transcripts', 'data', 'account']);
+  const { queue } = await effective({ data, planLog: (await chrome.storage.local.get('planLog')).planLog });
   // Today's videos first, then the planned ones (`upcoming`) so the helper can prepare them.
   const ids = [...new Set([...queue.videos, ...(queue.upcoming ?? [])].map((v) => v.videoId))];
   const due = ids.filter((id) => /^[A-Za-z0-9_-]{11}$/.test(id)).filter((id) => {
@@ -716,7 +1039,7 @@ async function uploadTranscripts(repo, token) {
       done[id] = { status: 'error', at: Date.now(), error: String(e.message ?? e).slice(0, 200) };
     }
   }
-  if (due.length) await withState((s) => { s.transcripts = { ...(s.transcripts ?? {}), ...done }; });
+  if (due.length) await withState((s) => { s.transcripts = { ...(s.transcripts ?? {}), ...done }; }, { account: account?.key ?? null });
   const failed = Object.values(done).filter((d) => d.status === 'error');
   if (failed.length) throw new Error(`${failed.length} of ${due.length} could not be fetched (${failed[0].error}); will retry tomorrow.`);
 }
@@ -758,10 +1081,11 @@ async function syncAudio(repo, token) {
 // --- the talking friend's picture from the private data repo ("repo:characters/x.svg") --------
 
 async function loadCharacter(repo, token) {
-  const { data = {}, localConfig, character } = await chrome.storage.local.get(['data', 'localConfig', 'character']);
+  const { data = {}, localConfig, character, account } = await chrome.storage.local.get(['data', 'localConfig', 'character', 'account']);
+  const only = { account: account?.key ?? null };
   const { config } = await effective({ data, localConfig });
   const ref = config.presenter?.imageUrl ?? '';
-  if (!ref.startsWith('repo:')) { if (character) await withState((s) => { s.character = null; }); return; }
+  if (!ref.startsWith('repo:')) { if (character) await withState((s) => { s.character = null; }, only); return; }
   const path = ref.slice(5);
   const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
     headers: { ...ghHeaders(token), ...(character?.path === path && character.etag ? { 'If-None-Match': character.etag } : {}) }, cache: 'no-store',
@@ -771,11 +1095,11 @@ async function loadCharacter(repo, token) {
   const etag = r.headers.get('etag');
   if (path.endsWith('.svg')) {
     const svg = await r.text();
-    return withState((s) => { s.character = { path, etag, svg: svg.slice(0, 300000) }; });
+    return withState((s) => { s.character = { path, etag, svg: svg.slice(0, 300000) }; }, only);
   }
   const bytes = new Uint8Array(await r.arrayBuffer());
   const type = path.endsWith('.png') ? 'image/png' : path.endsWith('.webp') ? 'image/webp' : path.endsWith('.gif') ? 'image/gif' : 'image/jpeg';
-  return withState((s) => { s.character = { path, etag, src: `data:${type};base64,${bytesToBase64(bytes.subarray(0, 2_000_000))}` }; });
+  return withState((s) => { s.character = { path, etag, src: `data:${type};base64,${bytesToBase64(bytes.subarray(0, 2_000_000))}` }; }, only);
 }
 
 function bytesToBase64(bytes) {

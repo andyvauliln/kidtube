@@ -81,15 +81,16 @@ const commands = {
     const lastEvent = events.map((e) => e.at).sort().at(-1);
     const gem = createGemini({ apiKey: env.GEMINI_API_KEY ?? '', stateDir, config: config.transcripts, today, log: () => {} });
     const s = { today, tz, startedAt: iso(), videos: helper.videos, processedThrough: lastEvent && lastEvent > (since ?? '') ? lastEvent : since,
-      newIds: [], todayIds: null, searchCache: {}, notes: null, rewritten: [], touched: [...new Set([...news.watched, ...news.quiz, ...news.notes].map((x) => x.videoId).filter((id) => helper.videos[id]))],
-      quizTypes: devices.at(-1)?.quizTypes ?? ['text', 'choice'], wishes: news.wishes };
+      newIds: [], todayIds: null, searchCache: {}, notes: null, rewritten: [], touched: [...new Set([...news.watched, ...news.quiz, ...news.notes, ...news.plan].map((x) => x.videoId).filter((id) => helper.videos[id]))],
+      quizTypes: devices.at(-1)?.quizTypes ?? ['text', 'choice'], wishes: news.wishes, tabletEdited: news.edited };
     // Yesterday's new ideas lose their "Added today" mark in Notion.
     for (const [id, v] of Object.entries(helper.videos)) if (v.wasNew) s.touched.push(id);
     store(s);
     const counts = {};
     for (const v of Object.values(helper.videos)) counts[v.status] = (counts[v.status] ?? 0) + 1;
+    const { edited, ...tablet } = news;
     out({ ok: true, today, timezone: tz, since,
-      tablet: { device: devices.at(-1) ?? null, ...news },
+      tablet: { device: devices.at(-1) ?? null, ...tablet },
       rules: { minutesPerDay: pc.time?.maxMinutesPerDay, hours: pc.time?.allowed, maxVideoMinutes: Math.round((pc.maxVideoDurationSeconds ?? 0) / 60), minVideoMinutes: Math.round((pc.minVideoDurationSeconds ?? 0) / 60),
         queueSize: pc.queueSize, requiredFirst: pc.requiredFirst ?? 'first', questionsOn: !!pc.quiz?.enabled, friend: pc.presenter?.name, blockedChannels: pc.blockedChannelIds ?? [] },
       defaults: D, videoCounts: counts,
@@ -111,7 +112,7 @@ const commands = {
       const v = s.videos[r.videoId];
       if (!v) continue;
       if (r.notionPageId) v.notionPageId = r.notionPageId;
-      if (applyNotionRow(v, { status: r.status ?? null, approved: r.approved, required: r.required ?? null, day: r.day ?? null, comment: r.parentComment ?? '' })) comments.push(r.videoId);
+      if (applyNotionRow(v, { status: r.status ?? null, approved: r.approved, required: r.required ?? null, day: r.day ?? null, comment: r.parentComment ?? '' }, s.tabletEdited?.[r.videoId])) comments.push(r.videoId);
       s.touched.push(r.videoId);
     }
     store(s);
@@ -265,6 +266,10 @@ const commands = {
     if (s.notes?.requiredFirst && ['first', 'mix', 'off'].includes(s.notes.requiredFirst)) pc.requiredFirst = s.notes.requiredFirst;
     pc.updatedAt = iso();
     const voiceReport = await makeVoices(queue, pc, s);
+    // Unused recordings were just removed: drop links to them from the other saved videos too.
+    for (const v of Object.values(s.videos)) for (const it of Object.values(v.content?.items ?? {})) for (const k of ['audioRef', 'answerAudioRef']) {
+      if (it[k]?.startsWith('repo:') && !existsSync(join(dataDir, it[k].slice(5)))) delete it[k];
+    }
     helper.processedThrough = s.processedThrough;
     memory.processedThrough = s.processedThrough ?? memory.processedThrough;
     helper.lastRunAt = iso();
@@ -342,7 +347,10 @@ async function makeVoices(queue, pc, s) {
   const cfg = config.voices?.speak ?? { provider: 'device' };
   const voices = createVoices({ env, cfg });
   const want = new Set();
-  const report = { provider: cfg.provider, made: 0, kept: 0, errors: [] };
+  const report = { provider: cfg.provider, made: 0, kept: 0, skipped: 0, errors: [] };
+  // Gemini can be slow or overloaded (3 models × 60 s per line): after this budget the rest is
+  // left to the tablet's own voice and recorded on a later run, so save always finishes.
+  const deadline = Date.now() + (cfg.maxMinutes ?? 8) * 60000;
   if (!voices.enabled) {
     // Device voice: drop recorded lines so the tablet speaks everything itself.
     for (const v of queue.videos) { delete v.intro?.audioRef; delete v.outro?.audioRef; }
@@ -353,6 +361,7 @@ async function makeVoices(queue, pc, s) {
       const path = audioPath(text, lang, cfg);
       want.add(path);
       if (existsSync(join(dataDir, path))) { report.kept++; return `repo:${path}`; }
+      if (Date.now() > deadline || voices.quotaGone) { report.skipped++; return null; }
       try {
         const mp3 = await voices.speak(text);
         mkdirSync(join(dataDir, 'audio'), { recursive: true });
@@ -368,13 +377,13 @@ async function makeVoices(queue, pc, s) {
     for (const it of Object.values(pc.quiz.items)) {
       const lang = it.lang ?? 'en';
       const ref = await make(it.prompt, lang);
-      if (ref) it.audioRef = ref;
+      if (ref) it.audioRef = ref; else delete it.audioRef;
       const answer = it.answer.kind === 'choice' ? it.answer.correct : it.answer.accept[0];
       const aref = await make(lang.startsWith('ru') ? `Хорошая попытка! Правильный ответ: ${answer}.` : `Good try! The answer is ${answer}.`, lang);
-      if (aref) it.answerAudioRef = aref;
+      if (aref) it.answerAudioRef = aref; else delete it.answerAudioRef;
     }
     const p = (pc.presenter ??= {});
-    if (p.catchphrase) { const ref = await make(p.catchphrase, 'en'); if (ref) p.catchphraseAudioRef = ref; }
+    if (p.catchphrase) { const ref = await make(p.catchphrase, 'en'); if (ref) p.catchphraseAudioRef = ref; else delete p.catchphraseAudioRef; }
     const name = p.name || 'Zippy';
     const langs = [...new Set(['en', ...queue.videos.map((v) => (v.lang ?? 'en').slice(0, 2))])].filter((l) => PHRASES[l]);
     p.phrases = {};

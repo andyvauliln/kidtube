@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KidTube parent</title>
+<link rel="stylesheet" href="parent.css">
+<body>
+  <header>
+    <div class="top">
+      <h1>KidTube · parent</h1>
+      <span id="who" class="who"></span>
+      <span class="grow"></span>
+      <button id="kid" class="ghost">Kid mode</button>
+      <a id="settings" class="icon" href="../options/options.html" title="Settings">⚙️</a>
+    </div>
+    <nav class="tabs" id="tabs" hidden>
+      <a href="#today" data-tab="today">Today <b id="nToday"></b></a>
+      <a href="#planned" data-tab="planned">Planned <b id="nPlanned"></b></a>
+      <a href="#history" data-tab="history">History</a>
+    </nav>
+  </header>
+
+  <main>
+    <section id="gate" class="box" hidden>
+      <h2>Parent mode is off</h2>
+      <p class="muted" id="gateText">Enter the PIN to turn it on.</p>
+      <input id="pin" class="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8">
+      <button class="primary" id="pinGo">Turn on parent mode</button>
+      <p class="err" id="pinErr"></p>
+    </section>
+    <div id="view"></div>
+  </main>
+  <div id="toast" class="toast" hidden><span id="toastText"></span><button id="toastUndo">Undo</button></div>
+  <script type="module" src="parent.js"></script>
+</body>
+</html>

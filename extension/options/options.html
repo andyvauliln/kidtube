@@ -34,6 +34,9 @@
   .pin { font-size: 28px; letter-spacing: 8px; text-align: center; }
   .rules label.check { display: flex; align-items: center; gap: 10px; color: var(--ink); font-size: 16px; margin: 12px 0 0; }
   .rules label.check input { width: auto; transform: scale(1.3); }
+  label.rules-like { display: flex; align-items: flex-start; gap: 10px; color: var(--ink); font-size: 16px; margin: 12px 0 0; }
+  label.rules-like input { width: auto; transform: scale(1.3); margin-top: 6px; }
+  .hint { color: var(--muted); font-size: 13px; margin: 2px 0 0; }
   .rules .hint { color: var(--muted); font-size: 13px; margin: 2px 0 0; }
   .rules .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
   .win { border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-top: 8px; }
@@ -60,6 +63,19 @@
   </section>
 
   <div id="app" hidden>
+    <section>
+      <h2>Mode</h2>
+      <p class="muted" id="account"></p>
+      <label class="check rules-like"><input type="radio" name="mode" value="kid"> <b>Kid mode</b>: his list, with all the rules</label>
+      <label class="check rules-like"><input type="radio" name="mode" value="parent"> <b>Parent mode</b>: YouTube opens your screens (Today, Planned, History); nothing is blocked or counted</label>
+      <label for="parentMinutes">Parent mode turns itself off after (minutes)</label>
+      <input id="parentMinutes" type="number" min="0" max="1440" inputmode="numeric">
+      <p class="hint">0 = it stays on until you switch back. Then the tablet is open for him too, so keep a limit.</p>
+      <button class="primary" id="saveMode">Save mode</button>
+      <button id="openParent">Open parent screens</button>
+      <p id="modeOut" class="muted"></p>
+    </section>
+
     <section>
       <h2>Update</h2>
       <p class="muted">Gets the newest video list, rules and app version.</p>
@@ -175,9 +191,8 @@
     </section>
 
     <section>
-      <h2>Recently watched</h2>
-      <p class="muted">Tap a picture to watch it yourself (skipping allowed, doesn’t count for him). Your thumbs and comments go to the agent.</p>
-      <div id="recent"></div>
+      <h2>What he watched</h2>
+      <p class="muted">History by day, today’s list and the planned videos are in the parent screens: <b>Open parent screens</b> above, or switch to parent mode.</p>
     </section>
 
     <section>

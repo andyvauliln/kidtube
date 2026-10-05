@@ -17,7 +17,7 @@ export function installFakeChrome() {
     storage: { local: {
       get: async (keys) => Object.fromEntries([].concat(keys).filter((k) => k in store).map((k) => [k, structuredClone(store[k])])),
       set: async (obj) => { for (const [k, v] of Object.entries(obj)) store[k] = structuredClone(v); },
-      remove: async (k) => { delete store[k]; },
+      remove: async (keys) => { for (const k of [].concat(keys)) delete store[k]; },
     } },
     tabs: {
       onUpdated: on('tabUpdated'), onRemoved: on('tabRemoved'),
