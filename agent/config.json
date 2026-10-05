@@ -52,6 +52,7 @@
       "provider": "gemini",
       "voice": "Puck",
       "pitch": 1.15,
+      "maxMinutes": 8,
       "style": "Say this in a cheerful, squeaky, excited cartoon-creature voice for a small child",
       "gemini": {
         "models": [
