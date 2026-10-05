@@ -6,6 +6,7 @@ import { mkdirSync, readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { join } from 'node:path';
 import { parseArgs } from 'node:util';
 import { buildCrx, extensionId, publicKeyDer, updatesXml, zipDir } from './crx.mjs';
+import { sourceCommit } from './build-orion.mjs';
 
 const { values, positionals } = parseArgs({ allowPositionals: true, options: { key: { type: 'string' }, out: { type: 'string', default: 'dist' }, 'base-url': { type: 'string' } } });
 const [extDir] = positionals;
@@ -28,6 +29,6 @@ writeFileSync(join(values.out, crxName), buildCrx(zip, pem));
 writeFileSync(join(values.out, crxName.replace(/\.crx$/, '.zip')), zip);
 writeFileSync(join(values.out, 'updates.xml'), updatesXml({ id, version: manifest.version, crxUrl: `${base}/${crxName}` }));
 const quizTypesPath = join(extDir, 'quiz-types.json');
-const latest = { version: manifest.version, id, crxUrl: `${base}/${crxName}`, zipUrl: `${base}/${crxName.replace(/\.crx$/, '.zip')}`, quizTypes: existsSync(quizTypesPath) ? JSON.parse(readFileSync(quizTypesPath, 'utf8')) : [] };
+const latest = { version: manifest.version, target: 'quetta', sourceCommit: sourceCommit(extDir), id, crxUrl: `${base}/${crxName}`, zipUrl: `${base}/${crxName.replace(/\.crx$/, '.zip')}`, quizTypes: existsSync(quizTypesPath) ? JSON.parse(readFileSync(quizTypesPath, 'utf8')) : [] };
 writeFileSync(join(values.out, 'latest.json'), JSON.stringify(latest, null, 2) + '\n');
 console.log(`packed ${crxName}  id=${id}  -> ${values.out}/`);

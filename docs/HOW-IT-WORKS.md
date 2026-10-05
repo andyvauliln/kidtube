@@ -285,13 +285,13 @@ The code is public (`andyvauliln/kidtube`). Everything about him is private (`an
 
 ## Orion (iPad, iPhone, Mac)
 
-The same extension installs in Orion from the .zip on the install page. Orion is built on WebKit and lacks some Chrome features:
+Orion gets its own build of the same code, from the *Install in Orion* card on the install page. Claude makes a new one when you say "update orion"; until then Orion stays on its last version while Quetta moves on. Orion is built on WebKit and lacks some Chrome features:
 
 | Feature | Quetta | Orion |
 | --- | --- | --- |
 | Other websites blocked | before the page loads (blocking rules) | sent back to his list right after it starts loading |
 | His spoken answers | the tablet's speech recognition | may be missing on iPad/iPhone: he types, or use *Hearing his answers → OpenRouter* |
-| Updates | automatic | maybe manual: the parent page shows *Install the new version* |
+| Updates | automatic | manual: after "update orion", the parent page shows *Install the new version*; download the Orion .zip and install it again |
 | Keeping him in the browser | Family Link | Screen Time |
 
 ## Not built yet

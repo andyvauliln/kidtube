@@ -41,12 +41,14 @@
     </ol>
   </div>
 
-  <div class="card">
+  <div class="card" id="orion">
     <h2>Install in Orion (iPad, iPhone or Mac)</h2>
+    <p class="muted">Orion has its own build, updated separately: version <span id="orionVer">…</span></p>
+    <a class="btn" id="orionZip" download>Download for Orion (.zip)</a>
     <ol>
       <li>In Orion open <b>Settings → Extensions</b> and turn on <b>Chrome extensions</b>.</li>
-      <li>Tap <b>Download .zip</b> above and save it to <b>Files</b> (iPad/iPhone) or Downloads (Mac).</li>
-      <li>Open Orion's <b>Extensions</b> list, tap <b>+</b> and choose the file-based install, then pick the .zip (if it is refused, try the .crx).</li>
+      <li>Tap <b>Download for Orion (.zip)</b> above and save it to <b>Files</b> (iPad/iPhone) or Downloads (Mac).</li>
+      <li>Open Orion's <b>Extensions</b> list, tap <b>+</b> and choose the file-based install, then pick the .zip.</li>
       <li>Open the KidTube settings (⚙️ on the kid's screen, or the extension's options) and set the PIN and the GitHub key like on the tablet.</li>
       <li>Open <b>youtube.com</b>: you should see his list instead of YouTube.</li>
     </ol>
@@ -54,7 +56,8 @@
     <ul>
       <li>Other websites are sent back to his list by KidTube itself (Orion has no blocking rules), so a page may flash for a moment first.</li>
       <li>Speech recognition may be missing in Orion on iPad/iPhone. Then he types his answers, unless you choose <b>Hearing his answers → OpenRouter</b> on the parent page.</li>
-      <li>Orion may not update file-installed extensions by itself: when the parent page shows <b>Install the new version</b>, download the new .zip here and install it again.</li>
+      <li>Orion may not update file-installed extensions by itself: when the parent page shows <b>Install the new version</b>, download the new Orion .zip here and install it again.</li>
+      <li>After installing a new version, check the KidTube settings: if the PIN or the GitHub key are empty, enter them again.</li>
       <li>Use Screen Time on the iPad to keep him in Orion (and out of Safari and the YouTube app).</li>
     </ul>
   </div>
@@ -70,6 +73,10 @@
     document.getElementById('id').textContent = l.id;
     document.getElementById('crx').href = l.crxUrl;
     document.getElementById('zip').href = l.zipUrl;
+  });
+  fetch('orion/latest.json', { cache: 'no-store' }).then((r) => r.json()).then((l) => {
+    document.getElementById('orionVer').textContent = l.version;
+    document.getElementById('orionZip').href = l.zipUrl;
   });
 </script>
 </body>

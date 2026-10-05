@@ -4,12 +4,14 @@ import { lockReason, nextOpening, localParts } from './lib/time.js';
 import { visibleVideos, waitingIds } from './lib/queue.js';
 import { classifyUrl, homeUrl, watchUrl } from './lib/url.js';
 import { parseCaptions, captionsToText } from './lib/captions.js';
+import { TARGET } from './lib/target.js';
 
 const SITE_RULE_ID = 100;
 const POLL_MINUTES = 15;
 const DEFAULT_REPO = 'andyvauliln/kidtube-data';
-const LATEST_URL = 'https://andyvauliln.github.io/kidtube/latest.json';
-const INSTALL_PAGE = 'https://andyvauliln.github.io/kidtube/';
+// Each build has its own release: Orion's lives under orion/ and is updated only when asked (tools/build-orion.mjs).
+const LATEST_URL = TARGET === 'orion' ? 'https://andyvauliln.github.io/kidtube/orion/latest.json' : 'https://andyvauliln.github.io/kidtube/latest.json';
+const INSTALL_PAGE = TARGET === 'orion' ? 'https://andyvauliln.github.io/kidtube/#orion' : 'https://andyvauliln.github.io/kidtube/';
 
 let bundled; // { config, queue, quizTypes }
 async function loadBundled() {
@@ -638,7 +640,7 @@ async function flushOutbox(repo, token) {
       file.events.push(...events.filter((e) => !have.has(e.eventId)));
       file.events.sort((a, b) => a.at.localeCompare(b.at));
       file.device = {
-        deviceId, extensionVersion: chrome.runtime.getManifest().version, quizTypes: (await loadBundled()).quizTypes,
+        deviceId, extensionVersion: chrome.runtime.getManifest().version, target: TARGET, quizTypes: (await loadBundled()).quizTypes,
         ...(config.updatedAt ? { configUpdatedAt: config.updatedAt } : {}),
         ...(queue.updatedAt ? { queueUpdatedAt: queue.updatedAt } : {}),
         lastSyncAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
@@ -786,6 +788,8 @@ const allowedDomains = (config) => [...new Set([...(config.allowedSiteDomains ??
 async function applySiteRules() {
   const s = await chrome.storage.local.get(['data', 'localConfig']);
   const { config } = await effective({ data: s.data ?? {}, localConfig: s.localConfig });
+  // Orion has no blocking rules (its build drops the permission): externalGuard does the job there.
+  if (TARGET === 'orion') { dnrWorks = false; return; }
   // YouTube and the install page always stay reachable, whatever the list says.
   try {
     await chrome.declarativeNetRequest.updateDynamicRules({
@@ -805,8 +809,10 @@ async function applySiteRules() {
 // Browsers without dynamic blocking rules (Orion): a page outside the allowed sites goes back to his list.
 let dnrWorks;
 async function externalGuard(host) {
-  dnrWorks ??= (await chrome.storage.local.get('dnrWorks')).dnrWorks ?? !!chrome.declarativeNetRequest?.updateDynamicRules;
-  if (dnrWorks) return null;
+  if (TARGET !== 'orion') {
+    dnrWorks ??= (await chrome.storage.local.get('dnrWorks')).dnrWorks ?? !!chrome.declarativeNetRequest?.updateDynamicRules;
+    if (dnrWorks) return null;
+  }
   const s = await chrome.storage.local.get(['data', 'localConfig']);
   const { config } = await effective({ data: s.data ?? {}, localConfig: s.localConfig });
   if (!config.blockOutboundLinks) return null;
@@ -819,8 +825,10 @@ async function externalGuard(host) {
 const sync_ = () => sync();
 async function checkUpdate() {
   const installed = chrome.runtime.getManifest().version;
-  const check = await new Promise((resolve) => chrome.runtime.requestUpdateCheck((status, details) => resolve({ status, details })))
-    .catch((e) => ({ status: 'error', error: String(e) }));
+  // Orion installs from a .zip and has no update_url: the parent installs the new .zip by hand.
+  const check = TARGET === 'orion' ? { status: 'manual' }
+    : await new Promise((resolve) => chrome.runtime.requestUpdateCheck((status, details) => resolve({ status, details })))
+      .catch((e) => ({ status: 'error', error: String(e) }));
   let latest = null;
   try { latest = await (await fetch(LATEST_URL, { cache: 'no-store' })).json(); } catch {}
   const newer = latest && cmpVersion(latest.version, installed) > 0;
@@ -834,7 +842,7 @@ function cmpVersion(a, b) {
   return 0;
 }
 
-chrome.runtime.onUpdateAvailable.addListener(() => chrome.runtime.reload());
+chrome.runtime.onUpdateAvailable?.addListener(() => chrome.runtime.reload());
 
 // --- lifecycle -----------------------------------------------------------------------------
 

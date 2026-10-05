@@ -34,6 +34,13 @@
         "extensionVersion": {
           "$ref": "common.schema.json#/$defs/semver"
         },
+        "target": {
+          "enum": [
+            "quetta",
+            "orion"
+          ],
+          "description": "Which build wrote this: quetta (Android) or orion (iPad/iPhone/Mac)"
+        },
         "quizTypes": {
           "type": "array",
           "uniqueItems": true,

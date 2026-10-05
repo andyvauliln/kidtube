@@ -14,7 +14,7 @@ The same KidTube runs on his **Android** devices and his **iPhone/iPad**, with o
 | D2 | Background syncing | **None needed.** Sync when he uses it: on open, on return to the screen, and after each video. | iOS freezes Orion in the background, and Android stops browsers too. The helper runs once a day, so syncing on use is enough. |
 | D3 | Daily minutes with two devices | **Shared**: one budget for the child, not one per device | Otherwise switching devices doubles his time |
 | D4 | Watched videos with two devices | **Shared**: a video watched on one device disappears on the other | Same list everywhere |
-| D5 | Updates on Orion | **By hand** from the install page when the parent page says *Install the new version* | File-installed extensions probably don't update themselves. Revisit after P2: an unlisted Chrome Web Store listing (5 USD once) could make it automatic. |
+| D5 | Updates on Orion | **By hand** from the install page when the parent page says *Install the new version*. Claude publishes a new Orion build when you say "update orion" (skill `update-orion`). | File-installed extensions probably don't update themselves. Revisit after P3: an unlisted Chrome Web Store listing (5 USD once) could make it automatic. |
 | D6 | Keeping him inside KidTube | The device's own controls: **Family Link + screen pinning** on Android, **Screen Time + Guided Access** on iPhone/iPad | No extension can stop a child leaving the browser |
 
 ## Where we are (0.6.1)
@@ -50,9 +50,9 @@ So a device that was closed or frozen still shows today's list and sends what he
 ### P2. Orion hardening (0.6.2)
 
 **Code:**
-1. **Use the blocking rules only on Chromium.** If `navigator.userAgentData` is missing (WebKit: Orion, Safari), skip `declarativeNetRequest` and use the navigation guard (`applySiteRules`, `sw.js:786`; `externalGuard`, `sw.js:807`). Today a browser that accepts the rule but ignores `excludedRequestDomains` would either block nothing (the guard turns itself off) or block YouTube too.
+1. ~~Use the blocking rules only on Chromium.~~ **Done in 0.6.2** with a separate Orion build instead of browser detection: the build sets `TARGET = 'orion'`, which skips the blocking rules and keeps the navigation guard on. See [ORION.md → Two builds from one code](ORION.md#two-builds-from-one-code-062).
 2. **Fallback for the page-world script.** If `content/main.js` hasn't reported a video's details within 5 s, the content script adds it as a `<script>` tag, which runs in the page world. `content/main.js` goes into `web_accessible_resources`. This keeps the real channel and length check where `world: "MAIN"` isn't supported.
-3. **Which browser sent this.** Add optional `engine` (`chromium` | `webkit`) and `platform` (`android` | `ios` | `macos` | …) to the activity `device` header (`flushOutbox`, `schemas/activity.schema.json`). The parent page's status panel shows it too.
+3. **Which browser sent this.** **Partly done in 0.6.2:** `device.target` (`quetta` | `orion`). Still to do: `platform` (`android` | `ios` | `macos`), and showing it in the parent page's status panel.
 
 **Tests:** guard used when `userAgentData` is missing (extend `tests/orion.test.mjs`); validator accepts the new optional fields.
 

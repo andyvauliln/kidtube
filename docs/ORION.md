@@ -78,6 +78,25 @@ Status in Orion, from Kagi's API support table (iOS/iPadOS column) and the iOS r
 | Update by itself (probably) | Store updates are documented, file installs aren't | Manual: a new .zip from the install page. Or publish KidTube unlisted on the Chrome Web Store (one-time 5 USD), install it in Orion from the store, and let Orion's store updates handle it. Store review applies, and iOS store updates need a test. |
 | Speech recognition (probably) | Not documented for Orion's iOS extension pages | Typing or OpenRouter |
 
+## Two builds from one code (0.6.2)
+
+KidTube keeps **one source**, `extension/`. It is developed and released for Quetta. The Orion build is made from it on request ("update orion", the `update-orion` skill in `.claude/skills/`), so Orion can lag behind Quetta without a second copy of the code.
+
+| What differs | How | Where |
+| --- | --- | --- |
+| Behaviour | `TARGET` is `'quetta'` in the source; the Orion build rewrites it to `'orion'`. Code checks it only where Orion really differs. | `extension/lib/target.js` |
+| No blocking rules | `applySiteRules` returns early on Orion; `externalGuard` always does the job | `extension/sw.js` |
+| Updates | No `requestUpdateCheck` on Orion; the parent page compares with `orion/latest.json` and links to `#orion` on the install page | `extension/sw.js` (`checkUpdate`) |
+| Which build wrote the activity | `device.target`: `quetta` or `orion` | `extension/sw.js` (`flushOutbox`), `schemas/activity.schema.json` |
+| Manifest | No `update_url`, no `minimum_chrome_version`, no `declarativeNetRequest` permission | `orionManifest()` in `tools/build-orion.mjs` |
+| Release | `docs/orion/kidtube-orion-<version>.zip` + `docs/orion/latest.json` (with the commit and a hash of the source), separate from Quetta's `docs/latest.json` | `tools/build-orion.mjs` |
+| Compatibility check | Every `chrome.*` API in use, looked up in a snapshot of Kagi's support table; fails on an API Orion lacks unless it is handled for the Orion build | `tools/orion-check.mjs`, `tools/orion-apis.json`, `tests/orion-build.test.mjs` |
+
+Rules that keep this working:
+- **New Orion differences go behind `TARGET`** in `extension/`, never into the built files.
+- **One version number means one set of files.** The build refuses to reuse a version for different code; bump `version` in `extension/manifest.json`.
+- **Quetta releases stay as they were** (`tools/pack.mjs` with the signing key). Building Orion never touches `docs/latest.json`, `updates.xml` or the `.crx`.
+
 ## What to change
 
 The code is close to done. These changes are small and also help Safari. They are scheduled in [PLAN-DEVICES.md](PLAN-DEVICES.md) (P1, P2):
@@ -85,9 +104,9 @@ The code is close to done. These changes are small and also help Safari. They ar
 | Change | Where | Why |
 | --- | --- | --- |
 | Sync when a screen asks for `state` and the last sync is older than 15 min | `sw.js:219` | On iPad, the alarm only fires while Orion is open. Opening the list should be enough to pull the new list. |
-| Make sure an accepted-but-ignored blocking rule can't switch the guard off: after adding the rule, check `getDynamicRules()` returns it, and on Orion always keep the guard on | `sw.js:786–815` | If Orion on a Mac accepts the rule but ignores `excludedRequestDomains`, `dnrWorks` becomes `true` and nothing blocks. Worse, the rule could block YouTube itself. |
+| ~~Make sure an accepted-but-ignored blocking rule can't switch the guard off~~ **Done in 0.6.2:** the Orion build never adds the rule and always keeps the guard on | `sw.js` `applySiteRules`, `externalGuard` | — |
 | Fallback for the page-world script: if `main.js` never reports, inject it as a `<script>` tag from the content script | `content/content.js`, `manifest.json` | Keeps the real channel and length check if Orion has no `world: "MAIN"`. Optional: the server checks too. |
-| Show which browser sent each event: add `browser: "orion"` to the `device` header | `sw.js` `flushOutbox`, `schemas/activity.schema.json` | The helper and the parent can tell Quetta and iPad days apart |
+| ~~Show which browser sent each event~~ **Done in 0.6.2:** `device.target` | `sw.js` `flushOutbox`, `schemas/activity.schema.json` | — |
 | Note in `HOW-IT-WORKS.md` what the iPad test showed | docs | The table there says "may" in several places |
 
 ## Locking down the iPad for Orion
