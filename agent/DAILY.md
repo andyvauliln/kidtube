@@ -42,12 +42,16 @@ You do all the thinking and writing yourself. Gemini only watches videos.
    - Numbers come from the "Numbers" section: videos per day, new ideas per day, minimum Russian videos, must-watch order. Otherwise use `defaults`.
    - Look at what is already planned: `node agent/kt.mjs videos`.
 
-4. **Find new ideas, every day** — also when Gemini can't watch more videos today (ideas wait for their transcript; that's fine). If the wishes ask for Russian videos and the list has too few, search in Russian. Run 4–8 searches with `node agent/kt.mjs search "<words>" 10 <en|ru>`, in the video's language (for example "numberblocks adding to 10", "мультик про дружбу для малышей").
-   - Pick up to "new ideas per day" of the best results: known children's education channels, clear teaching, calm pace, and variety.
-   - Add them with `node agent/kt.mjs add '[{"videoId":"…","why":"one sentence for the parent","topics":["numbers"],"lang":"en","required":null}]'`.
-   - Set `required` to `today` or `yes` only when the parent asked for that topic to be a must-watch.
+4. **Transcripts first.** `node agent/kt.mjs transcribe` makes Gemini watch the videos that need one, within today's limits, in the order today's list will likely take (then the rest of the plan). A video with a transcript gets real questions; without one only math questions or none, so the list is built after this.
+   - Read a transcript with `node agent/kt.mjs transcript <id>`.
+   - Use `node agent/kt.mjs ask <id> "<question>"` only when the transcript leaves something unclear. It counts against the same daily limit.
 
-5. **Today's list.** `node agent/kt.mjs today --suggest <count> ru=<n>` proposes an order:
+5. **New ideas, only when the plan needs them.** The output of `transcribe` (and `node agent/kt.mjs ideas`) has `newIdeas.stillAllowed`: 0 when the plan already holds `target` (50) open videos, otherwise about as many as Gemini can still transcribe today. If it is 0, skip this step: no searches.
+   - Otherwise run 2–8 searches with `node agent/kt.mjs search "<words>" 10 <en|ru>`, in the video's language (for example "numberblocks adding to 10", "мультик про дружбу для малышей"). If the wishes ask for Russian videos and the list has too few, search in Russian. Every search is written to the log.
+   - Pick at most `stillAllowed` of the best results: known children's education channels, clear teaching, calm pace, and variety. Add them with `node agent/kt.mjs add '[{"videoId":"…","why":"one sentence for the parent","topics":["numbers"],"lang":"en","required":null}]'`. Set `required` to `today` or `yes` only when the parent asked for that topic to be a must-watch.
+   - Then run `node agent/kt.mjs transcribe` again so the new ideas get their transcripts.
+
+6. **Today's list: 10 videos** (or the parent's number from "Numbers"). `node agent/kt.mjs today --suggest <count> ru=<n>` proposes an order; within each group, videos with a transcript come first:
    1. must-watch today
    2. approved must-watch
    3. other must-watch
@@ -55,13 +59,9 @@ You do all the thinking and writing yourself. Gemini only watches videos.
    5. your own ideas
    6. flagged too-hard videos, last
 
-   Change it if the wishes say otherwise, then set it with `node agent/kt.mjs today id1,id2,…`. Never put a video with status "no" on the list.
+   Change it if the wishes say otherwise, then set it with `node agent/kt.mjs today id1,id2,…`. Never put a video with status "no" on the list. `save` also sends up to 10 spares (planned videos that have words) after the list: when he watches one or the parent removes one, the next spare takes its place on the tablet.
 
-6. **Transcripts.** `node agent/kt.mjs transcribe` makes Gemini watch the videos that need one, within today's limits: today's list first, then new ideas, then planned ones.
-   - Read a transcript with `node agent/kt.mjs transcript <id>`.
-   - Use `node agent/kt.mjs ask <id> "<question>"` only when the transcript leaves something unclear. It counts against the same daily limit.
-
-7. **Words and questions.** For every video on today's list, among the new ideas, or planned (`node agent/kt.mjs videos`) whose words are missing, or were written from the title only while a transcript now exists (at most 15 a day, today's list first), read the transcript and run `node agent/kt.mjs words <id> '<json>'` with:
+7. **Words and questions.** For every video on today's list, among the new ideas, or planned (the next planned ones become spares) (`node agent/kt.mjs videos`) whose words are missing, or were written from the title only while a transcript now exists (at most 20 a day, today's list first), read the transcript and run `node agent/kt.mjs words <id> '<json>'` with:
    - `summary`: 3–5 sentences for the parent;
    - `learned`: 2–4 new things he learns;
    - `intro`: 2–4 short sentences, at most 400 characters. It makes him curious without giving the answer and says what to look out for.

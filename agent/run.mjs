@@ -16,7 +16,7 @@ import { createHash } from 'node:crypto';
 import { createLLM } from './lib/llm.mjs';
 import { createNotion } from './lib/notion.mjs';
 import { syncClone, commitAndPush, readJson, writeJson, activitySince, transcript } from './lib/data.mjs';
-import { applyActivity, applyNotionRow, applyPromptNotes, composeToday, markToday, upcoming, freshCandidates, backlogText } from './lib/plan.mjs';
+import { applyActivity, applyNotionRow, applyPromptNotes, composeToday, markToday, upcoming, freshCandidates, backlogText, ideasAllowed } from './lib/plan.mjs';
 import { buildQuiz, templateCatalog } from './lib/quiz.mjs';
 import { understandPrompt, choosePrompt, contentPrompt, notesPrompt } from './lib/prompts.mjs';
 import { setupWorkspace, readVideoRows, readTemplates, videoProps, videoMarkdown } from './lib/workspace.mjs';
@@ -201,7 +201,11 @@ async function run() {
     want = { ...want, ...(await llm.json('understand', p)) };
   } catch (e) { problems.push(e.message); }
   const perDay = clamp(want.videosPerDay, 1, 20, D.videosPerDay);
-  const newIdeas = clamp(want.newIdeas, 0, 15, D.newIdeas);
+  // No searching once the plan is full; otherwise no more ideas than Gemini can transcribe today.
+  const room = ideasAllowed(videos, { target: D.planTarget ?? 50, perDay,
+    geminiLeft: createGemini({ apiKey: env.GEMINI_API_KEY ?? '', stateDir, config: config.transcripts, today, log: () => {} }).left().videos });
+  const newIdeas = Math.min(clamp(want.newIdeas, 0, 15, D.newIdeas), room.allowed);
+  log(`plan: ${room.open} open videos (target ${room.target}), new ideas allowed today: ${newIdeas}`);
   const languageMins = Object.fromEntries(Object.entries(want.languageMins ?? {}).filter(([l, n]) => /^[a-z]{2}$/.test(l) && Number.isInteger(n) && n > 0).map(([l, n]) => [l, Math.min(n, perDay)]));
   const maxSeconds = Math.min(pc.maxVideoDurationSeconds || 1e9, (Number(want.maxMinutes) || 1e9) * 60);
   const minSeconds = Math.max(pc.minVideoDurationSeconds ?? 60, (Number(want.minMinutes) || 0) * 60);
@@ -214,6 +218,7 @@ async function run() {
       try {
         const found = await search(s.query, D.searchResults);
         results.push(...found.filter((r) => r.channelId).map((r) => ({ ...r, lang: /[а-яё]/i.test(r.title) ? 'ru' : (s.lang ?? 'en').slice(0, 2), search: s })));
+        log(`  search "${s.query}" (${s.lang ?? 'en'}): ${found.length} results`);
       } catch (e) { problems.push(`search “${s.query}”: ${e.message}`); }
     }
     const candidates = freshCandidates(results, videos, { minSeconds, maxSeconds, blockedChannelIds: pc.blockedChannelIds, badChannels: helper.badChannels ?? [] });

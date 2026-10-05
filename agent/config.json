@@ -13,8 +13,10 @@
   "timezone": "UTC",
   "schedule": "30 3 * * *",
   "defaults": {
-    "videosPerDay": 6,
-    "newIdeas": 6,
+    "videosPerDay": 10,
+    "newIdeas": 10,
+    "planTarget": 50,
+    "spares": 10,
     "languageMins": {},
     "requiredFirst": "first",
     "maxQuestions": 2,

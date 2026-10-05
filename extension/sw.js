@@ -671,8 +671,12 @@ async function parentData(s) {
   const { config, queue } = await effective(s);
   const memory = await getMemory();
   const recs = records(memory, s.planLog, queue);
-  const todayIds = new Set(queue.videos.map((v) => v.videoId));
-  const today = queue.videos.map((v) => ({ ...cardOf(v.videoId, v, recs[v.videoId], s), required: !!v.required }));
+  // Today = what he sees now (the first queueSize unwatched) plus what he watched; the helper's spares
+  // further down the queue wait in Planned until one of these is watched or removed.
+  const visible = new Set(visibleVideos(queue, config, s.watched).map((v) => v.videoId));
+  const shown = queue.videos.filter((v) => visible.has(v.videoId) || s.watched[v.videoId]);
+  const todayIds = new Set(shown.map((v) => v.videoId));
+  const today = shown.map((v) => ({ ...cardOf(v.videoId, v, recs[v.videoId], s), required: !!v.required }));
   // Planned: the helper's order (queue.upcoming) first, then its other open videos, newest first.
   const order = [...(queue.upcoming ?? []).map((u) => u.videoId),
     ...Object.entries(recs).sort((a, b) => (b[1].addedAt ?? '').localeCompare(a[1].addedAt ?? '')).map(([id]) => id)];

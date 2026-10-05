@@ -80,13 +80,13 @@ function tier(v, today) {
 }
 
 // Today's list. languageMins: { ru: 3 } = at least 3 Russian videos when there are any.
-export function composeToday(videos, { today, count = 6, languageMins = {}, blockedChannelIds = [] }) {
+export function composeToday(videos, { today, count = 10, languageMins = {}, blockedChannelIds = [], ready = new Set() }) {
   const blocked = new Set(blockedChannelIds);
   const pool = Object.entries(videos)
     .filter(([, v]) => OPEN.has(v.status) && !blocked.has(v.channelId))
     .map(([videoId, v]) => ({ videoId, v, t: tier(v, today) }))
     .filter((x) => x.t < 9)
-    .sort((a, b) => a.t - b.t || (a.v.day ?? '').localeCompare(b.v.day ?? '') || (a.v.addedAt ?? '').localeCompare(b.v.addedAt ?? ''));
+    .sort((a, b) => a.t - b.t || ready.has(b.videoId) - ready.has(a.videoId) || (a.v.day ?? '').localeCompare(b.v.day ?? '') || (a.v.addedAt ?? '').localeCompare(b.v.addedAt ?? ''));
   const picked = pool.slice(0, count);
   const rest = pool.slice(count);
   // Language minimums: swap in videos of that language for the latest, least important picks.
@@ -127,6 +127,14 @@ export function upcoming(videos, todayIds, { today, max = 40 } = {}) {
     .sort((a, b) => a.t - b.t)
     .slice(0, max)
     .map(({ videoId, title }) => ({ videoId, title }));
+}
+
+// New ideas today: none once the plan holds `target` open videos; otherwise as many as Gemini can still
+// transcribe today (an idea without a transcript gets no questions), but always enough for today's list.
+export function ideasAllowed(videos, { target = 50, geminiLeft = 0, perDay = 10 } = {}) {
+  const open = Object.values(videos).filter((v) => OPEN.has(v.status)).length;
+  if (open >= target) return { open, target, allowed: 0 };
+  return { open, target, allowed: Math.max(0, Math.min(target - open, Math.max(geminiLeft, perDay - open))) };
 }
 
 // Search results the helper may suggest: right length, unknown, not blocked, not a live stream.

@@ -3,6 +3,7 @@
 // every command prints JSON. The work in progress lives in <stateDir>/session.json until `save`.
 //
 //   node agent/kt.mjs start                     fresh data, apply the tablet's activity, show everything
+//   node agent/kt.mjs ideas                      how many new ideas are allowed today (plan size, Gemini limit)
 //   node agent/kt.mjs videos [status...]        the helper's videos (compact)
 //   node agent/kt.mjs set '<json array>'        parent fields from Notion: [{videoId, approved, status, required, day, parentComment, notionPageId}]
 //   node agent/kt.mjs search "<query>" [n] [lang]   YouTube search, only new videos of the right length
@@ -16,13 +17,13 @@
 //   node agent/kt.mjs save                       voices, files, checks, commit + push; prints what Notion needs
 //   node agent/kt.mjs notion-done '<json>'       [{videoId, notionPageId}] after creating rows
 //   node agent/kt.mjs info                       publish helper.json now (what the parent sees in the Prompt tab)
-import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs';
+import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { syncClone, commitAndPush, readJson, writeJson, activitySince, transcript } from './lib/data.mjs';
-import { applyActivity, applyNotionRow, applyPromptNotes, composeToday, markToday, upcoming, freshCandidates, OPEN } from './lib/plan.mjs';
+import { applyActivity, applyNotionRow, applyPromptNotes, composeToday, markToday, upcoming, freshCandidates, ideasAllowed, OPEN } from './lib/plan.mjs';
 import { helperInfo } from './lib/info.mjs';
 import { buildQuiz, templateCatalog } from './lib/quiz.mjs';
 import { tooHard } from './lib/prompts.mjs';
@@ -41,6 +42,14 @@ mkdirSync(stateDir, { recursive: true });
 const env = { ...readEnv(home(config.envFile)), ...process.env };
 const SESSION = join(stateDir, 'session.json');
 const D = config.defaults;
+// A line in the daily log (helper.log), next to what daily.sh writes.
+const log = (msg) => { try { appendFileSync(join(stateDir, 'helper.log'), `[${new Date().toISOString().slice(11, 19)}] ${msg}\n`); } catch {} };
+const ready = (videos) => new Set(Object.keys(videos).filter((id) => transcript(dataDir, id)?.available));
+const gemFor = (s) => createGemini({ apiKey: env.GEMINI_API_KEY ?? '', stateDir, config: config.transcripts, today: s.today, log: () => {} });
+const ideas = (s) => {
+  const r = ideasAllowed(s.videos, { target: D.planTarget ?? 50, geminiLeft: gemFor(s).left().videos, perDay: D.videosPerDay });
+  return { ...r, addedToday: s.newIds.length, stillAllowed: Math.max(0, r.allowed - s.newIds.length) };
+};
 
 function readEnv(path) {
   if (!existsSync(path)) return {};
@@ -97,9 +106,13 @@ const commands = {
       tablet: { device: devices.at(-1) ?? null, ...tablet },
       rules: { minutesPerDay: pc.time?.maxMinutesPerDay, hours: pc.time?.allowed, maxVideoMinutes: Math.round((pc.maxVideoDurationSeconds ?? 0) / 60), minVideoMinutes: Math.round((pc.minVideoDurationSeconds ?? 0) / 60),
         queueSize: pc.queueSize, requiredFirst: pc.requiredFirst ?? 'first', questionsOn: !!pc.quiz?.enabled, friend: pc.presenter?.name, blockedChannels: pc.blockedChannelIds ?? [] },
-      defaults: D, videoCounts: counts,
+      defaults: D, videoCounts: counts, newIdeas: ideas(s),
       geminiLeftToday: gem.left(), voices: { speak: config.voices?.speak?.provider ?? 'device', listen: pc.presenter?.voice?.listen?.provider ?? 'device' },
       notion: helper.notion ?? null, quizTemplates: templateCatalog().map((t) => ({ id: t.id, answer: t.answer, howItWorks: t.howItWorks, params: t.params })) });
+  },
+
+  ideas() {
+    out(ideas(load()));
   },
 
   videos() {
@@ -128,11 +141,15 @@ const commands = {
     const [query, n = '10', lang] = args;
     if (!query) fail('search "<query>" [n] [lang]');
     const pc = readJson(paths.config);
-    const results = (await search(query, Number(n))).filter((r) => r.channelId)
+    let found;
+    try { found = await search(query, Number(n)); }
+    catch { await new Promise((r) => setTimeout(r, 5000)); try { found = await search(query, Number(n)); } catch (e) { log(`search "${query}" (${lang ?? 'en'}): failed: ${e.cause?.message ?? e.message}`); fail(`search failed: ${e.cause?.message ?? e.message}`); } }
+    const results = found.filter((r) => r.channelId)
       .map((r) => ({ ...r, lang: /[а-яё]/i.test(r.title) ? 'ru' : (lang ?? 'en').slice(0, 2) }));
     const fresh = freshCandidates(results, s.videos, { minSeconds: pc.minVideoDurationSeconds ?? 60, maxSeconds: pc.maxVideoDurationSeconds || 1200,
       blockedChannelIds: pc.blockedChannelIds, badChannels: readJson(paths.memory).helper?.badChannels ?? [] });
     for (const r of fresh) s.searchCache[r.videoId] = { ...r, query };
+    log(`search "${query}" (${lang ?? 'en'}): ${results.length} results, ${fresh.length} new`);
     store(s);
     out(fresh.map((r) => ({ videoId: r.videoId, title: r.title, channel: r.channelTitle, minutes: Math.round(r.durationSeconds / 6) / 10, lang: r.lang })));
   },
@@ -141,9 +158,11 @@ const commands = {
     const s = load();
     const picks = parse(args[0], 'add');
     const added = [];
+    let room = ideas(s).stillAllowed;
     for (const p of picks) {
       const c = s.searchCache[p.videoId];
       if (!c) { out({ ok: false, error: `${p.videoId} is not from a search in this session` }); continue; }
+      if (room-- <= 0) { out({ ok: false, error: `no more new ideas today (plan size or Gemini limit): ${p.videoId} not added` }); continue; }
       const must = ['yes', 'today'].includes(p.required) ? p.required : null;
       s.videos[p.videoId] = { title: c.title, channelId: c.channelId, channelTitle: c.channelTitle, durationSeconds: c.durationSeconds,
         lang: /^[a-z]{2}$/.test(p.lang ?? '') ? p.lang : c.lang, topics: (p.topics ?? []).slice(0, 5).map(String), why: String(p.why ?? '').slice(0, 500),
@@ -153,7 +172,8 @@ const commands = {
       added.push(p.videoId);
     }
     store(s);
-    out({ ok: true, added });
+    log(`added ${added.length} new ideas: ${added.join(', ')}`);
+    out({ ok: true, added, newIdeas: ideas(s) });
   },
 
   today() {
@@ -163,7 +183,7 @@ const commands = {
     if (arg === '--suggest') {
       const langs = Object.fromEntries((args.slice(1).join(' ').match(/\b([a-z]{2})=(\d+)/g) ?? []).map((x) => x.split('=')).map(([l, n]) => [l, Number(n)]));
       const count = Number(args.find((a) => /^\d+$/.test(a)) ?? D.videosPerDay);
-      return out({ suggested: composeToday(s.videos, { today: s.today, count, languageMins: langs, blockedChannelIds: pc.blockedChannelIds }).map((id) => brief(id, s.videos[id])) });
+      return out({ suggested: composeToday(s.videos, { today: s.today, count, languageMins: langs, blockedChannelIds: pc.blockedChannelIds, ready: ready(s.videos) }).map((id) => brief(id, s.videos[id])) });
     }
     const ids = arg.split(',').map((x) => x.trim()).filter(Boolean);
     const bad = ids.filter((id) => !s.videos[id] || !OPEN.has(s.videos[id].status));
@@ -180,7 +200,8 @@ const commands = {
     const s = load();
     if (!env.GEMINI_API_KEY) fail('GEMINI_API_KEY is missing');
     const gem = createGemini({ apiKey: env.GEMINI_API_KEY, stateDir, config: config.transcripts, today: s.today, log: () => {} });
-    const order = args.length ? args : [...new Set([...(s.todayIds ?? []), ...s.newIds, ...upcoming(s.videos, s.todayIds ?? [], { today: s.today }).map((u) => u.videoId)])];
+    const likelyToday = s.todayIds ?? composeToday(s.videos, { today: s.today, count: D.videosPerDay + (D.spares ?? 0), blockedChannelIds: readJson(paths.config).blockedChannelIds });
+    const order = args.length ? args : [...new Set([...likelyToday, ...s.newIds, ...upcoming(s.videos, likelyToday, { today: s.today }).map((u) => u.videoId)])];
     const done = [], skipped = [], errors = [];
     for (const id of order) {
       const v = s.videos[id];
@@ -189,7 +210,8 @@ const commands = {
       try { writeJson(join(dataDir, 'transcripts', `${id}.json`), await gem.transcribe({ videoId: id, ...v })); done.push(id); }
       catch (e) { errors.push(`${id}: ${e.message.slice(0, 200)}`); }
     }
-    out({ ok: true, done, skipped, errors, left: gem.left() });
+    log(`transcripts: ${done.length} made, ${skipped.length} over today's limit, ${errors.length} failed`);
+    out({ ok: true, done, skipped, errors, left: gem.left(), newIdeas: ideas(s) });
   },
 
   transcript() {
@@ -253,7 +275,11 @@ const commands = {
     const helper = (memory.helper ??= {});
     helper.videos = s.videos;
     const items = {};
-    queue.videos = s.todayIds.map((id) => {
+    // Spares: ready videos (words written) after today's list. The tablet shows the first queueSize videos
+    // he hasn't watched, so when one is watched or removed the next spare takes its place.
+    const spares = composeToday(Object.fromEntries(Object.entries(s.videos).filter(([id, v]) => !s.todayIds.includes(id) && v.content)),
+      { today: s.today, count: D.spares ?? 10, blockedChannelIds: pc.blockedChannelIds, ready: ready(s.videos) });
+    queue.videos = [...s.todayIds, ...spares].map((id) => {
       const v = s.videos[id];
       Object.assign(items, v.content?.items ?? {});
       return {
@@ -264,7 +290,7 @@ const commands = {
         ...(v.content?.quizIds?.length ? { quizIds: v.content.quizIds } : {}), ...(v.why ? { note: v.why.slice(0, 500) } : {}),
       };
     });
-    queue.upcoming = upcoming(s.videos, s.todayIds, { today: s.today });
+    queue.upcoming = upcoming(s.videos, [...s.todayIds, ...spares], { today: s.today });
     queue.updatedAt = iso();
     pc.quiz = { ...(pc.quiz ?? {}), items: { ...Object.fromEntries(Object.entries(pc.quiz?.items ?? {}).filter(([qid]) => (pc.quiz?.defaultIds ?? []).includes(qid))), ...items } };
     if (s.notes?.requiredFirst && ['first', 'mix', 'off'].includes(s.notes.requiredFirst)) pc.requiredFirst = s.notes.requiredFirst;
@@ -307,7 +333,7 @@ const commands = {
     });
     s.saved = true;
     store(s);
-    out({ ok: true, today: s.todayIds, newIdeas: s.newIds, voices: voiceReport, notion: { dataSource: helper.notion?.videosDataSource, rows } });
+    out({ ok: true, today: s.todayIds, spares, newIdeas: s.newIds, voices: voiceReport, notion: { dataSource: helper.notion?.videosDataSource, rows } });
   },
 
   'notion-done'() {
