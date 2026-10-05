@@ -2,7 +2,7 @@
 
 A small program that runs once a day. It reads what he watched and what you want, finds new
 videos on YouTube, writes what the talking friend says, makes the questions, and updates the
-tablet's list (`kidtube-data`) and your Notion pages.
+tablet's list (`kidtube-data`) and its notes for you in parent mode.
 
 It uses free AI models on OpenRouter and rotates between them. A paid model can be added later
 (`llm.paidModel` in `config.json`).
@@ -11,7 +11,7 @@ It uses free AI models on OpenRouter and rotates between them. A paid model can 
 
 Cron starts `agent/daily.sh` at 03:30 UTC. It runs **Claude Code (Sonnet)** with the instructions in `agent/DAILY.md`.
 
-- Claude does the thinking and the writing, and reads and writes Notion through its Notion connection. No Notion key is needed.
+- Claude does the thinking and the writing.
 - Claude calls `node agent/kt.mjs …` for data, YouTube search, Gemini (transcripts and questions about a video), the friend's recordings, the checks and saving.
 - If Claude can't run (logged out, out of usage) and nothing was saved that day, the old program `agent/run.mjs` runs the same steps with OpenRouter text models.
 
@@ -34,12 +34,13 @@ The steps below describe the old program `run.mjs`. The Claude session follows t
 2. **Reads the tablet.** New `activity/` events since the last run:
    - watched videos become *Watched*;
    - thumbs, comments and quiz answers are remembered;
-   - messages from the tablet ("Message to the helper") are copied to the bottom of **Wishes and settings** in Notion.
-3. **Reads Notion:**
-   - **Wishes and settings**, **About him**, **What the helper noticed** and **Study plan**;
-   - the **Videos** table: *Approved*, *Status = No*, *Must watch*, *Day* and *Parent comment*;
-   - comments on video pages, on **About him** and on **Study plan**;
-   - **Quiz templates**, where *Use it* is on.
+   - your messages from parent mode are kept as their history in `memory.json` (`helper.wishes`).
+3. **Reads your words** from parent mode on the tablet:
+   - your messages, now and earlier;
+   - notes on videos and on the lists;
+   - *Approve*, *Remove*, ⭐ must-watch and *→ Today*;
+   - the Prompt-tab notes (your standing changes to the prompt);
+   - *Videos on the home screen* (Settings) = videos per day.
 4. **Decides what to look for.** Today, this week, this month, languages, numbers. It plans 4–8 YouTube searches.
 5. **Searches YouTube.** It keeps unknown videos of the right length from channels that aren't blocked, and the model picks the best ones as **Ideas**, each with *Why*.
 6. **Makes today's list:**
@@ -61,42 +62,25 @@ The steps below describe the old program `run.mjs`. The Claude session follows t
    - `memory.json`: everything the helper knows.
 
    It runs `tools/validate.mjs`, and only if that passes it commits and pushes.
-9. **Updates Notion:**
-   - the table rows and video pages, each with the video, why, summary, words, quiz and transcript;
-   - **What the helper noticed**;
-   - **Study plan** on the first run, weekly, or when you comment on it or change your wishes;
-   - a **Helper diary** entry.
+9. **Writes its notes** to `memory.json`, shown in parent mode → Prompt:
+   - **What I noticed**;
+   - **Study plan** on the first run, weekly, or when your messages or notes change it;
+   - a **diary** entry.
 
-## Notion
+## What you do in parent mode
 
-| Page | Who writes | What for |
-|---|---|---|
-| ⚙️ Wishes and settings | you | Goals, *Today / This week / This month*, languages, numbers. Plain words. |
-| 🧒 About him | you | Your document about him. The helper reads it and never changes it. |
-| 🔎 What the helper noticed | helper | What he likes, how he does with questions, open questions for you |
-| 📚 Study plan | helper | 4-week plan; comment on any line to change it |
-| 📓 Helper diary | helper | What each run did, and any problems |
-| 🎬 Videos | both | Views: **Added today**, **Today**, **Planned**, **Watched** |
-| 🧩 Quiz templates | both | Built-in ones (math, questions about the video); add *Custom* rows with a description |
-
-In **Videos** you set:
-- **Approved**: it goes first.
-- **Status = No**: never show it.
-- **Must watch** or **Must watch today**.
-- **Day**: plan it for a date.
-- **Parent comment**: anything, and the helper takes it into account.
-
-Comments on the page work too.
+| Where | What for |
+|---|---|
+| Message to the helper | Goals, *today / this week*, languages, numbers. Plain words. Kept as history. |
+| Today / Planned | **Approve** (it goes first), **Remove** (never shown), ⭐ must-watch, **→ Today**, notes for the AI |
+| History | 👍 / 👎 and notes on what he watched |
+| Prompt | Read the helper's diary, *What I noticed* and study plan; add standing changes to its prompt |
+| Settings | *Videos on the home screen* is the number of videos per day |
 
 ## Setup (once)
 
 1. **Keys** (OpenRouter, Gemini) are in `~/.config/kidtube/agent.env` (only your user can read it, and it's never committed).
-2. **Notion:**
-   1. On https://www.notion.so/profile/integrations, make an internal connection named "KidTube helper". Give it Read content, Update content, Insert content and Read comments.
-   2. Copy its secret into `~/.config/kidtube/agent.env` as `NOTION_TOKEN=ntn_...`.
-   3. In Notion, make an empty page (for example "KidTube"). Use ••• → Connections → add "KidTube helper".
-   4. Run `node agent/run.mjs setup-notion <link to that page>`.
-3. **Schedule:** run `node agent/run.mjs schedule`. It adds one line to this server's crontab, using `schedule` in `config.json` (server time, UTC). The log goes to `~/.local/share/kidtube/state/helper.log`.
+2. **Schedule:** run `node agent/run.mjs schedule`. It adds one line to this server's crontab, using `schedule` in `config.json` (server time, UTC). The log goes to `~/.local/share/kidtube/state/helper.log`.
 
 Try it without saving anything: `node agent/run.mjs --dry`. The details land in `~/.local/share/kidtube/state/dry-run.json`.
 
@@ -111,14 +95,14 @@ Try it without saving anything: `node agent/run.mjs --dry`. The details land in 
 | `runner` | `local` (this server, crontab) or `cloud` (GitHub Actions) |
 | `schedule` | cron time for `schedule`, in server time (UTC) |
 | `timezone` | the day boundary when `parent-config.json` has no IANA time zone |
-| `defaults` | videos per day, new ideas per day, questions per video… Your **Numbers** in Notion win. |
+| `defaults` | videos per day, new ideas per day, questions per video… *Videos on the home screen* (parent mode → Settings) and your messages win. |
 | `transcripts` | Gemini watches the public videos for transcripts: `maxVideosPerDay` (10), `maxMinutesPerDay` (120), `models` tried in order, `secondsPerRequest` |
 | `llm.preferred` | free models to try first; the rest are found and ranked automatically every day |
 | `llm.paidModel` | a paid model id from openrouter.ai/models, used only when every free model fails (`null` = free only) |
 
 ## Changing the helper by talking to Claude
 
-Open Claude Code in this repo and say what you want. Claude edits your **Wishes and settings** page, this code, or the prompts in `lib/prompts.mjs` and `PROMPT.md`.
+Open Claude Code in this repo and say what you want. Claude edits this code, or the prompts in `lib/prompts.mjs` and `PROMPT.md`.
 
 Some examples:
 - "From now on, one Russian fairy tale a day."

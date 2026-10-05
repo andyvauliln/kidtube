@@ -4,7 +4,7 @@
 
 ## Goal
 
-The same KidTube runs on his **Android** devices and his **iPhone/iPad**, with one list, one set of rules, one daily budget and one activity log. Nothing on the server side changes: the daily helper, the data repo, Notion, Gemini and the voices stay as they are.
+The same KidTube runs on his **Android** devices and his **iPhone/iPad**, with one list, one set of rules, one daily budget and one activity log. Nothing on the server side changes: the daily helper, the data repo, Gemini and the voices stay as they are.
 
 ## Decisions (defaults chosen; change any of them before we start)
 

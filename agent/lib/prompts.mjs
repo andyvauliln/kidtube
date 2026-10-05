@@ -18,7 +18,7 @@ export function understandPrompt({ today, wishes, about, noticed, plan, news, ba
     system: BASE,
     user: `Today is ${day(today)}.
 
-# Parent's wishes and settings (Notion)
+# Parent's wishes (messages and notes from parent mode on the tablet)
 ${wishes || '(empty)'}
 
 # About the child (written by the parent)

@@ -110,7 +110,7 @@ export function videoKey(videoId) {
   return h.toString(36);
 }
 
-// specs: [{ template, params, count? }] from the model, or custom templates from Notion
+// specs: [{ template, params, count? }] from the model
 // (those are written by the model as video-voice / video-choice). Returns { items: {id: item}, ids }.
 export function buildQuiz(videoId, specs, lang, { rng = Math.random, max = 3 } = {}) {
   const items = {};
@@ -131,7 +131,7 @@ export function buildQuiz(videoId, specs, lang, { rng = Math.random, max = 3 } =
   return { items, ids };
 }
 
-// For the prompt and the Notion "Quiz templates" table.
+// For the prompt (the question types the helper may use).
 export function templateCatalog() {
   return Object.entries(TEMPLATES).map(([id, t]) => ({ id, title: t.title, skill: t.skill, answer: t.answer, howItWorks: t.howItWorks, params: t.params, example: t.example }));
 }

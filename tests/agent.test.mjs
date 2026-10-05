@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { applyActivity, applyNotionRow, applyPromptNotes, composeToday, markToday, upcoming, freshCandidates } from '../agent/lib/plan.mjs';
+import { applyActivity, applyPromptNotes, composeToday, markToday, upcoming, freshCandidates } from '../agent/lib/plan.mjs';
 import { buildQuiz, TEMPLATES } from '../agent/lib/quiz.mjs';
 import { parseJson } from '../agent/lib/llm.mjs';
 import { isCorrect } from '../extension/lib/mark.js';
@@ -22,7 +22,7 @@ test('watch events mark videos watched; short peeks do not', () => {
   assert.deepEqual(news.wishes.map((w) => w.text), ['friendship today']);
 });
 
-test('plan changes from the tablet apply, and Notion’s older values don’t undo them', () => {
+test('plan changes from the tablet apply', () => {
   const videos = { [vid(1)]: V({ status: 'today', approved: true }), [vid(2)]: V({ status: 'idea' }), [vid(3)]: V() };
   const news = applyActivity(videos, [
     { type: 'plan', at: '2026-10-02T10:00:00Z', videoId: vid(1), action: 'drop' },
@@ -35,11 +35,6 @@ test('plan changes from the tablet apply, and Notion’s older values don’t un
   assert.equal(videos[vid(3)].required, 'yes');
   assert.equal(news.plan.length, 3);
   assert.equal(news.wishes[0].aboutList, 'planned');
-  applyNotionRow(videos[vid(1)], { status: 'today', approved: true, required: null }, news.edited[vid(1)]);
-  applyNotionRow(videos[vid(3)], { status: 'planned', approved: true, required: null }, news.edited[vid(3)]);
-  assert.equal(videos[vid(1)].status, 'no');
-  assert.equal(videos[vid(3)].required, 'yes');
-  assert.equal(videos[vid(3)].approved, true);   // a field the tablet didn't touch still comes from Notion
 });
 
 test('prompt notes from the tablet: added and removed, kept across runs', () => {
@@ -62,7 +57,7 @@ test('helper.json describes the real prompt, toolkit and config', async () => {
   const { promptSteps } = await import('../extension/parent/markdown.js');
   const { steps, after } = promptSteps(info.prompt);
   assert.equal(steps[0].title, 'Start');
-  assert.ok(steps.length >= 10);
+  assert.ok(steps.length >= 9);
   assert.ok(steps.find((x) => x.title === 'Save').body.includes('kt.mjs save'));
   assert.ok(after.startsWith('If a step fails'));
 });
@@ -95,16 +90,6 @@ test('yesterday’s unwatched list goes back to planned; upcoming skips today', 
   markToday(videos, [vid(3)]);
   assert.deepEqual([videos[vid(1)].status, videos[vid(2)].status, videos[vid(3)].status], ['planned', 'idea', 'today']);
   assert.deepEqual(upcoming(videos, [vid(3)], { today: '2026-10-02' }).map((u) => u.videoId).sort(), [vid(1), vid(2)]);
-});
-
-test('Notion: parent approval, “No” and must-watch win', () => {
-  const v = V({ status: 'idea' });
-  const commented = applyNotionRow(v, { status: 'idea', approved: true, required: 'today', day: '2026-10-03', comment: 'yes please' });
-  assert.equal(v.status, 'planned');
-  assert.equal(v.required, 'today');
-  assert.equal(commented, true);
-  assert.equal(applyNotionRow(v, { status: 'no', approved: true, comment: 'yes please' }), false);
-  assert.equal(v.status, 'no');
 });
 
 test('search results: only unknown videos of the right length', () => {

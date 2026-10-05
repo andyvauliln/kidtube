@@ -4,17 +4,16 @@
 
 ## Overview
 
-KidTube has five parts. They never talk to each other directly. Everything goes through files in the private GitHub repo `kidtube-data`; you also use Notion.
+KidTube has four parts. They never talk to each other directly. Everything goes through files in the private GitHub repo `kidtube-data`; you steer it from parent mode on the tablet.
 
 | Part | Where it runs | What it does | Reads | Writes |
 | --- | --- | --- | --- | --- |
 | Tablet extension (KidTube 0.6.1) | Quetta browser on the Android tablet, or Orion on iPad/iPhone/Mac | Shows only the planned videos, the talking friend and the questions. Enforces hours, minutes and locks. | `queue.json`, `parent-config.json`, `characters/` | `activity/<day>.json`, `transcripts/` (when it can), rule changes |
 | Data repo `kidtube-data` | GitHub (private) | The one place everything is stored. Every push is checked. | — | — |
-| Daily helper | This server, 03:30 UTC (crontab → `agent/daily.sh`) | Claude Code (Sonnet) runs the day by `agent/DAILY.md`: plans the list, finds videos, writes the friend's words and the questions, keeps Notion up to date | data repo, Notion, YouTube search | data repo, Notion |
-| Notion "Kids Content Manager" | Notion | Where you approve videos, write wishes and comments, and read the plan | — | — |
+| Daily helper | This server, 03:30 UTC (crontab → `agent/daily.sh`) | Claude Code (Sonnet) runs the day by `agent/DAILY.md`: plans the list, finds videos, writes the friend's words and the questions, its notes for you | data repo, YouTube search | data repo |
 | AI services | Claude, Google Gemini, OpenRouter | Claude thinks and writes; Gemini watches videos and records the friend's voice; OpenRouter is the voice alternative and the old program's text models | what the helper sends | answers only |
 
-The tablet syncs with GitHub every 15 minutes, and also when you press **Update**. The helper runs once a day. Claude (in a chat in this repo) can change the code, run the helper by hand, and edit Notion.
+The tablet syncs with GitHub every 15 minutes, and also when you press **Update**. The helper runs once a day. Claude (in a chat in this repo) can change the code, and run the helper by hand.
 
 ## Kid flow on the tablet
 
@@ -56,7 +55,7 @@ A parent can skip any friend screen with the 🔒 button and the PIN.
 
 ## Parent flows
 
-You can steer from three places. All of them end up in the data repo or Notion, and the helper reads them on its next run.
+You can steer from two places: the tablet and a chat with Claude. All of them end up in the data repo, and the helper reads them on its next run.
 
 **On the tablet** (⚙️ button, then the PIN):
 
@@ -64,7 +63,7 @@ You can steer from three places. All of them end up in the data repo or Notion, 
 | --- | --- |
 | **Update now** | Pulls the newest list, rules and app version right away (otherwise every 15 min) |
 | Change **Rules** (hours, minutes, must-watch order, talking friend, questions) | Works on the tablet at once and is saved to `parent-config.json`, so the helper sees it |
-| **Message to the helper** | Saved as a `wish` event. The next run copies it to the bottom of *Wishes and settings* in Notion and acts on it. |
+| **Message to the helper** | Saved as a `wish` event. The next run keeps it in its history of your messages (`memory.json`, `helper.wishes`) and acts on it. |
 | 👍 / 👎 / comment on a watched video | Saved as a `parentNote`. The helper uses it for *What the helper noticed* and future picks. |
 | Tap a watched video's picture | You watch it yourself with skipping allowed. It doesn't count for him. |
 | **Reset today** | Gives back today's minutes and undoes "no more videos today" |
@@ -76,7 +75,7 @@ You can steer from three places. All of them end up in the data repo or Notion, 
 | **Today** | Every video on his list today, watched ones marked ✓ | ⭐ must-watch on/off, **Remove** (back to Planned; the next planned video takes its place), a note for the AI about the video or the whole list |
 | **Planned** | The helper's next picks in its order, then its other ideas | ⭐ on/off, **Approve**, **→ Today**, **Remove** (never shown), notes for the AI (video or list) |
 | **History** | What he watched, by day: minutes, how it ended, his answers | 👍 / 👎, notes for the AI (video or the whole history) |
-| **Prompt** | How the helper works: when it runs, its latest diary, each step of its prompt, the settings and models it uses, the tablet rules it reads, what it reads and writes, the whole prompt | **Your changes to the prompt**: standing instructions it follows every run (they win over its steps, not over its safety rules); remove one any time |
+| **Prompt** | How the helper works: when it runs, its diary, *What I noticed*, its study plan, each step of its prompt, the settings and models it uses, the tablet rules it reads, what it reads and writes, the whole prompt | **Your changes to the prompt**: standing instructions it follows every run (they win over its steps, not over its safety rules); remove one any time |
 | **Settings** | The settings page (mode, rules, talking friend, connection) without a second PIN | everything the settings page does |
 
 Swipe left or right to move between the tabs; on a video's page, swipe right to go back.
@@ -85,30 +84,17 @@ The Prompt tab reads `helper.json`, which the helper writes on every run from th
 
 Tap a video for its page: why it's on the list, what he learns, the summary, the intro and outro (🔊 hear the friend), the questions with their answers, **Try the quiz yourself**, things to talk about, and the notes for the AI. **Watch it yourself** plays it without his rules.
 
-Every change works on the tablet at once and is saved as a `plan` event in `activity/<day>.json` (notes as `parentNote`, list notes as `wish` with `list`). The other devices pick it up on their next sync. The helper applies them on its next run, ahead of the Notion values for the same fields, and then writes them to Notion.
+Every change works on the tablet at once and is saved as a `plan` event in `activity/<day>.json` (notes as `parentNote`, list notes as `wish` with `list`). The other devices pick it up on their next sync. The helper applies them on its next run, ahead of its own choices.
 
 **Per YouTube account.** KidTube reads which YouTube account is signed in (its email, from YouTube's own account switcher). Every setting, rule, list, history, note and the GitHub connection belong to that account: sign in with another account and it starts fresh, with its own settings. Signing out keeps the last account. The parent PIN is the same for all accounts on the tablet.
 
-**In Notion** (Kids Content Manager):
-
-| What you do | What the helper does on its next run |
-| --- | --- |
-| Edit *Wishes and settings* (Always, This month, This week, Today, Numbers) | Plans searches and the list from it. *Numbers* sets videos per day, ideas per day, language minimums and the must-watch order. |
-| Fill in *About him* | Uses it for every choice and every text. Never changes it. |
-| Tick **Approved** on a video | Puts it on the list before the helper's own picks |
-| Set **Status = No** | Never shows it |
-| Set **Must watch** or **Must watch today**, or a **Day** | Shows a ⭐ on the tablet. *Must watch today* goes first on that day and carries over until watched. |
-| Write a **Parent comment**, or a comment on a page | Reads it as feedback for picks, *What the helper noticed* and the study plan |
-| Comment on a line of the *Study plan* | Rewrites the plan with your comment |
-| Add a **Custom** quiz template | Uses it for videos where it fits |
-
-**In a chat with Claude** in this repo: say what you want, for example "one Russian fairy tale a day", "harder questions" or "run it now". Claude edits the wishes, the code or the prompts, or runs the helper by hand.
+**In a chat with Claude** in this repo: say what you want, for example "one Russian fairy tale a day", "harder questions" or "run it now". Claude edits the code or the prompts, or runs the helper by hand.
 
 ## Who does what in the daily run
 
 | Job | Done by | Notes |
 | --- | --- | --- |
-| Run the day, decide, write every text, Notion | **Claude Code (Sonnet)** following `agent/DAILY.md` | uses some of your Claude plan's usage each day |
+| Run the day, decide, write every text | **Claude Code (Sonnet)** following `agent/DAILY.md` | uses some of your Claude plan's usage each day |
 | Data, YouTube search, checks, saving | `agent/kt.mjs` (commands Claude calls) | plain code, same result every time |
 | Watch videos: transcripts, questions about a video | **Gemini** (free tier) | limits in `agent/config.json` → `transcripts` |
 | Record the friend's voice | **Gemini** speech (free) by default; OpenRouter (paid) or off | `voices.speak.provider`: `device`, `gemini` or `openrouter` |
@@ -122,8 +108,7 @@ One run takes about 10–20 minutes. It uses about 15 text-model calls and up to
 ```mermaid
 flowchart TD
   A["03:30 UTC: lock, pull kidtube-data"] --> B["Read tablet activity since the last run"]
-  B --> C["Read Notion: wishes, approvals, comments"]
-  C -. "Notion not reachable" .-> C2["Plan from tablet messages + defaults"]
+  B --> C["Your messages, notes, approvals, Prompt-tab notes"]
   C --> D["Plan searches, search YouTube, pick ideas"]
   D -. "all models fail" .-> D2["Step skipped, noted in the diary"]
   D --> E["Today's list: approved and must-watch first"]
@@ -132,7 +117,7 @@ flowchart TD
   F --> G["Write words, questions, notes, plan"]
   G --> H{"Every file passes the checks?"}
   H -- no --> H2["Nothing saved, yesterday's list stays"]
-  H -- yes --> I["Push to GitHub, update Notion"]
+  H -- yes --> I["Push to GitHub"]
   I --> J["Tablet gets the new list (15 min or Update)"]
 ```
 
@@ -141,11 +126,9 @@ flowchart TD
     - A video watched to the end, or longer than the minimum, becomes *Watched*.
     - Thumbs, comments and quiz answers are remembered for the notes.
     - Messages to the helper are collected.
-3. **Read Notion** through Claude's Notion connection (the backup program needs its own Notion key for this).
-    - It reads the four pages (wishes, about him, noticed, plan), the Videos table, comments and quiz templates.
-    - Your *Approved*, *No*, *Must watch*, *Day* and *Parent comment* win over the helper's own choices.
-    - Tablet messages are added to *Wishes and settings*.
-    - If Notion can't be reached, it plans from the tablet messages and its defaults only.
+3. **Read your words** from parent mode: messages (with the earlier ones from `memory.json`), notes on videos, Prompt-tab notes, approvals, must-watch marks and *Remove*.
+    - They win over the helper's own choices.
+    - *Videos on the home screen* (Settings) is the number of videos per day.
 4. **Understand** (text model): what you want now, the numbers for today, and 4–8 YouTube searches. If every model fails, it uses the defaults and searches nothing.
 5. **Search YouTube** from the server. It keeps only new videos of the right length from channels that aren't blocked.
 6. **Choose** (text model): up to *New ideas per day* become **Ideas**, each with a reason, topics and a language.
@@ -167,12 +150,12 @@ flowchart TD
     - `transcripts/`
 11. **Notes** (text model):
     - *What the helper noticed*: every run
-    - the *Study plan*: on the first run, weekly, or when your wishes or plan comments change
+    - the *Study plan*: on the first run, weekly, or when your messages or notes change what he should learn
     - a diary entry
 12. **Check and save.** `validate.mjs` checks every file.
     - If a file fails, nothing is saved and the run stops, with the reason in the log.
     - If all pass, it commits and pushes. If the tablet pushed meanwhile, the helper puts its commit on top and pushes again.
-13. **Update Notion**: table rows, video pages, noticed, plan and diary.
+13. **Notes in memory.json**: noticed, plan and diary, shown in parent mode → Prompt.
 
 The tablet picks up the new list on its next sync (15 min) or when you press **Update**.
 
@@ -275,7 +258,7 @@ On the parent page, *Use the helper's recorded voice* turns playback off.
 
 ## Where everything lives, and failures
 
-The code is public (`andyvauliln/kidtube`). Everything about him is private (`andyvauliln/kidtube-data`, Notion). The keys live in one file on the server.
+The code is public (`andyvauliln/kidtube`). Everything about him is private (`andyvauliln/kidtube-data`). The keys live in one file on the server.
 
 | What | Where |
 | --- | --- |
@@ -283,9 +266,9 @@ The code is public (`andyvauliln/kidtube`). Everything about him is private (`an
 | Today's list, rules, questions | `kidtube-data`: `queue.json`, `parent-config.json` |
 | What he did | `kidtube-data/activity/<day>.json` |
 | Transcripts | `kidtube-data/transcripts/<video id>.json` |
-| The helper's memory (every video, its status, words and Notion link) | `kidtube-data/memory.json` |
+| The helper's memory (every video, its status and words; your messages; what it noticed, its plan and diary) | `kidtube-data/memory.json` |
 | Pikachu drawing | `kidtube-data/characters/pikachu.svg` |
-| Keys (OpenRouter, Gemini, later Notion) | `~/.config/kidtube/agent.env` on the server, readable only by your user |
+| Keys (OpenRouter, Gemini) | `~/.config/kidtube/agent.env` on the server, readable only by your user |
 | Helper log, model stats, Gemini usage | `~/.local/share/kidtube/state/` on the server |
 | Helper settings (runner, model, schedule, limits, voices, OpenRouter mode) | `agent/config.json` |
 | The daily session's instructions | `agent/DAILY.md` |
@@ -300,8 +283,7 @@ The code is public (`andyvauliln/kidtube`). Everything about him is private (`an
 | The new files fail the checks | Nothing is saved; the tablet keeps yesterday's list |
 | The server is off at 03:30 | No run that day; the next run catches up on all activity |
 | The tablet is offline | It keeps the last good list; its events wait and are sent later |
-| Claude can't run (logged out, out of usage) | The backup program runs; Notion is skipped unless it has its own Notion key |
-| The Notion login expired | Claude skips Notion, says so in the log; sign in again in Claude Code (`/mcp`) |
+| Claude can't run (logged out, out of usage) | The backup program runs |
 
 ## Orion (iPad, iPhone, Mac)
 
@@ -330,4 +312,4 @@ None of these exist today. Each one is your choice.
 
 **Pictures.** Google's image models (Gemini image models on the same key) can draw new pictures: picture questions ("tap the triangle"), flashcards, Pikachu poses. The tablet would need a picture-question type, which means a new version.
 
-**Charts.** Quiz results by skill and minutes per day can be shown as Notion chart views over the Videos table.
+**Charts.** Quiz results by skill and minutes per day could be shown as charts in parent mode.

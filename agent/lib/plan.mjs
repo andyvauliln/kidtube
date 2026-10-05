@@ -1,7 +1,7 @@
 // The helper's bookkeeping, without any network: what he watched, which videos go on today's list.
 // A video record (memory.json → helper.videos[videoId]):
 //   { title, channelId, channelTitle, durationSeconds, lang, topics, why, addedAt, status,
-//     approved, required, day, comment, watchedAt, liked, quiz, content, notionPageId }
+//     approved, required, day, comment, watchedAt, liked, quiz, content }
 // status: idea (suggested) | planned | today | watched | no (parent said no)
 // required: null | 'yes' (must watch, any day) | 'today' (must watch on `day`, or as soon as possible)
 
@@ -11,7 +11,7 @@ export { applyPromptNotes };
 
 export const OPEN = new Set(['idea', 'planned', 'today']);
 
-// Fields each tablet plan change sets; Notion's older values must not undo them in the same run.
+// Fields each tablet plan change sets (parent mode).
 export const PLAN_FIELDS = { today: ['status', 'approved'], notToday: ['status'], drop: ['status'], restore: ['status'], required: ['required'], approve: ['approved', 'status'] };
 
 // Folds tablet activity into the records. Returns what the model should hear about.
@@ -45,26 +45,6 @@ export function applyActivity(videos, events, { minSecondsBeforeLeave = 120 } = 
     }
   }
   return news;
-}
-
-// Parent edits in Notion win over the helper's own fields. keep: fields the parent changed on the tablet
-// since the last run (newer than Notion, which the helper hasn't updated yet).
-export function applyNotionRow(v, row, keep = []) {
-  const k = new Set(keep);
-  if (!k.has('status')) {
-    if (row.status === 'no') v.status = 'no';
-    else if (row.status === 'planned' && v.status === 'idea') v.status = 'planned';
-    else if (row.status === 'watched' && v.status !== 'watched') { v.status = 'watched'; v.watchedAt ??= new Date().toISOString(); }
-  }
-  if (!k.has('approved')) {
-    if (typeof row.approved === 'boolean') v.approved = row.approved;
-    if (row.approved && v.status === 'idea' && !k.has('status')) v.status = 'planned';
-  }
-  if (!k.has('required')) v.required = row.required ?? null;
-  v.day = row.day ?? v.day ?? null;
-  const commentChanged = (row.comment ?? '') !== (v.parentComment ?? '');
-  v.parentComment = row.comment ?? '';
-  return commentChanged && !!v.parentComment;
 }
 
 // Ranks one video for today: lower is earlier.

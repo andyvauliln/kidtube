@@ -20,7 +20,7 @@ export function helperInfo(root, config) {
       schedule: config.schedule ?? '30 3 * * *', timezone: config.timezone ?? 'UTC',
       runner: config.orchestrator?.runner ?? 'claude', model: config.orchestrator?.model ?? 'sonnet', maxTurns: config.orchestrator?.maxTurns ?? null,
       fallbackToNode: !!config.orchestrator?.fallbackToNode,
-      tools: ['node agent/kt.mjs (its toolkit, below)', 'Read (files)', 'Notion (Kids Content Manager)'],
+      tools: ['node agent/kt.mjs (its toolkit, below)', 'Read (files)'],
     },
     commands,
     defaults: config.defaults ?? {},
@@ -30,9 +30,9 @@ export function helperInfo(root, config) {
       models: speak[speak.provider]?.models ?? [] },
     backupText: { mode: config.openrouter?.mode ?? 'free-first', preferred: config.llm?.preferred ?? [], paidModel: config.llm?.paidModel ?? null, maxCallsPerRun: config.llm?.maxCallsPerRun ?? null },
     reads: ['activity/<day>.json from the tablets: what he watched, his answers, your thumbs, notes, messages and plan changes',
-      'Notion: Wishes and settings, About him, What the helper noticed, Study plan, the Videos table and comments, Quiz templates',
+      'memory.json: your earlier messages, what it noticed, its study plan and diary',
       'YouTube search (from the server)', 'transcripts/ (from Gemini or the tablet)'],
-    writes: ['queue.json: today’s list and the planned videos', 'parent-config.json: the questions and the must-watch order', 'memory.json: everything it knows about each video, the diary, your prompt changes',
-      'transcripts/ and audio/ (the friend’s recorded voice)', 'Notion: the Videos table and pages, What the helper noticed, Study plan, Helper diary', 'helper.json: this description'],
+    writes: ['queue.json: today’s list and the planned videos', 'parent-config.json: the questions and the must-watch order', 'memory.json: everything it knows about each video, your messages, what it noticed, the study plan, the diary, your prompt changes',
+      'transcripts/ and audio/ (the friend’s recorded voice)', 'helper.json: this description'],
   };
 }

@@ -1,10 +1,9 @@
 #!/usr/bin/env node
 // The KidTube helper: runs once a day (see agent/README.md).
-//   node agent/run.mjs                    one full run: read, plan, write, commit, update Notion
+//   node agent/run.mjs                    one full run: read, plan, write, commit
 //   node agent/run.mjs --dry              the same, but writes nothing (prints the plan)
 //   node agent/run.mjs --no-search        no new ideas today: transcripts, words and questions for the list
 //   node agent/run.mjs --rewrite          also write today's words and questions again (after a prompt change)
-//   node agent/run.mjs setup-notion <url> creates the Notion pages under a page shared with the connection
 //   node agent/run.mjs schedule           puts the daily run into this server's crontab (config.schedule)
 // KIDTUBE_DATA_DIR / KIDTUBE_STATE_DIR override the folders (the cloud runner uses them).
 import { readFileSync, existsSync, writeFileSync, unlinkSync, mkdirSync } from 'node:fs';
@@ -14,12 +13,10 @@ import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createHash } from 'node:crypto';
 import { createLLM } from './lib/llm.mjs';
-import { createNotion } from './lib/notion.mjs';
 import { syncClone, commitAndPush, readJson, writeJson, activitySince, transcript } from './lib/data.mjs';
-import { applyActivity, applyNotionRow, applyPromptNotes, composeToday, markToday, upcoming, freshCandidates, backlogText, ideasAllowed } from './lib/plan.mjs';
+import { applyActivity, applyPromptNotes, composeToday, markToday, upcoming, freshCandidates, backlogText, ideasAllowed } from './lib/plan.mjs';
 import { buildQuiz, templateCatalog } from './lib/quiz.mjs';
 import { understandPrompt, choosePrompt, contentPrompt, notesPrompt } from './lib/prompts.mjs';
-import { setupWorkspace, readVideoRows, readTemplates, videoProps, videoMarkdown } from './lib/workspace.mjs';
 import { search } from '../tools/video-info.mjs';
 import { helperInfo } from './lib/info.mjs';
 import { createGemini } from './lib/gemini.mjs';
@@ -63,8 +60,7 @@ writeFileSync(lock, String(process.pid));
 process.on('exit', () => { try { unlinkSync(lock); } catch {} });
 
 try {
-  if (cmd === 'setup-notion') await setupNotion(args[args.indexOf('setup-notion') + 1]);
-  else if (cmd === 'schedule') schedule();
+  if (cmd === 'schedule') schedule();
   else await run();
 } catch (e) {
   log('FAILED:', e.stack ?? e.message);
@@ -83,21 +79,6 @@ function schedule() {
   log(`installed: ${line}`);
 }
 
-async function setupNotion(url) {
-  const pageId = String(url ?? '').match(/([0-9a-f]{32}|[0-9a-f-]{36})(?:\?|$)/i)?.[1];
-  if (!pageId) throw new Error('usage: node agent/run.mjs setup-notion <link to a Notion page shared with the helper connection>');
-  if (!env.NOTION_TOKEN) throw new Error(`NOTION_TOKEN is missing in ${config.envFile}`);
-  syncClone(dataDir, config.dataRepo);
-  const memPath = join(dataDir, 'memory.json');
-  const memory = readJson(memPath);
-  memory.helper ??= { videos: {} };
-  const notion = createNotion({ token: env.NOTION_TOKEN, log });
-  memory.helper.notion = await setupWorkspace(notion, pageId, memory.helper.notion?.parentPage === pageId ? memory.helper.notion : {}, log);
-  writeJson(memPath, memory);
-  if (!DRY) commitAndPush(dataDir, 'helper: Notion pages');
-  log('Notion is ready:', JSON.stringify(memory.helper.notion));
-}
-
 async function run() {
   if (!env.OPENROUTER_API_KEY) throw new Error(`OPENROUTER_API_KEY is missing in ${config.envFile}`);
   syncClone(dataDir, config.dataRepo);
@@ -113,8 +94,6 @@ async function run() {
   const journal = [];
   const transcriptsInDry = new Map();
   const problems = [];
-  const touched = new Set();      // Notion rows to write
-  const rewritten = new Set();    // Notion page bodies to write
   log(`run for ${today}${DRY ? ' (dry)' : ''}`);
 
   // Videos already on the list before the helper existed.
@@ -122,72 +101,26 @@ async function run() {
     if (videos[v.videoId]) continue;
     videos[v.videoId] = { title: v.title, channelId: v.channelId, channelTitle: v.channelTitle, durationSeconds: v.durationSeconds,
       lang: v.lang ?? 'en', topics: [], why: v.note ?? 'On the starter list.', addedAt: v.addedAt, status: 'today', approved: true, required: v.required ? 'yes' : null, day: null };
-    touched.add(v.videoId);
   }
 
   // 1. What happened on the tablet.
   const since = helper.processedThrough ?? memory.processedThrough ?? null;
   const { events, devices } = activitySince(dataDir, since);
   const news = applyActivity(videos, events, { minSecondsBeforeLeave: pc.minSecondsBeforeLeave ?? 120 });
-  for (const w of news.watched) if (videos[w.videoId]) touched.add(w.videoId);
-  for (const q of news.quiz) if (videos[q.videoId]) touched.add(q.videoId);
-  for (const n of news.notes) if (videos[n.videoId]) touched.add(n.videoId);
-  for (const p of news.plan) if (videos[p.videoId]) touched.add(p.videoId);
   helper.promptNotes = applyPromptNotes(helper.promptNotes ?? [], news.prompt);
   const quizTypes = devices.at(-1)?.quizTypes ?? ['text', 'choice'];
   log(`activity: ${events.length} events, ${news.watched.length} watches, ${news.wishes.length} messages`);
 
-  // 2. Notion: the parent's pages and the table.
-  const notion = env.NOTION_TOKEN && helper.notion?.videosDataSource ? createNotion({ token: env.NOTION_TOKEN, log }) : null;
-  const ws = helper.notion;
-  let wishes = '', about = '', noticed = '', plan = '';
-  const comments = [];
-  let planComments = [];
-  let templates = templateCatalog();
-  if (notion) {
-    [wishes, about, noticed, plan] = await Promise.all([ws.wishesPage, ws.aboutPage, ws.noticedPage, ws.planPage].map((id) => notion.markdown(id).catch((e) => { problems.push(e.message); return ''; })));
-    const rows = await readVideoRows(notion, ws);
-    for (const [id, row] of Object.entries(rows)) {
-      const v = videos[id];
-      if (!v) continue;
-      v.notionPageId = row.pageId;
-      if (applyNotionRow(v, row, news.edited[id])) comments.push({ videoId: id, title: v.title, comment: v.parentComment, approved: v.approved, status: v.status });
-      if (row.isNew) touched.add(id); // clears the "Added today" mark
-    }
-    // Comments written on the pages themselves (needs the connection's "Read comments" permission).
-    const seen = new Set(helper.seenComments ?? []);
-    const recent = Object.entries(videos).filter(([, v]) => v.notionPageId && (v.status !== 'watched' || (v.watchedAt ?? '') > iso(new Date(Date.now() - 3 * 864e5))));
-    for (const [id, v] of recent) {
-      const list = await notion.comments(v.notionPageId).catch(() => null);
-      for (const c of list ?? []) if (!seen.has(c.id)) { seen.add(c.id); comments.push({ videoId: id, title: v.title, comment: c.text }); }
-    }
-    for (const c of (await notion.comments(ws.planPage).catch(() => null)) ?? []) {
-      if (!seen.has(c.id)) { seen.add(c.id); planComments.push(c.text); }
-    }
-    for (const c of (await notion.comments(ws.aboutPage).catch(() => null)) ?? []) {
-      if (!seen.has(c.id)) { seen.add(c.id); comments.push({ page: 'About him', comment: c.text }); }
-    }
-    helper.seenComments = [...seen].slice(-2000);
-    // Videos the helper knew before Notion was connected (or whose row was deleted) get a row.
-    for (const [id, v] of Object.entries(videos)) {
-      if (rows[id]) continue;
-      if (v.notionPageId) delete v.notionPageId;
-      if (v.status !== 'watched' || (v.watchedAt ?? '') > iso(new Date(Date.now() - 14 * 864e5))) touched.add(id);
-    }
-    const custom = (await readTemplates(notion, ws).catch(() => [])).filter((t) => t.use);
-    const builtIn = new Set(custom.filter((t) => t.kind === 'Built-in').map((t) => t.id));
-    templates = [...templateCatalog().filter((t) => builtIn.size === 0 || builtIn.has(t.id)),
-      ...custom.filter((t) => t.kind === 'Custom').map((t) => ({ id: t.answer === 'choice' ? 'video-choice' : 'video-voice', title: t.name, howItWorks: `${t.howItWorks} (custom template “${t.name}” from the parent)`, params: {}, example: t.example }))];
-    // Messages sent from the tablet go to the wishes page, so everything the parent wants is in one place.
-    if (news.wishes.length && !DRY) {
-      const md = news.wishes.map((w) => `- ${w.at.slice(0, 10)}: ${w.aboutList ? `(about the ${w.aboutList} list) ` : ''}${w.text.replace(/\n+/g, ' ')}`).join('\n');
-      await notion.addMarkdown(ws.wishesPage, md).catch((e) => problems.push(`wishes page: ${e.message}`));
-      wishes += `\n${md}`;
-    }
-  } else {
-    log('Notion is not set up: using the defaults and the tablet messages only');
-    wishes = news.wishes.map((w) => `- ${w.text}`).join('\n');
-  }
+  // 2. The parent's words, all from parent mode on the tablet: messages, notes on videos, the Prompt tab.
+  // What the helper noticed and the study plan are its own notes from earlier runs (memory.json).
+  helper.wishes = [...(helper.wishes ?? []), ...news.wishes].slice(-60);
+  let wishes = helper.wishes.slice(-30).map((w) => `- ${w.at.slice(0, 10)}: ${w.aboutList ? `(about the ${w.aboutList} list) ` : ''}${w.text.replace(/\n+/g, ' ')}`).join('\n');
+  const about = '';
+  const noticed = helper.noticed ?? '';
+  const plan = helper.plan ?? '';
+  const comments = news.notes.filter((n) => n.comment).map((n) => ({ videoId: n.videoId, title: n.title, comment: n.comment }));
+  const planComments = [];
+  const templates = templateCatalog();
   if (comments.length) log(`parent comments: ${comments.length}`);
   // The parent's changes to the helper's instructions (parent screens → Prompt) count as wishes here.
   if (helper.promptNotes.length) wishes += `\n## The parent's standing instructions for the helper\n${helper.promptNotes.map((n) => `- ${n.text}`).join('\n')}`;
@@ -195,12 +128,12 @@ async function run() {
   const llm = createLLM({ apiKey: env.OPENROUTER_API_KEY, stateDir, config: { ...config.llm, openrouter: config.openrouter }, log });
 
   // 3. What to look for.
-  let want = { summary: '', searches: [], videosPerDay: D.videosPerDay, newIdeas: D.newIdeas, languageMins: D.languageMins, requiredFirst: D.requiredFirst };
+  let want = { summary: '', searches: [], videosPerDay: pc.queueSize ?? D.videosPerDay, newIdeas: D.newIdeas, languageMins: D.languageMins, requiredFirst: D.requiredFirst };
   try {
     const p = understandPrompt({ today, wishes, about, noticed, plan, news, backlog: backlogText(videos), comments });
     want = { ...want, ...(await llm.json('understand', p)) };
   } catch (e) { problems.push(e.message); }
-  const perDay = clamp(want.videosPerDay, 1, 20, D.videosPerDay);
+  const perDay = clamp(want.videosPerDay, 1, 20, pc.queueSize ?? D.videosPerDay);
   // No searching once the plan is full; otherwise no more ideas than Gemini can transcribe today.
   const room = ideasAllowed(videos, { target: D.planTarget ?? 50, perDay,
     geminiLeft: createGemini({ apiKey: env.GEMINI_API_KEY ?? '', stateDir, config: config.transcripts, today, log: () => {} }).left().videos });
@@ -233,7 +166,6 @@ async function run() {
             lang: /^[a-z]{2}$/.test(p.lang ?? '') ? p.lang : c.lang, topics: Array.isArray(p.topics) ? p.topics.slice(0, 5).map(String) : [],
             why: String(p.why ?? '').slice(0, 500), addedAt: iso(), status: 'idea', approved: false, required: must, day: must === 'today' ? today : null };
           newIds.push(c.videoId);
-          touched.add(c.videoId);
         }
         for (const b of out.badChannels ?? []) {
           const ch = candidates.find((c) => c.channelTitle === b.channelTitle)?.channelId;
@@ -246,9 +178,7 @@ async function run() {
 
   // 5. Today's list: approved first, must-watch first, language minimums.
   const todayIds = composeToday(videos, { today, count: perDay, languageMins, blockedChannelIds: pc.blockedChannelIds });
-  for (const [id, v] of Object.entries(videos)) if (v.status === 'today' && !todayIds.includes(id)) touched.add(id);
   markToday(videos, todayIds);
-  todayIds.forEach((id) => touched.add(id));
   journal.push(`today: ${todayIds.length} videos`);
 
   // 6a. Transcripts: Gemini watches the videos (today's first, then new ideas, then planned ones),
@@ -292,8 +222,6 @@ async function run() {
       const { items, ids } = quizOn ? buildQuiz(id, out.quiz, v.lang === 'ru' ? 'ru' : null, { max: D.maxQuestions }) : { items: {}, ids: [] };
       v.content = { source, at: iso(), summary: String(out.summary ?? ''), learned: list(out.learned), intro: out.intro.trim().slice(0, 600), outro: out.outro.trim().slice(0, 600), talkAbout: list(out.talkAbout), quizIds: ids, items,
         ...(source === 'transcript' && typeof out.tooHardFor4 === 'string' && out.tooHardFor4.trim() ? { tooHard: out.tooHardFor4.trim().slice(0, 300) } : {}) };
-      rewritten.add(id);
-      touched.add(id);
       written++;
     } catch (e) { problems.push(e.message); }
   }
@@ -336,7 +264,9 @@ async function run() {
   memory.processedThrough = helper.processedThrough ?? memory.processedThrough;
   helper.lastRunAt = iso();
   helper.wishesHash = wishesHash;
-  if (notes?.plan && rewritePlan) helper.planAt = iso();
+  // What it noticed and the study plan: parent mode → Prompt shows them.
+  if (notes?.noticed) helper.noticed = String(notes.noticed).slice(0, 6000);
+  if (notes?.plan && rewritePlan) { helper.plan = String(notes.plan).slice(0, 8000); helper.planAt = iso(); }
   helper.models = llm.usedModels().slice(-10);
   memory.updatedAt = iso();
   memory.shown = [...new Set([...(memory.shown ?? []), ...todayIds])].slice(-500);
@@ -369,29 +299,6 @@ async function run() {
   writeFileSync(join(stateDir, 'last-save'), today);
   log('saved to GitHub');
 
-  // 10. Notion: rows, video pages, noticed, plan, diary.
-  if (notion) {
-    const order = new Map(todayIds.map((id, i) => [id, i + 1]));
-    for (const id of touched) {
-      const v = videos[id];
-      try {
-        const props = videoProps(id, v, { order: order.get(id) ?? null, isNew: newIds.includes(id) });
-        const md = videoMarkdown(id, v, { items: v.content?.items ?? {}, transcript: rewritten.has(id) || !v.notionPageId ? transcript(dataDir, id) : null });
-        if (!v.notionPageId) v.notionPageId = (await notion.createPage({ dataSource: ws.videosDataSource, properties: props, markdown: md })).id;
-        else {
-          await notion.updatePage(v.notionPageId, props);
-          if (rewritten.has(id)) await notion.setMarkdown(v.notionPageId, md);
-        }
-      } catch (e) { problems.push(`Notion row ${id}: ${e.message}`); }
-    }
-    if (notes?.noticed) await notion.setMarkdown(ws.noticedPage, `*Updated ${today} by the helper.*\n${notes.noticed}`).catch((e) => problems.push(e.message));
-    if (notes?.plan && rewritePlan) await notion.setMarkdown(ws.planPage, `*Written ${today} by the helper. Comment on any line and it will be taken into account on the next run.*\n${notes.plan}`).catch((e) => problems.push(e.message));
-    const diary = [`## ${today}`, notes?.diary ?? '', `- ${journal.join('\n- ')}`, ...(problems.length ? ['### Problems', ...problems.map((p) => `- ${p.replace(/\n/g, ' ').slice(0, 300)}`)] : [])].join('\n');
-    await notion.addMarkdown(ws.diaryPage, diary, 'start').catch((e) => problems.push(e.message));
-    // Page ids of new rows are worth keeping.
-    writeJson(paths.memory, memory);
-    commitAndPush(dataDir, 'helper: Notion page links');
-  }
   if (problems.length) log('problems:\n  ' + problems.join('\n  '));
   log(`done: ${journal.join(', ')}; ${llm.calls} model calls`);
 }

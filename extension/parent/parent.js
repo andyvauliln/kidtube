@@ -353,7 +353,7 @@ async function renderPrompt() {
   const howBody = [];
   if (run) {
     howBody.push(el('p', '', `Runs ${scheduleText(run.schedule, run.timezone)}. ${run.runner === 'claude'
-      ? `Claude Code (${run.model}) reads the prompt below and does the work with its toolkit and your Notion${run.maxTurns ? `, in up to ${run.maxTurns} steps` : ''}.`
+      ? `Claude Code (${run.model}) reads the prompt below and does the work with its toolkit${run.maxTurns ? `, in up to ${run.maxTurns} steps` : ''}.`
       : 'The fixed program (agent/run.mjs) does the work with OpenRouter text models.'}${run.fallbackToNode ? ' If Claude can’t run and nothing was saved that day, the backup program does the same steps with OpenRouter models.' : ''}`));
   } else {
     howBody.push(el('p', 'muted', h.hasToken ? 'The helper hasn’t published its description yet. It does on its next run.' : 'Needs the GitHub token for this account (Settings → Connection).'));
@@ -364,6 +364,15 @@ async function renderPrompt() {
     if (h.journal.length > 1) howBody.push(fold('Earlier days', ...h.journal.slice(1).map((j) => el('p', '', `${new Date(j.at).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}: ${j.summary}`))));
   }
   box('How the helper works', ...howBody);
+
+  // What it learned about him, its study plan, and the messages it has from you (all in memory.json).
+  if (h.noticed) box('What it noticed', renderMarkdown(h.noticed));
+  if (h.studyPlan) box('Study plan', ...(h.studyPlanAt ? [el('p', 'muted', `Written ${new Date(h.studyPlanAt).toLocaleDateString()}. Send a message to change it.`)] : []), renderMarkdown(h.studyPlan));
+  if (h.messages?.length) {
+    const ul = el('ul', 'notes');
+    ul.append(...h.messages.map((m) => el('li', '', `${m.at.slice(0, 10)}: ${m.aboutList ? `(${m.aboutList}) ` : ''}${m.text}`)));
+    box('Your messages it keeps in mind', ul);
+  }
 
   // 2. Your changes to the prompt.
   const list = el('ul', 'notes');
@@ -416,8 +425,8 @@ async function renderPrompt() {
   const setBody = [];
   if (info) {
     const d = info.defaults ?? {};
-    setBody.push(el('h3', '', 'Its numbers'), el('p', 'muted', 'The “Numbers” section of Wishes and settings in Notion wins over these.'), table([
-      ['Videos per day', d.videosPerDay], ['New ideas per day', d.newIdeas],
+    setBody.push(el('h3', '', 'Its numbers'), el('p', 'muted', 'Videos per day follows “Videos on the home screen” in Settings. Your messages and prompt notes win over the others.'), table([
+      ['Videos per day', r?.queueSize ?? d.videosPerDay], ['New ideas per day', d.newIdeas],
       ['Language minimums', Object.entries(d.languageMins ?? {}).map(([l, n]) => `${l}: ${n}`).join(', ') || 'none'],
       ['Must-watch order', ORDER[d.requiredFirst] ?? d.requiredFirst], ['Questions per video', d.maxQuestions],
       ['Results per search', d.searchResults], ['Videos it writes words for per run', d.contentPerRun], ['New study plan every', d.planEveryDays ? `${d.planEveryDays} days` : ''],

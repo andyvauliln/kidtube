@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# The daily run (crontab). Claude Code runs agent/DAILY.md with the toolkit agent/kt.mjs and the Notion connection.
+# The daily run (crontab). Claude Code runs agent/DAILY.md with the toolkit agent/kt.mjs.
 # If Claude can't run (logged out, out of usage, crashed) and nothing was saved today, the old fixed program
 # agent/run.mjs runs instead (config orchestrator.fallbackToNode).
 set -u
@@ -20,7 +20,7 @@ if [ "$RUNNER" = "claude" ] && command -v claude >/dev/null; then
   claude -p "$(cat agent/DAILY.md)" \
     --model "${MODEL:-sonnet}" \
     --permission-mode dontAsk \
-    --allowedTools "Bash(node agent/kt.mjs:*)" "Read" "mcp__plugin_Notion_notion" \
+    --allowedTools "Bash(node agent/kt.mjs:*)" "Read" \
     --output-format text
   echo "=== claude exit $?"
 fi

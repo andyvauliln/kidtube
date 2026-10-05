@@ -6,7 +6,7 @@ The question: what would it take for KidTube to run in Safari, mainly on an **iP
 
 ## Short answer
 
-- **Only the tablet side changes.** The daily helper, the data repo, Notion, Gemini and the voices run on the server and on GitHub, so they don't care which browser the tablet uses. `queue.json`, `parent-config.json`, `activity/`, `audio/` and `characters/` stay as they are.
+- **Only the tablet side changes.** The daily helper, the data repo, Gemini and the voices run on the server and on GitHub, so they don't care which browser the tablet uses. `queue.json`, `parent-config.json`, `activity/`, `audio/` and `characters/` stay as they are.
 - **There are two realistic ways to do it:**
   - **A. Port the extension to Safari.** The code is plain MV3 JavaScript, and most of it runs in Safari as it is. You need an Apple Developer account (99 USD a year), and the app has to be installed through TestFlight or the App Store. You don't need a Mac: App Store Connect now packages a ZIP of the extension. Weak spots on iPad: the background worker gets stopped, the site allowlist is unreliable, there is no self-update, and the child can switch the extension off in Settings unless the iPad is locked down.
   - **B. Make KidTube a web page** (on GitHub Pages, added to the iPad's Home Screen) that plays videos with YouTube's embedded player instead of covering youtube.com. There's no Apple account, no App Store and no extension, and it works in every browser, Quetta included. You lose control of youtube.com itself, so locking the child out of other sites is left to iPad settings (Guided Access or Screen Time).
@@ -130,9 +130,9 @@ Like the Quetta test before version 0.1 (`spike/`), test the unknowns on the rea
 
 ## What stays the same on every option
 
-- The daily helper (`agent/`), its schedule, Claude, Gemini, OpenRouter and Notion.
+- The daily helper (`agent/`), its schedule, Claude, Gemini, and OpenRouter.
 - The data repo and every file format (`schemas/`), including `activity/<day>.json`. The tablet's `device` header would report the Safari or web build in `extensionVersion`, so the helper still knows which question types the tablet can show.
-- The parent flows: Notion, wishes, approvals, and a chat with Claude.
+- The parent flows: messages, approvals and notes in parent mode, and a chat with Claude.
 
 ## Sources
 

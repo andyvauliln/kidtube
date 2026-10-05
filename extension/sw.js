@@ -747,6 +747,8 @@ async function helperData(s) {
     ok: true, info: helperInfo ?? null, hasToken: !!s.settings.token, waiting: s.outbox.length,
     lastRunAt: memory?.helper?.lastRunAt ?? null, processedThrough: since,
     journal: (memory?.journal ?? []).slice(-7).reverse(),
+    noticed: memory?.helper?.noticed ?? '', studyPlan: memory?.helper?.plan ?? '', studyPlanAt: memory?.helper?.planAt ?? null,
+    messages: (memory?.helper?.wishes ?? []).slice(-15).reverse(),
     notes: applyPromptNotes(helperNotes, ops).map((n) => ({ ...n, pending: !known.has(n.id) })),
     removing: ops.filter((o) => o.action === 'remove').map((o) => o.noteId),
     rules: {
