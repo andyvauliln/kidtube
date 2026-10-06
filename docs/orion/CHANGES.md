@@ -2,6 +2,18 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.8.9 (2026-10-06)
+
+- **Notes for the AI wait on the iPad until you tap ↻ Update.** The button shows how many are waiting, for example ↻ Update (3). Then they all go together.
+- **The AI acts on your notes within a minute or two.** It decides for each note:
+  - a change to the app: it makes the change and releases a new version (download it as usual);
+  - a change to how the helper plans: it changes the helper;
+  - more or different videos: it has the helper update the lists.
+  Tap the status next to ↻ Update to read what it did.
+- **🎤 Dictation:** tap ⏹ to stop (it couldn't be tapped before). The words are added as a note at once.
+- **Settings** starts with a "📝 Note for the AI about the app and settings" box, like the other tabs.
+- **Parent mode stays on until you tap Kid mode.** There is no timer any more.
+
 ## 0.8.8 (2026-10-06)
 
 - **Settings is now its own screen** in the parent screens. Before, it loaded the old settings page inside the tab, which Orion can show blank.
