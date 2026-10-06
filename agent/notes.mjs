@@ -3,6 +3,8 @@
 // and starts the notes agent (agent/NOTES.md) only when there are some.
 //   node agent/notes.mjs new  [--data DIR] [--state DIR]   → JSON array of new notes (first run: marks all old ones handled, prints [])
 //   node agent/notes.mjs mark FILE [--state DIR]           → marks the notes in FILE (the array printed by `new`) handled
+//   node agent/notes.mjs done FILE [--data DIR]            → adds them to notes-done.json in the data folder: the tablet
+//                                                            deletes those notes from its lists (it keeps no history)
 // A note: a message or a note about a list / Settings (wish), a note about a video (parentNote with a comment),
 // a standing change to the helper's prompt (prompt add), a note on a context document (context).
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'node:fs';
@@ -62,8 +64,14 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     h.ids = [...new Set([...h.ids, ...done])];
     save(h);
     console.log(`marked ${done.length}`);
+  } else if (cmd === 'done' && file) {
+    const p = join(DATA, 'notes-done.json');
+    const done = readJson(file, []).map((n) => n.eventId).filter(Boolean);
+    const ids = [...new Set([...(readJson(p, {}).ids ?? []), ...done])].slice(-300);
+    writeFileSync(p, JSON.stringify({ schemaVersion: 1, updatedAt: new Date().toISOString(), ids }, null, 2) + '\n');
+    console.log(`done ${done.length}`);
   } else {
-    console.error('usage: notes.mjs new | mark FILE');
+    console.error('usage: notes.mjs new | mark FILE | done FILE');
     process.exit(2);
   }
 }

@@ -342,3 +342,34 @@ test('parent mode → Profiles: add an email, start fresh, wait for Google, swit
   assert.equal(fake.store['acct:second@example.com'], undefined);
   assert.ok(!(await fromPage({ type: 'profiles' })).profiles.some((p) => p.key === 'second@example.com'));
 });
+
+test('the tablet keeps no history: notes the AI worked on (notes-done.json) and old ones without an id are deleted', async () => {
+  fake.store.notes = { ...(fake.store.notes ?? {}), lists: { today: [{ at: '2026-10-01T10:00:00Z', text: 'Old, before ids' }] }, videos: {} };
+  await fromPage({ type: 'wish', list: 'settings', text: 'Bigger buttons' });
+  await fromPage({ type: 'wish', list: 'settings', text: 'Darker colors' });
+  await fromPage({ type: 'note', videoId: ids[0], comment: 'Too fast' });
+  const [bigger, darker] = fake.store.outbox.filter((e) => e.list === 'settings').slice(-2);
+  const video = fake.store.outbox.filter((e) => e.comment === 'Too fast').at(-1);
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    const u = String(url);
+    if (u.includes('/contents/') && u.includes('notes-done.json') && !init.method) {
+      return { ok: true, status: 200, headers: { get: () => 'etag-1' }, json: async () => ({ schemaVersion: 1, ids: [bigger.eventId, video.eventId] }) };
+    }
+    if (u.includes('api.github.com')) return { ok: false, status: 404, json: async () => ({}), headers: { get: () => null } };
+    return realFetch(url, init);
+  };
+  try {
+    fake.store.settings = { ...fake.store.settings, token: 'ghp_test', repo: 'me/kidtube-data' };
+    await fromPage({ type: 'sync' });
+  } finally {
+    globalThis.fetch = realFetch;
+    fake.store.settings = { ...fake.store.settings, token: '' };
+  }
+  const d = await fromPage({ type: 'parentData' });
+  assert.deepEqual(d.lists.settings.map((n) => n.text), ['Darker colors']);
+  assert.equal(d.lists.settings[0].id, darker.eventId);
+  assert.equal(d.lists.today, undefined);                              // the old note without an id is gone
+  assert.equal(fake.store.notes.videos?.[ids[0]], undefined);
+  assert.ok(fake.store.outbox.some((e) => e.eventId === darker.eventId)); // not sent yet: still waits for ↻ Update
+});

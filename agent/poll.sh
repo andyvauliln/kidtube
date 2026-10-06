@@ -62,6 +62,7 @@ status() { # state, message
       startedAt:st==='running'?(old.requestId==='$statusId'&&old.startedAt||now):(old.requestId==='$statusId'?old.startedAt:null),finishedAt:st==='running'?null:now};
     fs.writeFileSync(p,JSON.stringify(s,null,2)+'\n');" "$1" "$2"
   git -C "$DATA" add run-status.json
+  [ -f "$DATA/notes-done.json" ] && git -C "$DATA" add notes-done.json
   git -C "$DATA" -c user.name="KidTube helper" commit --quiet -m "helper: run $1" || return 0
   for i in 1 2 3; do git -C "$DATA" push --quiet origin HEAD && break; git -C "$DATA" pull --quiet --rebase origin HEAD; done
 }
@@ -144,6 +145,9 @@ $notes
   helper=$(node -e "try{process.stdout.write(require('$RESULT').runHelper===true?'yes':'')}catch{}")
   # The main checkout follows when nobody is working in it (the nightly helper runs from there).
   if [ -z "$(git -C "$ROOT" status --porcelain)" ]; then git -C "$ROOT" pull --quiet --ff-only origin main >> "$log" 2>&1; fi
+  # Worked on: the tablet deletes these notes from its lists with the next status (a failed run leaves them,
+  # so the parent can send them again).
+  [ -n "$summary" ] && node agent/notes.mjs done "$STATE/notes-in.json" --data "$DATA" >> "$log"
   if [ -z "$summary" ]; then
     status failed "The AI could not finish working on your notes. Details are in the server log (notes.log)."
   elif [ -n "$helper" ]; then

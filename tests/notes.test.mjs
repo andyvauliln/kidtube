@@ -93,6 +93,8 @@ test('poll.sh: old notes are not worked on; a new note wakes the notes agent onc
   assert.equal(st.state, 'done');
   assert.equal(st.message, 'Parent mode now opens on Planned (0.8.10).');
   assert.equal(existsSync(w.p('helper-ran')), false);
+  // The tablet deletes the notes the AI worked on: their ids go to notes-done.json with the status.
+  assert.deepEqual(JSON.parse(readFileSync(w.p('tablet', 'notes-done.json'), 'utf8')).ids, ['n-1']);
 
   w.poll();                                            // nothing new: no second run
   assert.equal(w.calls().length, 1);
@@ -129,4 +131,5 @@ test('poll.sh: if the agent writes no result, the parent sees it failed, and the
   w.poll();
   assert.equal(w.status().state, 'failed');
   assert.match(readFileSync(w.p('state', 'notes-handled.json'), 'utf8'), /n-3/);
+  assert.equal(existsSync(w.p('tablet', 'notes-done.json')), false);   // the note stays on the tablet, to send again
 });

@@ -770,9 +770,20 @@ function pickQuiz(s, config, queue, videoId) {
 
 // --- parent mode: Today, Planned, History and one video's details --------------------------
 
+// The tablet keeps no history of notes: one stays in its list until the server says the AI worked on it
+// (notes-done.json, agent/poll.sh), then it is deleted. id: the event's id, to match that list.
 function addNote(list, ev) {
-  list.push({ at: ev.at, text: ev.comment ?? ev.text });
+  list.push({ id: ev.eventId, at: ev.at, text: ev.comment ?? ev.text });
   list.splice(0, Math.max(0, list.length - 20));
+}
+// Deletes the notes the AI has worked on, and old ones without an id (saved before 0.9.1, all long handled).
+function dropDoneNotes(notes, doneIds) {
+  const done = new Set(doneIds);
+  const keep = (list) => (list ?? []).filter((n) => n.id && !done.has(n.id));
+  for (const box of [notes?.lists, notes?.videos]) {
+    if (!box) continue;
+    for (const k of Object.keys(box)) { box[k] = keep(box[k]); if (!box[k].length) delete box[k]; }
+  }
 }
 
 const getMemory = async () => (await chrome.storage.local.get('memory')).memory ?? null;
@@ -1093,6 +1104,10 @@ async function doSync() {
       const r = await fetchDataFile(loc, token, 'run-status.json', data.runStatus ? etags['run-status.json'] : null);
       if (!r.notModified && r.json?.schemaVersion === 1) { update.runStatus = r.json; etags['run-status.json'] = r.etag; }
     } catch {}
+    try {   // notes-done.json: the notes the AI has worked on, deleted from the lists below
+      const r = await fetchDataFile(loc, token, 'notes-done.json', data.notesDone ? etags['notes-done.json'] : null);
+      if (!r.notModified && Array.isArray(r.json?.ids)) { update.notesDone = r.json.ids; etags['notes-done.json'] = r.etag; }
+    } catch {}
     try {   // runs.json: time, turns and cost of the latest runs (agent/runlog.mjs)
       const r = await fetchDataFile(loc, token, 'runs.json', data.runs ? etags['runs.json'] : null);
       if (!r.notModified && Array.isArray(r.json?.runs)) { update.runs = r.json.runs.slice(-10); etags['runs.json'] = r.etag; }
@@ -1101,6 +1116,7 @@ async function doSync() {
   if (token) { try { await pullContext(loc, token, etags); } catch (e) { status.errors.push('Context documents: ' + String(e.message ?? e)); } }
   const done = await withState((s) => {
     Object.assign(s.data, update, { etags });
+    if (s.notes) dropDoneNotes(s.notes, s.data.notesDone ?? []);
     s.syncStatus = status;
     return true;
   }, { account: acct });
