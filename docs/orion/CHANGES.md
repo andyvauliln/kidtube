@@ -2,6 +2,16 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.8.8 (2026-10-06)
+
+- **Settings is now its own screen** in the parent screens. Before, it loaded the old settings page inside the tab, which Orion can show blank.
+- Near the top of Settings, two boxes for the helper (AI):
+  - **Your changes to the helper's prompt**: the standing instructions it follows every run, with Remove, and a box to add more.
+  - **Message to the helper**: now with the same 🎤 dictate / **Add** / **Add & ↻ Update** buttons as the other tabs, and the last messages it keeps in mind.
+- The settings page outside parent mode (the ⚙️ on his screens) asks for the PIN, then shows the same screen. Prompt changes work there even when parent mode is off.
+- **Change PIN** keeps the old PIN until the new one is saved.
+- With parent mode off, the ⚙️ on the parent page now opens the settings page.
+
 ## 0.8.7 (2026-10-06)
 
 - **Hearing his answers** now records his voice and sends it, instead of the browser's own recognition (which is weak or missing on the iPad):
