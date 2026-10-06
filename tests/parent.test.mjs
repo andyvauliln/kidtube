@@ -39,7 +39,9 @@ async function navigate(url) {
 }
 
 test('plan changes from a YouTube page are refused', async () => {
-  assert.equal((await send({ type: 'setMode', mode: 'parent' })).ok, false);
+  const refused = await send({ type: 'setMode', mode: 'parent' });
+  assert.equal(refused.ok, false);
+  assert.match(refused.error, /did not come from a KidTube page/);
   assert.equal((await send({ type: 'plan', action: 'drop', videoId: ids[0] })).ok, false);
 });
 

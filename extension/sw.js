@@ -507,11 +507,12 @@ async function handle(msg, sender) {
       return useAccount({ ...(accountFromSwitcher(msg.switcher ?? '') ?? {}), datasyncId: msg.datasyncId });
 
     case 'setMode': // settings page or parent screens, after the PIN
-      if (!fromExtensionPage(sender) || !['kid', 'parent'].includes(msg.mode)) return { ok: false };
+      if (!['kid', 'parent'].includes(msg.mode)) return { ok: false, error: 'Unknown mode.' };
+      if (!fromExtensionPage(sender)) return { ok: false, error: `Refused: the request did not come from a KidTube page (${sender.url ?? sender.tab?.url ?? 'no address'}).` };
       return withState((s) => {
-        const minutes = s.settings.parentMinutes ?? 60;
+        const minutes = Number(s.settings.parentMinutes ?? 60);
         Object.assign(s.settings, { mode: msg.mode, parentUntil: msg.mode === 'parent' && minutes > 0 ? Date.now() + minutes * 60000 : 0 });
-        return { ok: true, until: s.settings.parentUntil };
+        return { ok: true, until: s.settings.parentUntil, parentMode: parentMode(s) };
       });
 
     case 'openParent': // a YouTube home tab in parent mode becomes the parent's screens
@@ -719,7 +720,7 @@ async function parentData(s) {
     .map((id) => cardOf(id, {}, recs[id], s));
   return {
     account: (await chrome.storage.local.get('account')).account ?? null,
-    parentUntil: s.settings.parentUntil || 0, parentMode: parentMode(s),
+    parentUntil: s.settings.parentUntil || 0, parentMode: parentMode(s), mode: s.settings.mode ?? null,
     today, planned, history: historyDays(s, recs, config), lists: s.notes?.lists ?? {},
     hasMemory: !!memory, memoryAt: memory?.updatedAt ?? null, queueUpdatedAt: queue.updatedAt ?? null,
     hasToken: !!s.settings.token, waiting: s.outbox.length, sync: s.syncStatus,

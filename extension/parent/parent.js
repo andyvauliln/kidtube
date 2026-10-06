@@ -195,13 +195,33 @@ async function showGate() {
   }
   $('pin').focus();
 }
+// Says what happened at every step: on the tablet there is no console to see why it stayed off.
 $('pinGo').addEventListener('click', async () => {
-  const r = await checkPin($('pin').value.trim());
-  $('pin').value = '';
-  if (!r.ok) { $('pinErr').textContent = r.error; return; }
-  $('pinErr').textContent = '';
-  await ask({ type: 'setMode', mode: 'parent' });
-  refresh();
+  const go = $('pinGo'), out = $('pinErr');
+  if (go.disabled) return;
+  go.disabled = true;
+  out.className = 'muted';
+  out.textContent = 'Checking the PIN…';
+  try {
+    const r = await checkPin($('pin').value.trim());
+    $('pin').value = '';
+    out.className = 'err';
+    if (!r.ok) { out.textContent = r.error; return; }
+    out.className = 'muted';
+    out.textContent = 'PIN is right. Turning on…';
+    const res = await ask({ type: 'setMode', mode: 'parent' });
+    out.className = 'err';
+    if (!res) { out.textContent = 'PIN is right, but KidTube’s background did not answer. Close this page and open it again.'; return; }
+    if (!res.ok) { out.textContent = `PIN is right, but it could not turn on: ${res.error ?? 'refused'}`; return; }
+    await refresh();
+    if (data?.parentMode) { out.textContent = ''; return; }
+    out.textContent = `PIN is right and it was turned on, but it reads as off again (mode: ${data?.mode ?? '?'}, until: ${data?.parentUntil ? new Date(data.parentUntil).toLocaleString() : 'no limit'}, now: ${new Date().toLocaleString()}, account: ${data?.account?.key ?? 'none'}). Please send a screenshot.`;
+  } catch (e) {
+    out.className = 'err';
+    out.textContent = `Could not turn on: ${e?.message ?? e}`;
+  } finally {
+    go.disabled = false;
+  }
 });
 $('pin').addEventListener('keydown', (e) => e.key === 'Enter' && $('pinGo').click());
 $('kid').addEventListener('click', () => ask({ type: 'kidHome' }));
