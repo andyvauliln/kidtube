@@ -373,3 +373,27 @@ test('the tablet keeps no history: notes the AI worked on (notes-done.json) and 
   assert.equal(fake.store.notes.videos?.[ids[0]], undefined);
   assert.ok(fake.store.outbox.some((e) => e.eventId === darker.eventId)); // not sent yet: still waits for ↻ Update
 });
+
+test('a profile with the blank test app: YouTube is a white page in kid mode, YouTube’s account doesn’t switch it, nothing syncs', async () => {
+  const first = fake.store.account.key;
+  const r = await fromPage({ type: 'addProfile', email: 'blank@example.com', app: 'blank' });
+  assert.equal(r.switched, true);
+  assert.equal(r.chooser, null, 'no Google sign-in for an app that is not on YouTube');
+  assert.equal(fake.store.account.app, 'blank');
+  assert.equal(fake.store.profileHold, undefined);
+  await fromPage({ type: 'setMode', mode: 'kid' });
+  assert.equal(await navigate('https://m.youtube.com/'), 'ext://ui/blank.html');
+  assert.equal(await navigate(`https://m.youtube.com/watch?v=${ids[0]}`), 'ext://ui/blank.html');
+  const other = `)]}'\n${JSON.stringify({ header: { email: { simpleText: 'other@example.com' } }, items: [{ accountItem: { isSelected: true } }] })}`;
+  assert.equal((await send({ type: 'account', loggedIn: true, datasyncId: 'BBB||', switcher: other })).held, true);
+  assert.equal(fake.store.account.key, 'blank@example.com');
+  const realFetch = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async (url, init) => { if (String(url).includes('api.github.com')) calls++; return realFetch(url, init); };
+  try { await send({ type: 'sync' }); } finally { globalThis.fetch = realFetch; }
+  assert.equal(calls, 0, 'the blank app has nothing in the data repo');
+  await fromPage({ type: 'setMode', mode: 'parent' });
+  assert.equal(await navigate('https://m.youtube.com/'), 'ext://parent/parent.html', 'parent mode still opens the parent screens');
+  assert.equal((await fromPage({ type: 'switchProfile', key: first })).switched, true);
+  assert.equal(fake.store.account.app, 'kidtube');
+});

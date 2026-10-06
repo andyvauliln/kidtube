@@ -3,13 +3,19 @@
 import { hashPin } from '../lib/pin.js';
 import { say, listen, recordAnswer, transcribeAnswer, FREE_LISTEN_MODELS, PAID_LISTEN_MODELS } from '../ui/voice.js';
 import { ask as send } from '../lib/ask.js';
-import { el as make, noteInput, noteBox, promptNotesBox } from '../parent/kit.js';
+import { el as make, noteInput, noteBox, promptNotesBox, profilesPanel } from '../parent/kit.js';
 
 const MARKUP = `
   <section class="ainote">
     <h2>Settings</h2>
     <p class="muted">Ask the AI for any change: to the app, the rules or how the helper plans. Your notes wait here; ↻ Update sends them, and the AI on the server starts on them within a minute (a change to the app comes as a new version).</p>
     <div id="aiNote"></div>
+  </section>
+
+  <section id="profilesSection">
+    <h2>Profiles</h2>
+    <p class="muted">Each email (YouTube account) has its own lists, rules, notes and helper, and its own app.</p>
+    <div id="profilesBox"><p class="muted">Loading…</p></div>
   </section>
 
   <section>
@@ -198,6 +204,9 @@ export function mountSettings(root, { inParent = false, onMode = () => {} } = {}
   root.innerHTML = MARKUP;
   const $ = (id) => root.querySelector(`#${id}`);
   $('openParent').hidden = inParent;
+  // The parent screens have their own Profiles tab.
+  $('profilesSection').hidden = inParent;
+  if (!inParent) profilesPanel($('profilesBox'));
   $('watched').hidden = inParent;
   let voiceLang = 'en-US';
 

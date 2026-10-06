@@ -195,3 +195,51 @@ export function promptNotesBox(notes, onChange) {
     notes.length ? list : el('p', 'muted', 'None yet.'), ...input.nodes,
   ];
 }
+
+// --- Profiles: every email has its own lists, settings, notes and helper; each profile has one app ------
+// Shown in parent mode (Profiles tab) and in Settings. onStay: after a switch that needs no Google sign-in.
+export async function profilesPanel(box, { onStay = () => location.reload() } = {}) {
+  const p = await ask({ type: 'profiles' });
+  if (!p?.ok) { box.replaceChildren(el('p', 'err', 'KidTube’s background did not answer. Close this page and open it again.')); return; }
+  const appLabel = (id) => p.apps.find((a) => a.id === id)?.label ?? id;
+  const go = async (msg) => {
+    const r = await ask(msg);
+    if (!r?.ok) { toast(r?.error ?? 'That didn’t work. Try again.'); return; }
+    // YouTube signs in the same Google account, then comes back with the new profile.
+    if (r.switched && r.chooser) { location.href = r.chooser; return; }
+    toast('Switched.');
+    onStay();
+  };
+  const rows = p.profiles.map((pr) => {
+    const row = el('div', 'box profile');
+    const me = pr.key === p.current;
+    row.append(el('h3', '', `${me ? '✓ ' : ''}${pr.email || pr.name || pr.key}`),
+      el('p', 'muted', `App: ${appLabel(pr.app)} · data folder ${pr.app}/${pr.folder ?? '(given on the first sync)'}${pr.lastSeen ? ` · last used ${new Date(pr.lastSeen).toLocaleDateString()}` : ''}`));
+    if (me) row.append(el('p', 'muted', p.waitingFor === pr.key ? 'Current profile. Waiting for YouTube to sign in to this account (pick it when Google asks).' : 'Current profile.'));
+    else {
+      const actions = el('div', 'actions');
+      actions.append(btn('Switch to this profile', () => go({ type: 'switchProfile', key: pr.key }), 'primary'), btn('Remove from this tablet', async () => {
+        if (!confirm(`Remove ${pr.email || pr.key} from this tablet? Its lists and settings here are deleted. Its folder in the data repo stays.`)) return;
+        const r = await ask({ type: 'removeProfile', key: pr.key });
+        if (!r?.ok) toast(r?.error ?? 'Could not remove it.');
+        profilesPanel(box, { onStay });
+      }, 'ghost'));
+      row.append(actions);
+    }
+    return row;
+  });
+  const add = el('div', 'box');
+  const email = el('input');
+  Object.assign(email, { type: 'email', id: 'newEmail', placeholder: 'child@gmail.com', autocomplete: 'off', autocapitalize: 'off' });
+  const app = el('select');
+  app.id = 'newApp';
+  for (const a of p.apps) { const o = el('option', '', a.label); o.value = a.id; app.append(o); }
+  const label = (text, forId) => { const l = el('label', '', text); l.htmlFor = forId; return l; };
+  const actions = el('div', 'actions');
+  actions.append(btn('Add and switch', () => go({ type: 'addProfile', email: email.value, app: app.value }), 'primary'));
+  add.append(el('h3', '', 'Add a profile'),
+    el('p', 'muted', 'For another child or another YouTube account. A new email starts empty: its own lists, history, settings, notes and helper. The PIN and the GitHub connection stay the same.'),
+    label('Email of the YouTube (Google) account', 'newEmail'), email, label('App', 'newApp'), app, actions);
+  box.replaceChildren(...(rows.length ? rows : [el('p', 'muted', 'No YouTube account seen yet: open YouTube once, or add one below.')]), add,
+    el('p', 'muted', 'After a switch, Google asks which account YouTube should use: pick the same email. If it doesn’t ask, tap your picture in YouTube → Switch account.'));
+}

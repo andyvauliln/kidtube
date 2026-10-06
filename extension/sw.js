@@ -6,7 +6,7 @@ import { classifyUrl, homeUrl, watchUrl } from './lib/url.js';
 import { parseCaptions, captionsToText } from './lib/captions.js';
 import { TARGET } from './lib/target.js';
 import { accountFromSwitcher, accountKey, profileFolder, chooserUrl } from './lib/account.js';
-import { APPS, DEFAULT_APP, appOf } from './lib/apps.js';
+import { APPS, DEFAULT_APP, appOf, usesYouTube } from './lib/apps.js';
 import { PLAN_ACTIONS, applyPlan, applyPlanEvent, pendingPlan, entryFromRecord, applyPromptNotes } from './lib/plan.js';
 
 const SITE_RULE_ID = 100;
@@ -85,6 +85,8 @@ async function useAccount(info, { byParent = false, app } = {}) {
     let key = accountKey(info);
     // YouTube's id alone (no email): the profile that already has that id.
     if (!info.email && info.datasyncId) key = Object.keys(accounts).find((k) => accounts[k].datasyncId === info.datasyncId) ?? key;
+    // The parent picked a profile whose app isn't on YouTube: YouTube's account doesn't change it.
+    if (!byParent && cur && !usesYouTube(appOf(cur))) return { held: true };
     const hold = !byParent && g.profileHold?.until > Date.now() ? g.profileHold : null;
     if (hold && key !== hold.key) {
       // An account YouTube can't name, not known here: the one Google has just signed in for the parent's pick.
@@ -116,8 +118,9 @@ async function useAccount(info, { byParent = false, app } = {}) {
     const next = saved[`acct:${key}`] ?? (alias && saved[alias]) ?? {};
     const device = Object.fromEntries(DEVICE_SETTINGS.filter((k) => work.settings?.[k] != null).map((k) => [k, work.settings[k]]));
     next.settings = { ...(next.settings ?? {}), ...device };
-    await chrome.storage.local.set({ [`acct:${cur.key}`]: work, ...next, account: me, accounts, ...(byParent ? { profileHold: { key, until: Date.now() + HOLD_MS } } : {}) });
-    await chrome.storage.local.remove([`acct:${key}`, ...(alias ? [alias] : []), ...ACCOUNT_KEYS.filter((k) => !(k in next))]);
+    const holdOn = byParent && usesYouTube(appOf(me)) ? { profileHold: { key, until: Date.now() + HOLD_MS } } : {};
+    await chrome.storage.local.set({ [`acct:${cur.key}`]: work, ...next, account: me, accounts, ...holdOn });
+    await chrome.storage.local.remove([`acct:${key}`, ...(alias ? [alias] : []), ...ACCOUNT_KEYS.filter((k) => !(k in next)), ...(byParent && !holdOn.profileHold ? ['profileHold'] : [])]);
     return { switched: true };
   });
   if (r.switched) { await applySiteRules(); sync(); }
@@ -306,6 +309,9 @@ async function guard(s, tabId, href) {
   lastHost = c.host || lastHost;
   // Parent mode: YouTube's home is the parent's screens; everything else on YouTube is open.
   if (parentMode(s)) return c.kind === 'home' ? chrome.runtime.getURL(PARENT_PAGE) : null;
+  // A profile whose app isn't KidTube: YouTube shows that app's page instead (the blank test app: a white page).
+  const app = appOf((await chrome.storage.local.get('account')).account);
+  if (app.page) return chrome.runtime.getURL(app.page);
   // A parent watching from the parent page: that one video in that one tab, no kid rules.
   const pass = s.parentPass;
   if (pass) {
@@ -590,18 +596,19 @@ async function handle(msg, sender) {
 
     case 'switchProfile': // a known profile (key) or a new one (email, app); then Google signs in that account
     case 'addProfile': {
-      if (!fromExtensionPage(sender) || !(await withState((s) => parentMode(s)))) return { ok: false, error: 'Only in parent mode.' };
+      if (!fromExtensionPage(sender)) return { ok: false, error: 'Only from the parent screens or Settings.' };
       const { accounts = {} } = await chrome.storage.local.get('accounts');
       const email = msg.type === 'addProfile' ? String(msg.email ?? '').trim().toLowerCase() : accounts[msg.key]?.email ?? null;
       const key = msg.type === 'addProfile' ? accountKey({ email }) : msg.key;
       if (!key || (msg.type === 'switchProfile' && !accounts[key])) return { ok: false, error: msg.type === 'addProfile' ? 'That doesn’t look like an email.' : 'Unknown profile.' };
       if (msg.type === 'addProfile' && msg.app && !APPS[msg.app]) return { ok: false, error: 'Unknown app.' };
       const r = await useAccount(key.startsWith('yt:') ? { datasyncId: key.slice(3) } : { email }, { byParent: true, app: msg.app });
-      return { ...r, chooser: email ? chooserUrl(email, lastHost) : null };
+      const app = appOf((await chrome.storage.local.get('account')).account);
+      return { ...r, app: app.id, chooser: email && r.switched && usesYouTube(app) ? chooserUrl(email, lastHost) : null };
     }
 
     case 'removeProfile': // only this tablet's copy; the data repo keeps the folder
-      if (!fromExtensionPage(sender) || !(await withState((s) => parentMode(s)))) return { ok: false, error: 'Only in parent mode.' };
+      if (!fromExtensionPage(sender)) return { ok: false, error: 'Only from the parent screens or Settings.' };
       return removeProfile(msg.key);
 
     case 'setMode': // settings page or parent screens, after the PIN
@@ -1053,6 +1060,11 @@ async function doSync() {
   const token = settings.token || '';
   const etags = data.etags ?? {};
   const status = { at: new Date().toISOString(), errors: [] };
+  if (appOf(account).sync === false) {   // an app with nothing in the data repo (the blank test app)
+    await applySiteRules();
+    await withState((s) => { s.syncStatus = status; }, { account: acct });
+    return status;
+  }
   if (!loc.base) {   // no YouTube account seen yet, so no profile: the built-in list until one is
     await applySiteRules();
     status.errors.push('Waiting for the YouTube account: open YouTube once, signed in. Until then the built-in list is used.');

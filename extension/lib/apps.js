@@ -9,6 +9,18 @@ export const APPS = {
     // Context documents (parent mode → Context): context/<id>.md, written by the helper. Same list as agent/config.json apps.kidtube.contextDocs.
     contextDocs: ['kid', 'strategy', 'math', 'letters', 'world'],
   },
+  // A test app that does nothing: YouTube shows a white page (page), nothing is synced, the helper never runs.
+  // Shows that a profile's app decides what the tablet does; parent mode still opens the parent screens.
+  blank: {
+    id: 'blank',
+    label: 'Blank (test: a white page)',
+    sites: [],
+    page: 'ui/blank.html',
+    sync: false,
+    contextDocs: [],
+  },
 };
+// Profiles of an app that isn't on YouTube don't follow YouTube's signed-in account.
+export const usesYouTube = (app) => (app?.sites ?? []).includes('youtube.com');
 export const DEFAULT_APP = 'kidtube';
 export const appOf = (account) => APPS[account?.app] ?? APPS[DEFAULT_APP];

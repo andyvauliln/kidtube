@@ -3,7 +3,7 @@
 import { ask } from '../lib/ask.js';
 import { checkPin } from '../lib/pin.js';
 import { say, listen, recordedUrl } from '../ui/voice.js';
-import { el, btn, toast, runNow, noteInput, noteBox, promptNotesBox, hooks } from './kit.js';
+import { el, btn, toast, runNow, noteInput, noteBox, promptNotesBox, profilesPanel, hooks } from './kit.js';
 import { mountSettings } from '../settings/settings.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { renderMarkdown, promptSteps } from './markdown.js';
@@ -128,11 +128,11 @@ $('pin').addEventListener('keydown', (e) => e.key === 'Enter' && $('pinGo').clic
 $('kid').addEventListener('click', () => ask({ type: 'kidHome' }));
 
 // --- routing: #today, #planned, #history, #prompt, #settings, #profiles, #v=<videoId> ----------------
-const TABS = ['today', 'planned', 'history', 'context', 'prompt', 'settings'];
+const TABS = ['today', 'planned', 'history', 'context', 'prompt', 'settings', 'profiles'];
 function route() {
   const h = location.hash.slice(1);
   const m = h.match(/^v=([A-Za-z0-9_-]{11})/);
-  return m ? { video: m[1] } : { tab: [...TABS, 'profiles'].includes(h) ? h : 'today' };
+  return m ? { video: m[1] } : { tab: TABS.includes(h) ? h : 'today' };
 }
 let lastTab = 'today', shownTab = null;
 function render() {
@@ -185,54 +185,12 @@ function animate(dir) {
   view.classList.add(dir > 0 ? 'from-right' : 'from-left');
 }
 
-// --- Profiles (tap the account in the header): every email has its own lists, settings, notes and helper ---
+// --- Profiles (the Profiles tab, or tap the account in the header) ----------------------------------
 
 async function renderProfiles() {
-  const p = await ask({ type: 'profiles' });
-  if (route().tab !== 'profiles') return;
-  if (!p?.ok) { view.replaceChildren(el('p', 'err', 'KidTube’s background did not answer. Close this page and open it again.')); return; }
-  const appLabel = (id) => p.apps.find((a) => a.id === id)?.label ?? id;
-  const rows = p.profiles.map((pr) => {
-    const box = el('div', 'box profile');
-    const me = pr.key === p.current;
-    box.append(el('h3', '', `${me ? '✓ ' : ''}${pr.email || pr.name || pr.key}`),
-      el('p', 'muted', `${appLabel(pr.app)} · data folder ${pr.app}/${pr.folder ?? '(given on the first sync)'}${pr.lastSeen ? ` · last used ${new Date(pr.lastSeen).toLocaleDateString()}` : ''}`));
-    if (me && p.waitingFor === pr.key) box.append(el('p', 'muted', 'Waiting for YouTube to sign in to this account (pick it when Google asks).'));
-    if (!me) {
-      const remove = btn('Remove from this tablet', async () => {
-        if (!confirm(`Remove ${pr.email || pr.key} from this tablet? Its lists and settings here are deleted. Its folder in the data repo stays.`)) return;
-        const r = await ask({ type: 'removeProfile', key: pr.key });
-        if (!r?.ok) toast(r?.error ?? 'Could not remove it.');
-        renderProfiles();
-      }, 'ghost');
-      box.append(el('div', 'actions'));
-      box.lastChild.append(btn('Switch to this profile', () => switchTo({ type: 'switchProfile', key: pr.key }), 'primary'), remove);
-    }
-    return box;
-  });
-  const add = el('div', 'box');
-  const email = el('input');
-  Object.assign(email, { type: 'email', id: 'newEmail', placeholder: 'child@gmail.com', autocomplete: 'off', autocapitalize: 'off' });
-  const app = el('select');
-  app.id = 'newApp';
-  for (const a of p.apps) { const o = el('option', '', a.label); o.value = a.id; app.append(o); }
-  const label = (text, forId) => { const l = el('label', '', text); l.htmlFor = forId; return l; };
-  add.append(el('h3', '', 'Add a profile'),
-    el('p', 'muted', 'For another child or another YouTube account. A new email starts empty: its own lists, history, settings, notes and helper. The PIN and the GitHub connection stay the same.'),
-    label('Email of the YouTube (Google) account', 'newEmail'), email, label('App', 'newApp'), app,
-    el('div', 'actions'));
-  add.lastChild.append(btn('Add and switch', () => switchTo({ type: 'addProfile', email: email.value, app: app.value }), 'primary'));
-  view.replaceChildren(el('h2', '', 'Profiles'), ...rows, add,
-    el('p', 'muted', 'After a switch, Google asks which account YouTube should use: pick the same email. If it doesn’t ask, tap your picture in YouTube → Switch account.'));
-}
-
-async function switchTo(msg) {
-  const r = await ask(msg);
-  if (!r?.ok) { toast(r?.error ?? 'That didn’t work. Is parent mode still on?'); return; }
-  // YouTube signs in the same Google account, then comes back to these screens with the new profile.
-  if (r.switched && r.chooser) { location.href = r.chooser; return; }
-  location.hash = 'today';
-  refresh();
+  const box = el('div');
+  view.replaceChildren(el('h2', '', 'Profiles'), box);
+  await profilesPanel(box, { onStay: () => { location.hash = 'today'; refresh(); } });
 }
 
 // --- shared pieces ---------------------------------------------------------------------------------
