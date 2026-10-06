@@ -3,7 +3,7 @@
 import { ask } from '../lib/ask.js';
 import { checkPin } from '../lib/pin.js';
 import { say, listen, recordedUrl } from '../ui/voice.js';
-import { el, btn, toast, runNow, noteInput, promptNotesBox, hooks } from './kit.js';
+import { el, btn, toast, runNow, noteInput, noteBox, promptNotesBox, hooks } from './kit.js';
 import { mountSettings } from '../settings/settings.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { renderMarkdown, promptSteps } from './markdown.js';
@@ -40,7 +40,7 @@ showVersion();
 
 // --- Update: the helper's run status (header) -------------------------------------------------------
 let runTimer = null;
-const RUN_TEXT = { queued: 'Waiting for the server…', running: 'Helper is working…', done: 'Updated', failed: 'Run failed' };
+const RUN_TEXT = { queued: 'Waiting for the server…', running: 'AI is working…', done: 'Updated', failed: 'Run failed' };
 async function showRun(fresh = false) {
   const box = $('run');
   if (fresh) await ask({ type: 'sync' });
@@ -50,16 +50,17 @@ async function showRun(fresh = false) {
   const when = r.at ? new Date(r.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
   const state = el('span', `state ${working ? 'working' : r.state}`, r.state === 'none' ? '' : `${RUN_TEXT[r.state] ?? r.state}${when && !working ? ` ${when}` : ''}`);
   state.title = r.message ?? '';
-  const b = btn(working ? '↻ …' : '↻ Update', async () => { b.disabled = true; if (!(await runNow())) b.disabled = false; }, 'small');
+  if (r.message) state.addEventListener('click', () => toast(r.message));   // what the AI did, in its words
+  const b = btn(working ? '↻ …' : `↻ Update${r.held ? ` (${r.held})` : ''}`, async () => { b.disabled = true; if (!(await runNow())) b.disabled = false; }, 'small');
   b.disabled = working;
-  b.title = 'Run the helper now with your latest notes and what he watched';
+  b.title = r.held ? `Send your ${r.held} note${r.held === 1 ? '' : 's'} to the AI now` : 'Run the helper now with what he watched';
   box.replaceChildren(state, b);
   clearTimeout(runTimer);
   if (working) runTimer = setTimeout(async () => {
     const before = r.state;
     await showRun(true);
     const now = await ask({ type: 'runStatus' });
-    if (now?.state === 'done' && before !== 'done') { toast('The helper finished: the lists are updated.'); refresh(); }
+    if (now?.state === 'done' && before !== 'done') { toast(now.message || 'Done: the lists are updated.'); refresh(); }
   }, 30000);
 }
 
@@ -215,36 +216,6 @@ function thumbOf(v, big = false) {
   if (v.durationSeconds && !big) t.append(el('span', 'len', mins(v.durationSeconds)));
   if (v.required && !big) t.append(el('span', 'star', '⭐'));
   return t;
-}
-
-// A note for the AI: about one video, or about a whole list.
-function noteBox(target, past = [], label = 'Note for the AI', buttonInto = null) {
-  const wrap = el('div', 'notebox');
-  const list = el('ul', 'notes');
-  const show = (items) => list.replaceChildren(...items.map((n) => {
-    const li = el('li');
-    if (n.at) li.append(el('time', '', new Date(n.at).toLocaleDateString())); li.append(document.createTextNode(n.text));
-    return li;
-  }));
-  show(past);
-  const box = el('div');
-  box.hidden = true;
-  const input = noteInput({
-    placeholder: target.list ? `For example: “${target.list === 'history' ? 'He loved the animal videos, more like these' : 'Too many videos about space, more numbers please'}”` : 'For example: “Good one, more like this” or “Too fast for him”',
-    save: async (text) => {
-      const r = target.list ? await ask({ type: 'wish', list: target.list, text }) : await ask({ type: 'note', videoId: target.videoId, comment: text });
-      if (!r?.ok) return false;
-      past = [...past, { at: new Date().toISOString(), text }];
-      show(past);
-      return true;
-    },
-  });
-  const ta = input.ta;
-  box.append(...input.nodes);
-  const open = btn(`📝 ${label}`, () => { box.hidden = !box.hidden; if (!box.hidden) ta.focus(); });
-  if (buttonInto) buttonInto.append(open); else wrap.append(open);
-  wrap.append(box, list);
-  return wrap;
 }
 
 const open = (v) => { location.hash = `v=${v.videoId}`; };

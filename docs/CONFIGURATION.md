@@ -38,7 +38,7 @@ Changed in parent mode → Settings (or the options page); the helper also write
 
 ### 1.2 Per-device settings (stored on the tablet only)
 
-`token` (GitHub token for kidtube-data), `repo`, `deviceId`, parent-mode session (`parentMinutes`, `parentUntil`).
+`token` (GitHub token for kidtube-data), `repo`, `deviceId`, parent mode (`mode`; it stays on until the parent switches back — `parentUntil` is only left from versions before 0.8.9, which had a timer).
 
 ### 1.3 Files the tablet reads from kidtube-data
 
@@ -67,9 +67,10 @@ Changed in parent mode → Settings (or the options page); the helper also write
 
 #### Runs on request (parent mode)
 
-- Parent mode → **↻ Update**, or **Add & ↻ Update** on any note input (Today, Planned, History, Context, Prompt), writes `requests/run.json` (a new id) to kidtube-data. Notes can be typed or dictated with 🎤.
-- Crontab runs `agent/poll.sh` every minute. It does one `git ls-remote`; only when kidtube-data changed does it pull and look for a new request id.
-- It runs `agent/daily.sh` under the same `flock` lock as the nightly run (one run at a time).
+- Notes for the AI (on every tab and at the top of Settings; typed, or dictated with 🎤, where ⏹ adds the note at once) wait on the tablet. Parent mode → **↻ Update** (it shows how many are waiting), or **Add & ↻ Update**, sends them all to `activity/` and writes `requests/run.json` (a new id) to kidtube-data. Settings → *Update now* also sends them.
+- Crontab runs `agent/poll.sh` every minute. It does one `git ls-remote`; only when kidtube-data changed does it pull and look for a new request id and new notes (`agent/notes.mjs`, no AI; handled ones are listed in `state/notes-handled.json`).
+- **New notes → the notes agent**: Claude Code runs `agent/NOTES.md` in its own checkout (`notesAgent.workDir`, reset to `origin/main` each time) with the notes. For each note it decides: change the app (then test and release a new version for Quetta and Orion), change the helper (`DAILY.md`, `SYSTEM.md`, skills, config), or have the helper update the lists. It writes a summary (shown in parent mode as the status) and whether the helper should run; at most `notesAgent.perDay` (10) runs a day. Log: `state/notes.log`.
+- **No new notes** (↻ Update only) → the helper runs, as before. Either way it runs `agent/daily.sh` under the same `flock` lock as the nightly run (one run at a time).
 - At most `orchestrator.onDemandPerDay` (6) runs a day. After that the status says it was not run; the nightly run still happens.
 - Status goes to `run-status.json` (`running`, `done`, `failed`, with a message). Parent mode shows it in the header. `done` means the run pushed a new `helper:` commit.
 

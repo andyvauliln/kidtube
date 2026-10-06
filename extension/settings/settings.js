@@ -3,17 +3,21 @@
 import { hashPin } from '../lib/pin.js';
 import { say, listen, recordAnswer, transcribeAnswer, FREE_LISTEN_MODELS, PAID_LISTEN_MODELS } from '../ui/voice.js';
 import { ask as send } from '../lib/ask.js';
-import { el as make, noteInput, promptNotesBox } from '../parent/kit.js';
+import { el as make, noteInput, noteBox, promptNotesBox } from '../parent/kit.js';
 
 const MARKUP = `
+  <section class="ainote">
+    <h2>Settings</h2>
+    <p class="muted">Ask the AI for any change: to the app, the rules or how the helper plans. Your notes wait here; ↻ Update sends them, and the AI on the server starts on them within a minute (a change to the app comes as a new version).</p>
+    <div id="aiNote"></div>
+  </section>
+
   <section>
     <h2>Mode</h2>
     <p class="muted" id="account"></p>
     <label class="check rules-like"><input type="radio" name="mode" value="kid"> <span><b>Kid mode</b>: his list, with all the rules</span></label>
     <label class="check rules-like"><input type="radio" name="mode" value="parent"> <span><b>Parent mode</b>: YouTube opens your screens (Today, Planned, History, Prompt, Settings); nothing is blocked or counted</span></label>
-    <label for="parentMinutes">Parent mode turns itself off after (minutes)</label>
-    <input id="parentMinutes" type="number" min="0" max="1440" inputmode="numeric">
-    <p class="hint">0 = it stays on until you switch back. Then the tablet is open for him too, so keep a limit.</p>
+    <p class="hint">Parent mode stays on until you switch back to kid mode (the “Kid mode” button at the top of your screens). Until then the tablet is open for him too.</p>
     <button class="primary" id="saveMode">Save mode</button>
     <button id="openParent">Open parent screens</button>
     <p id="modeOut" class="muted"></p>
@@ -202,7 +206,6 @@ export function mountSettings(root, { inParent = false, onMode = () => {} } = {}
     const { settings: s = {}, account } = await chrome.storage.local.get(['settings', 'account']);
     const on = s.mode === 'parent' && (!s.parentUntil || s.parentUntil > Date.now());
     for (const r of root.querySelectorAll('input[name=mode]')) r.checked = r.value === (on ? 'parent' : 'kid');
-    $('parentMinutes').value = s.parentMinutes ?? 60;
     $('account').textContent = account
       ? `YouTube account: ${account.email || account.name || account.key}. Every setting here, the lists and the history belong to this account; another account has its own. The PIN is the same for all.`
       : 'No YouTube account seen yet: open YouTube once. Settings are kept per YouTube account.';
@@ -210,9 +213,6 @@ export function mountSettings(root, { inParent = false, onMode = () => {} } = {}
   }
 
   async function saveMode() {
-    const n = Number($('parentMinutes').value);
-    if (!Number.isFinite(n) || n < 0 || n > 1440) { $('modeOut').textContent = 'Minutes: use a number from 0 to 1440.'; return null; }
-    await patchSettings({ parentMinutes: Math.round(n) });
     const mode = root.querySelector('input[name=mode]:checked')?.value ?? 'kid';
     const r = await send({ type: 'setMode', mode });
     if (!r?.ok) { $('modeOut').textContent = `Could not change the mode: ${r?.error ?? 'KidTube’s background did not answer'}`; return null; }
@@ -253,6 +253,7 @@ export function mountSettings(root, { inParent = false, onMode = () => {} } = {}
     $('update').disabled = true;
     $('updateOut').textContent = 'Checking…';
     try {
+      await send({ type: 'sync', notes: true });   // your notes for the AI go too
       const r = await send({ type: 'checkUpdate' });
       const parts = [`Installed ${r.installed}`];
       if (r.latest) parts.push(`newest ${r.latest}`);
@@ -344,6 +345,11 @@ export function mountSettings(root, { inParent = false, onMode = () => {} } = {}
       $('wishes').replaceChildren(el('h3', 'Messages it keeps in mind'), ul);
     } else $('wishes').replaceChildren();
   }
+  // The note for the AI at the top, like on every tab (list "settings": anything about the app and the rules).
+  send({ type: 'parentData' }).then((d) => {
+    if (root.isConnected) $('aiNote').replaceChildren(noteBox({ list: 'settings' }, d?.lists?.settings ?? [], 'Note for the AI about the app and settings'));
+  });
+
   const wish = noteInput({
     placeholder: 'What should he watch or learn?', saveLabel: 'Send to the helper',
     failText: 'Could not send it. Check the connection (GitHub) below and try again.',

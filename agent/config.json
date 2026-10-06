@@ -85,5 +85,12 @@
       "openai/gpt-audio-mini"
     ],
     "specific": []
+  },
+  "notesAgent": {
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "perDay": 10,
+    "workDir": "~/.local/share/kidtube/app",
+    "note": "agent/poll.sh: new notes from the parent → Claude Code runs agent/NOTES.md in its own checkout (workDir); it changes the app or the helper and releases; at most perDay runs a day"
   }
 }

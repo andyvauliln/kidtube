@@ -58,11 +58,23 @@ export async function runNow() {
 
 // --- writing a note for the helper ------------------------------------------------------------------
 let dictating = null;   // the one recording in progress: { stop }
-function micButton(ta) {
+// After ⏹ the words go to addNote(text) at once: the note joins the list (and waits for ↻ Update).
+function micButton(ta, addNote) {
   const lang = navigator.language || 'en-US';
-  const b = btn('🎤', async () => {
+  // Not btn(): that one stays disabled until its work ends, and here the work is the recording, so ⏹ couldn't be tapped.
+  const b = el('button', 'small mic', '🎤');
+  b.addEventListener('click', async (e) => {
+    e.stopPropagation();
     if (dictating) return dictating.stop();
-    const add = (text) => { text = text.trim(); if (text) { ta.value = (ta.value.trim() ? ta.value.trim() + ' ' : '') + text; ta.dispatchEvent(new Event('input')); } };
+    if (b.textContent === '…') return;   // still writing the last one down
+    let said = '';
+    const add = (text) => { text = text.trim(); if (text) said = said ? `${said} ${text}` : text; };
+    const finish = async () => {
+      if (!said) return;
+      const text = said;
+      said = '';
+      if (!(await addNote(text))) { ta.value = (ta.value.trim() ? ta.value.trim() + ' ' : '') + text; ta.dispatchEvent(new Event('input')); }
+    };
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     const keys = await listenKeys();
     b.classList.add('on');
@@ -78,7 +90,7 @@ function micButton(ta) {
       const heard = audio ? await transcribeAnswer(audio, { keys, lang, maxTokens: 800,
         instruction: 'A parent dictates a note about their child\'s videos and learning. Use punctuation.' }) : null;
       done();
-      if (heard?.length) return add(heard[0]);
+      if (heard?.length) { add(heard[0]); return finish(); }
       if (heard === null && !SR) return toast('Could not write it down. Use the 🎤 on the iPad keyboard instead.');
       if (heard) return toast('Heard nothing.');
     }
@@ -91,20 +103,22 @@ function micButton(ta) {
     dictating = { stop: () => { try { r.stop(); } catch {} } };
     r.onresult = (e) => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) add(e.results[i][0].transcript); };
     r.onerror = (e) => { if (e.error !== 'no-speech' && e.error !== 'aborted') toast('Dictation stopped. You can use the 🎤 on the iPad keyboard instead.'); };
-    r.onend = done;
+    r.onend = () => { done(); finish(); };
     try { r.start(); } catch { done(); toast('Dictation isn’t available here. Use the 🎤 on the iPad keyboard instead.'); }
-  }, 'small mic');
+  });
   b.title = 'Dictate the note';
   return b;
 }
 
 // textarea + 🎤 + "Add note" + "Add & ↻ Update". save(text) → true when saved.
+// Notes stay on this tablet until ↻ Update sends them all; the AI on the server then reads them within a minute.
 export function noteInput({ placeholder, value = '', onInput, save, saveLabel = 'Add note', failText = 'Could not save it. Is parent mode still on?' }) {
   const ta = el('textarea');
   ta.maxLength = 2000;
   ta.placeholder = placeholder;
   ta.value = value;
   if (onInput) ta.addEventListener('input', () => onInput(ta.value));
+  const added = () => { toast('Added. Tap ↻ Update to send your notes.'); hooks.afterRun(); };
   const go = async (andRun) => {
     if (dictating) dictating.stop();
     const text = ta.value.trim();
@@ -112,13 +126,46 @@ export function noteInput({ placeholder, value = '', onInput, save, saveLabel = 
     if (!(await save(text))) return toast(failText);
     ta.value = '';
     onInput?.('');
-    if (andRun) await runNow(); else toast('Saved. The helper reads it on its next run (or tap ↻ Update).');
+    if (andRun) await runNow(); else added();
   };
+  const dictated = async (text) => { if (!(await save(text))) { toast(failText); return false; } added(); return true; };
   const row = el('div', 'noterow');
   const update = btn('Add & ↻ Update', () => go(true));
-  update.title = 'Save this note, then run the helper now with all your notes';
-  row.append(micButton(ta), btn(saveLabel, () => go(false), 'primary'), update);
+  update.title = 'Add this note, then send all your notes to the AI now';
+  row.append(micButton(ta, dictated), btn(saveLabel, () => go(false), 'primary'), update);
   return { ta, row, nodes: [ta, row] };
+}
+
+// "📝 Note for the AI" at the top of a tab: a button that opens the note control, and the notes so far.
+// target: { list } (a whole tab) or { videoId }. buttonInto: put the button there instead (a video's actions).
+export function noteBox(target, past = [], label = 'Note for the AI', buttonInto = null) {
+  const wrap = el('div', 'notebox');
+  const list = el('ul', 'notes');
+  const show = (items) => list.replaceChildren(...items.map((n) => {
+    const li = el('li');
+    if (n.at) li.append(el('time', '', new Date(n.at).toLocaleDateString())); li.append(document.createTextNode(n.text));
+    return li;
+  }));
+  show(past);
+  const box = el('div');
+  box.hidden = true;
+  const examples = { history: 'He loved the animal videos, more like these', settings: 'Parent mode should open with the Planned tab', today: 'Too many videos about space, more numbers please', planned: 'Too many videos about space, more numbers please' };
+  const input = noteInput({
+    placeholder: target.list ? `For example: “${examples[target.list] ?? examples.today}”` : 'For example: “Good one, more like this” or “Too fast for him”',
+    save: async (text) => {
+      const r = target.list ? await ask({ type: 'wish', list: target.list, text }) : await ask({ type: 'note', videoId: target.videoId, comment: text });
+      if (!r?.ok) return false;
+      past = [...past, { at: new Date().toISOString(), text }];
+      show(past);
+      return true;
+    },
+  });
+  const ta = input.ta;
+  box.append(...input.nodes);
+  const open = btn(`📝 ${label}`, () => { box.hidden = !box.hidden; if (!box.hidden) ta.focus(); });
+  if (buttonInto) buttonInto.append(open); else wrap.append(open);
+  wrap.append(box, list);
+  return wrap;
 }
 
 // The standing instructions for the helper (Prompt tab and Settings): the list with Remove, and the input.

@@ -97,6 +97,7 @@ async function useAccount(info) {
 // --- parent mode: the parent's screens instead of his list, no rules, nothing counted ----------
 
 const PARENT_PAGE = 'parent/parent.html';
+// parentUntil: set only by versions before 0.8.9 (a timer); a session started then still ends on time.
 function parentMode(s) {
   const st = s.settings ?? {};
   return st.mode === 'parent' && (!st.parentUntil || st.parentUntil > Date.now());
@@ -484,6 +485,7 @@ async function handle(msg, sender) {
         if (typeof msg.liked === 'boolean') ev.liked = msg.liked;
         if (msg.comment) ev.comment = String(msg.comment).trim().slice(0, 2000);
         if (ev.liked === undefined && !ev.comment) return { ok: false };
+        if (ev.comment) ev.held = true;   // a note waits on the tablet until ↻ Update
         s.outbox.push(ev);
         s.notes ??= {};
         if (ev.comment) addNote(((s.notes.videos ??= {})[msg.videoId] ??= []), ev);
@@ -491,16 +493,16 @@ async function handle(msg, sender) {
         return { ok: true };
       }).then(async (r) => { if (r.ok) sync(); return r; });
 
-    case 'wish': // "message to the helper", or a note for the AI about a whole list (list: today | planned | history)
+    case 'wish': // "message to the helper", or a note for the AI about a whole list (list: today | planned | history | settings)
       return withState((s) => {
         const text = String(msg.text ?? '').trim().slice(0, 2000);
         if (!text) return { ok: false };
-        const list = ['today', 'planned', 'history'].includes(msg.list) ? msg.list : null;
-        const ev = newEvent('wish', { text, ...(list ? { list } : {}) });
+        const list = ['today', 'planned', 'history', 'settings'].includes(msg.list) ? msg.list : null;
+        const ev = { ...newEvent('wish', { text, ...(list ? { list } : {}) }), held: true };
         s.outbox.push(ev);
         if (list) addNote((((s.notes ??= {}).lists ??= {})[list] ??= []), ev);
         return { ok: true };
-      }).then(async (r) => { if (r.ok) await sync(); return r; });
+      });
 
     case 'account': // from the YouTube page: who is signed in
       if (!msg.loggedIn) return { ok: false };  // signed out: stay with the last account
@@ -509,10 +511,10 @@ async function handle(msg, sender) {
     case 'setMode': // settings page or parent screens, after the PIN
       if (!['kid', 'parent'].includes(msg.mode)) return { ok: false, error: 'Unknown mode.' };
       if (!fromExtensionPage(sender)) return { ok: false, error: `Refused: the request did not come from a KidTube page (${sender.url ?? sender.tab?.url ?? 'no address'}).` };
+      // Parent mode stays on until the parent switches back to kid mode (no timer since 0.8.9).
       return withState((s) => {
-        const minutes = Number(s.settings.parentMinutes ?? 60);
-        Object.assign(s.settings, { mode: msg.mode, parentUntil: msg.mode === 'parent' && minutes > 0 ? Date.now() + minutes * 60000 : 0 });
-        return { ok: true, until: s.settings.parentUntil, parentMode: parentMode(s) };
+        Object.assign(s.settings, { mode: msg.mode, parentUntil: 0 });
+        return { ok: true, until: 0, parentMode: parentMode(s) };
       });
 
     case 'openParent': // a YouTube home tab in parent mode becomes the parent's screens
@@ -562,7 +564,7 @@ async function handle(msg, sender) {
         if (msg.action === 'remove' && !/^[A-Za-z0-9-]{8,64}$/.test(msg.noteId ?? '')) return { ok: false };
         if (!['add', 'remove'].includes(msg.action)) return { ok: false };
         const ev = newEvent('prompt', { action: msg.action });
-        Object.assign(ev, msg.action === 'add' ? { noteId: ev.eventId, text } : { noteId: msg.noteId });
+        Object.assign(ev, msg.action === 'add' ? { noteId: ev.eventId, text, held: true } : { noteId: msg.noteId });
         s.outbox.push(ev);
         ((s.notes ??= {}).promptOps ??= []).push(ev);
         return { ok: true, noteId: ev.noteId };
@@ -588,7 +590,7 @@ async function handle(msg, sender) {
         if (!parentMode(s)) return { ok: false };
         const text = String(msg.text ?? '').trim().slice(0, 2000);
         if (!text || !CONTEXT_DOCS.includes(msg.doc)) return { ok: false };
-        const ev = newEvent('context', { doc: msg.doc, text });
+        const ev = { ...newEvent('context', { doc: msg.doc, text }), held: true };
         s.outbox.push(ev);
         ((s.notes ??= {}).contextNotes ??= []).push(ev);
         s.notes.contextNotes = s.notes.contextNotes.slice(-100);
@@ -615,7 +617,8 @@ async function handle(msg, sender) {
     case 'settingsBackup': // content/backup.js on the install page: take the copy back, or refresh it
       return settingsBackup(sender, msg.saved);
 
-    case 'sync':
+    case 'sync': // notes: true = Settings → Update now, which also sends the notes waiting for it
+      if (msg.notes && fromExtensionPage(sender)) await releaseNotes();
       return sync();
 
     case 'checkUpdate':
@@ -1040,12 +1043,17 @@ async function pullPlan(repo, token, acct) {
 
 // Parent mode → Update. Sends what is waiting (notes, what he watched), then writes requests/run.json;
 // the server checks every minute and runs the helper (agent/poll.sh), at most a few times a day.
+// Notes for the AI wait on the tablet (held) until the parent taps ↻ Update; then they all go together,
+// and the server's notes agent (agent/notes.sh) reads them within a minute.
+async function releaseNotes() {
+  await withState((s) => { for (const e of s.outbox) delete e.held; });
+}
+
 async function requestRun() {
-  const ok = await withState((s) => parentMode(s));
-  if (!ok) return { ok: false, error: 'Parent mode is off.' };
   const { settings = {} } = await chrome.storage.local.get('settings');
   if (!settings.token) return { ok: false, error: 'Needs the GitHub token (Settings → Connection).' };
   const repo = settings.repo || DEFAULT_REPO;
+  await releaseNotes();
   await sync();
   const left = await withState((s) => s.outbox.length);
   if (left) return { ok: false, error: 'Could not send your notes to GitHub yet. Check the connection and try again.' };
@@ -1065,12 +1073,14 @@ async function requestRun() {
 }
 
 // What parent mode shows about the latest run asked for: waiting for the server, running, done, failed.
+// held: notes on this tablet that ↻ Update hasn't sent yet.
 function runView(s) {
   const req = s.data.runRequest ?? null;
   const st = s.data.runStatus ?? null;
-  if (req && st?.requestId !== req.id) return { state: 'queued', at: req.at, message: 'Asked. The server starts it within a minute or two.' };
-  if (!st) return { state: 'none' };
-  return { state: st.state, at: st.finishedAt ?? st.startedAt, message: st.message ?? '' };
+  const held = s.outbox.filter((e) => e.held).length;
+  if (req && st?.requestId !== req.id) return { state: 'queued', at: req.at, message: 'Asked. The server starts it within a minute or two.', held };
+  if (!st) return { state: 'none', held };
+  return { state: st.state, at: st.finishedAt ?? st.startedAt, message: st.message ?? '', held };
 }
 
 // Reads a JSON file with its sha (null when it doesn't exist yet).
@@ -1129,7 +1139,9 @@ async function uploadLocalConfig() {
 
 // Writes queued events into activity/YYYY-MM-DD.json, de-duplicated by eventId (PLAN.md §3.3).
 async function flushOutbox(repo, token) {
-  const { outbox = [], settings = {}, data = {}, localConfig } = await chrome.storage.local.get(['outbox', 'settings', 'data', 'localConfig']);
+  const all = (await chrome.storage.local.get('outbox')).outbox ?? [];
+  const outbox = all.filter((e) => !e.held);   // notes wait for ↻ Update
+  const { settings = {}, data = {}, localConfig } = await chrome.storage.local.get(['settings', 'data', 'localConfig']);
   if (!outbox.length) return;
   if (!token) throw new Error('no token; events kept on the tablet');
   const { config, queue } = await effective({ data, settings, localConfig });

@@ -51,7 +51,7 @@ test('plan changes need parent mode', async () => {
 
 test('parent mode: YouTube home opens the parent screens, any video plays, nothing is counted', async () => {
   assert.equal((await fromPage({ type: 'setMode', mode: 'parent' })).ok, true);
-  assert.ok(fake.store.settings.parentUntil > Date.now());
+  assert.equal(fake.store.settings.parentUntil, 0);   // stays on until the parent leaves (no timer since 0.8.9)
   assert.equal(await navigate('https://m.youtube.com/'), 'ext://parent/parent.html');
   assert.equal(await navigate('https://m.youtube.com/watch?v=dQw4w9WgXcQ'), 'https://m.youtube.com/watch?v=dQw4w9WgXcQ');
   assert.equal((await send({ type: 'tick', videoId: 'dQw4w9WgXcQ', seconds: 10 })).action, 'none');
@@ -221,4 +221,67 @@ test('account email from YouTube’s account switcher: the one next to the selec
   assert.equal(accountKey({ email: 'A@B.com' }), 'a@b.com');
   assert.equal(accountKey({ datasyncId: 'xyz||' }), 'yt:xyz');
   assert.equal(accountKey({}), null);
+});
+
+test('parent mode has no timer: still on hours later, until the parent switches to kid mode', async () => {
+  const realNow = Date.now;
+  try {
+    assert.equal((await fromPage({ type: 'setMode', mode: 'parent' })).ok, true);
+    Date.now = () => realNow() + 5 * 3600 * 1000;
+    assert.equal((await fromPage({ type: 'parentData' })).parentMode, true);
+  } finally { Date.now = realNow; }
+  assert.equal((await fromPage({ type: 'setMode', mode: 'kid' })).ok, true);
+  assert.equal((await fromPage({ type: 'parentData' })).parentMode, false);
+  await fromPage({ type: 'setMode', mode: 'parent' });
+});
+
+test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and the run request after them', async () => {
+  // A small fake of GitHub's contents API: what the tablet writes.
+  const files = {}, puts = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    const m = String(url).match(/api\.github\.com\/repos\/[^/]+\/[^/]+\/contents\/(.+)$/);
+    if (!m) return realFetch(url, init);
+    const path = decodeURIComponent(m[1]);
+    if (init.method === 'PUT') {
+      const body = JSON.parse(init.body);
+      files[path] = { json: JSON.parse(Buffer.from(body.content, 'base64').toString('utf8')), sha: `sha-${puts.length}` };
+      puts.push(path);
+      return { ok: true, status: 200, json: async () => ({}) };
+    }
+    if (!files[path]) return { ok: false, status: 404, json: async () => ({}), headers: { get: () => null } };
+    return { ok: true, status: 200, json: async () => ({ sha: files[path].sha, content: Buffer.from(JSON.stringify(files[path].json)).toString('base64') }) };
+  };
+  try {
+    fake.store.settings = { ...fake.store.settings, token: 'ghp_test', repo: 'me/kidtube-data' };
+    fake.store.outbox = [];
+    assert.equal((await fromPage({ type: 'wish', list: 'settings', text: 'Open parent mode on the Planned tab' })).ok, true);
+    assert.equal((await fromPage({ type: 'note', videoId: ids[0], comment: 'Too fast' })).ok, true);
+    assert.equal((await fromPage({ type: 'note', videoId: ids[1], liked: true })).ok, true);   // a 👍 is not a note: it goes at once
+    assert.equal((await fromPage({ type: 'parentData' })).lists.settings.at(-1).text, 'Open parent mode on the Planned tab');
+    assert.equal((await fromPage({ type: 'runStatus' })).held, 2);
+    await fromPage({ type: 'sync' });   // an ordinary sync (after a video, on open) leaves the notes
+    const sent = () => Object.entries(files).filter(([p]) => p.startsWith('activity/')).flatMap(([, f]) => f.json.events);
+    assert.deepEqual(sent().map((e) => e.type), ['parentNote']);
+    assert.equal(sent()[0].liked, true);
+    assert.equal(fake.store.outbox.length, 2);
+
+    const r = await fromPage({ type: 'runHelper' });   // ↻ Update
+    assert.equal(r.ok, true);
+    assert.equal(fake.store.outbox.length, 0);
+    const notes = sent().filter((e) => e.type === 'wish' || e.comment);
+    assert.deepEqual(notes.map((e) => e.text ?? e.comment).sort(), ['Open parent mode on the Planned tab', 'Too fast']);
+    assert.ok(notes.every((e) => !('held' in e)));     // the tablet's own flag never reaches GitHub
+    assert.equal(notes.find((e) => e.type === 'wish').list, 'settings');
+    assert.equal(puts.at(-1), 'requests/run.json');    // the request goes after the notes
+    assert.equal((await fromPage({ type: 'runStatus' })).held, 0);
+
+    // Settings → Update now (sync with notes: true) also sends them.
+    await fromPage({ type: 'wish', text: 'More Russian' });
+    await fromPage({ type: 'sync', notes: true });
+    assert.ok(sent().some((e) => e.text === 'More Russian'));
+  } finally {
+    globalThis.fetch = realFetch;
+    fake.store.settings = { ...fake.store.settings, token: '' };
+  }
 });

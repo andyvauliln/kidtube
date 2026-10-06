@@ -30,7 +30,8 @@ export function applyActivity(videos, events, { minSecondsBeforeLeave = 120 } = 
       if (v) (v.quiz ??= []).push({ quizId: e.quizId, result: e.result, attempts: e.attempts, at: e.at });
       news.quiz.push({ videoId: e.videoId, title: v?.title, quizId: e.quizId, result: e.result, attempts: e.attempts, answers: e.answers, answeredBy: e.answeredBy });
     } else if (e.type === 'wish') {
-      news.wishes.push({ at: e.at, text: e.text, ...(e.list ? { aboutList: e.list } : {}) });
+      // Notes from Settings are about the app: the notes agent (agent/notes.sh) handles them, not the helper.
+      if (e.list !== 'settings') news.wishes.push({ at: e.at, text: e.text, ...(e.list ? { aboutList: e.list } : {}) });
     } else if (e.type === 'plan') {
       // The parent changed the plan on the tablet (parent mode): it already works there, and wins here.
       if (v && PLAN_FIELDS[e.action]) {

@@ -16,6 +16,7 @@ Cron starts `agent/daily.sh` at 03:30 UTC. It runs **Claude Code (Opus 5.5, effo
 - It plans from the context documents in `kidtube-data` (`context/`: kid, strategy, math, letters, world) and the notes you add in parent mode → Context.
 - `agent/runlog.mjs` adds each run (time, turns, cost) to `runs.json`, shown in parent mode → Prompt.
 - **↻ Update** in parent mode runs it on request: `agent/poll.sh` (crontab, every minute) sees `requests/run.json`, at most 6 a day (`onDemandPerDay`), status in `run-status.json`.
+- **The parent's notes** go first to the notes agent (`agent/NOTES.md`, Claude Code in its own checkout). It changes the app or the helper, releases, or runs the helper; `agent/notes.mjs` finds new notes without AI.
 - If Claude can't run (logged out, out of usage) and nothing was saved that day, the old program `agent/run.mjs` runs the same steps with OpenRouter text models (it does not use the context documents, subjects or spares yet).
 
 Settings in `config.json`:

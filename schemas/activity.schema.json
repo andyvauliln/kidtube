@@ -323,7 +323,8 @@
                     "today",
                     "planned",
                     "history",
-                    "prompt"
+                    "prompt",
+                    "settings"
                   ],
                   "description": "a parent's note for the AI about this list (parent mode)"
                 }
