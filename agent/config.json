@@ -11,7 +11,7 @@
   "dataRepo": "andyvauliln/kidtube-data",
   "dataDir": "~/.local/share/kidtube/kidtube-data",
   "stateDir": "~/.local/share/kidtube/state",
-  "profiles": [],
+  "profiles": ["kidtube/johnnypitt.ind", "kidtube/*"],
   "profilesNote": "Which profiles the helper runs, one after another: \"kidtube/<folder>\" (a folder in the data repo), \"kidtube/*\" (every folder with a profile.json), or {\"path\": \"kidtube/x\", \"defaults\": {...}} with its own defaults. Empty: the old layout, one child at the root of the repo. See agent/lib/profile.mjs.",
   "apps": {
     "kidtube": {
