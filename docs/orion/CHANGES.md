@@ -2,6 +2,14 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.9.0 (2026-10-06)
+
+- **Profiles: one per child (YouTube account).** In parent mode, tap the account at the top → **Profiles**. Switch to another email, or add one. A new email starts empty: its own lists, history, settings, notes, context documents and helper.
+- After a switch, Google asks which account YouTube should use: pick the same email. If it doesn't ask, tap your picture in YouTube → Switch account.
+- The PIN, parent mode and the GitHub key are the same for every profile, so you stay in parent mode after a switch.
+- Settings shows this profile's folder in the data repo (for example `kidtube/johnnypitt.ind/`).
+- To check on the iPad: that Google's account page opens from Profiles and comes back to YouTube.
+
 ## 0.8.9 (2026-10-06)
 
 - **Notes for the AI wait on the iPad until you tap ↻ Update.** The button shows how many are waiting, for example ↻ Update (3). Then they all go together.
