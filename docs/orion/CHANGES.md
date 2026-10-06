@@ -2,6 +2,12 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.9.1 (2026-10-06)
+
+- **Notes don't pile up any more.** A note stays in its list while it waits for ↻ Update and while the AI works on it. Once the AI has worked on it, it is deleted from the iPad. Tap the status next to ↻ Update to read what the AI did.
+- If the AI couldn't finish, your notes stay so you can send them again.
+- Old notes from earlier versions are cleared once.
+
 ## 0.9.0 (2026-10-06)
 
 - **Profiles: one per child (YouTube account).** In parent mode, tap the account at the top → **Profiles**. Switch to another email, or add one. A new email starts empty: its own lists, history, settings, notes, context documents and helper.
