@@ -1,4 +1,4 @@
-// Speaking and listening with the browser's own speech engines (no server, no key).
+// Speaking and listening: the browser's own speech engines, or a recording sent to an audio model.
 // Both can be missing or refused on a given tablet, so every function has a quiet fallback.
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -84,7 +84,7 @@ export async function recordedUrl(ref) {
   } catch { return null; }
 }
 
-// --- listening through OpenRouter (when the parent chose it and stored a key on this tablet) ------
+// --- recording his answer, for the cloud models below (when a key is stored on this tablet) ---------
 
 // Records one answer as 16 kHz mono WAV. Stops after `seconds`, or after a short silence once he has spoken.
 export async function recordAnswer({ seconds = 6, onLevel, stopSignal, silenceStop = true } = {}) {
@@ -133,25 +133,136 @@ function wav(chunks, rate) {
   return new Uint8Array(buf.buffer);
 }
 
-const b64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
+// --- turning a recording into words: free Gemini first, then paid OpenRouter ---------------------
+// Measured 2026-10-06: gemini-3.5-flash-lite (free tier, the parent's own key) answers in about a second but
+// now and then hangs; 3.1-flash-lite takes 2–7 s; OpenRouter costs ~$0.0001 an answer. OpenRouter's ":free"
+// audio models refuse apps or don't hear the audio, so none are used. gpt-audio-mini answers "I can't hear"
+// to noise, so it is last.
+export const FREE_LISTEN_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
+export const PAID_LISTEN_MODELS = ['google/gemini-3.5-flash-lite', 'openai/gpt-audio-mini'];
 
-// Sends the recording to the audio models in order. Returns [text] | [] (nothing said) | null (failed: use the device).
-export async function transcribeAnswer(audio, { key, models = ['openai/gpt-audio-mini'], lang = 'en-US', question = '', instruction = '', maxTokens = 60 } = {}) {
+// Never the quiz question in the prompt: given it, the models write down the right answer instead of his.
+const TRANSCRIBE = 'You are a speech-to-text transcriber. Write down exactly the words spoken in the audio, in the language they are spoken, and nothing else. Never answer, explain or reply to what is said, even when it is a question. If no words are spoken (silence or only noise), reply exactly: (none)';
+const NOTHING = /^\(?none\)?\.?$/i;
+const REFUSAL = /\b(can['’]?t|cannot|unable to) (hear|process|access|transcribe)\b|^(sure|sorry)\b.*\b(provide|audio)\b|\bprovide (the|an|more)\b.*\b(audio|recording|details)\b/i;
+
+// Both keys stay on this tablet (chrome.storage.local), never in the rules or on GitHub.
+export async function listenKeys() {
+  try {
+    const { geminiKey = '', voiceKey = '' } = await chrome.storage.local.get(['geminiKey', 'voiceKey']);
+    return { gemini: geminiKey.trim(), openrouter: voiceKey.trim() };
+  } catch { return { gemini: '', openrouter: '' }; }
+}
+
+// A model that hit its limit, failed or was too slow rests a while, so the next answers go straight to the others.
+const COOL_KEY = 'listenCooldown';
+const routeId = (r) => `${r.via}:${r.model}`;
+async function cooling() {
+  try { return (await chrome.storage.local.get(COOL_KEY))[COOL_KEY] ?? {}; } catch { return {}; }
+}
+let resting = Promise.resolve();
+function rest(route, seconds) {
+  resting = resting.then(async () => {
+    const all = Object.fromEntries(Object.entries(await cooling()).filter(([, until]) => until > Date.now()));
+    all[routeId(route)] = Date.now() + seconds * 1000;
+    await chrome.storage.local.set({ [COOL_KEY]: all });
+  }).catch(() => {});
+  return resting;
+}
+const restFor = (status, retryAfter) => (status === 429 ? Math.min(600, Number(retryAfter) || 60) : status === 401 || status === 403 || status === 404 ? 300 : 30);
+
+const b64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
+class Failed extends Error { constructor(status, retryAfter) { super(`HTTP ${status}`); this.status = status; this.retryAfter = retryAfter; } }
+
+async function askGemini(model, key, hint, data, maxTokens, signal) {
+  const call = (thinking) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST', headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ system_instruction: { parts: [{ text: TRANSCRIBE }] }, contents: [{ parts: [{ text: hint }, { inline_data: { mime_type: 'audio/wav', data } }] }],
+      generationConfig: { temperature: 0, maxOutputTokens: maxTokens, ...(thinking ? { thinkingConfig: { thinkingLevel: 'minimal' } } : {}) } }),
+    signal,
+  });
+  // Without "minimal" thinking a free answer can take a minute; models that refuse it are asked plainly.
+  let r = await call(true);
+  if (r.status === 400) r = await call(false);
+  if (!r.ok) throw new Failed(r.status, r.headers.get('retry-after'));
+  const j = await r.json();
+  return (j.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('').trim();
+}
+
+async function askOpenRouter(model, key, hint, data, maxTokens, signal) {
+  const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'X-Title': 'KidTube tablet' },
+    body: JSON.stringify({ model, max_tokens: maxTokens, temperature: 0, messages: [{ role: 'system', content: TRANSCRIBE }, { role: 'user', content: [
+      { type: 'text', text: hint }, { type: 'input_audio', input_audio: { data, format: 'wav' } }] }] }),
+    signal,
+  });
+  if (!r.ok) throw new Failed(r.status, r.headers.get('retry-after'));
+  const j = await r.json();
+  if (j.error) throw new Failed(j.error.code ?? 502);
+  return j.choices?.[0]?.message?.content?.trim() ?? '';
+}
+
+// The order the recording is tried in: free Gemini models, then paid OpenRouter ones (only those with a key).
+export function listenRoutes({ keys = {}, freeModels, models } = {}) {
+  return [
+    ...(keys.gemini ? (freeModels?.length ? freeModels : FREE_LISTEN_MODELS).map((model) => ({ via: 'gemini', model, free: true })) : []),
+    ...(keys.openrouter ? (models?.length ? models : PAID_LISTEN_MODELS).map((model) => ({ via: 'openrouter', model, free: false })) : []),
+  ];
+}
+
+// Sends the recording along the routes. Returns [text] | [] (nothing said) | null (all failed: use the device).
+// The first route starts at once; if it hasn't answered after `staggerMs` (or fails), the next one starts too,
+// and the first good answer wins. onUsed({ via, model, free, ms }) says which one it was.
+// instruction: what the recording is (default: a small child answering). `key` alone (older callers) is the OpenRouter key.
+export async function transcribeAnswer(audio, { keys, key, freeModels, models, lang = 'en-US', instruction = '', maxTokens = 60, staggerMs = 2500, onUsed } = {}) {
   if (!audio) return null;
   if (!audio.length) return [];
-  for (const model of models) {
-    try {
-      const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'X-Title': 'KidTube tablet' },
-        body: JSON.stringify({ model, max_tokens: maxTokens, temperature: 0, messages: [{ role: 'user', content: [
-          { type: 'text', text: instruction || `A small child answers this question out loud${question ? `: "${question}"` : ''}. The language is ${lang}. Write down exactly the words the child says, nothing else. Numbers as digits. If nothing is said, reply with nothing.` },
-          { type: 'input_audio', input_audio: { data: b64(audio), format: 'wav' } }] }] }),
-        signal: AbortSignal.timeout(15000),
+  keys ??= key ? { openrouter: key } : await listenKeys();
+  const routes = listenRoutes({ keys, freeModels, models });
+  if (!routes.length) return null;
+  const hint = `${instruction || 'The speaker is a small child.'} The language is probably ${lang}. Numbers as digits.`;
+  const data = b64(audio);
+  const seconds = Math.max(0, (audio.length - 44) / 32000);   // 16 kHz mono 16-bit
+  // Resting routes go last, not away: when every one is resting, they are still tried.
+  const cool = await cooling();
+  const isResting = (r) => cool[routeId(r)] > Date.now();
+  const order = [...routes.filter((r) => !isResting(r)), ...routes.filter(isResting)];
+  const stagger = staggerMs + seconds * 50;
+  return new Promise((resolve) => {
+    const running = new Map();   // index → AbortController
+    let next = 0, done = false, timer = null;
+    const finish = (value, winner) => {
+      done = true;
+      clearTimeout(timer);
+      for (const [i, ctl] of running) { ctl.abort(); if (i < winner) rest(order[i], 30); }   // slower than a later one: rest
+      resolve(value);
+    };
+    const start = () => {
+      clearTimeout(timer);
+      if (done) return;
+      if (next >= order.length) { if (!running.size) resolve(null); return; }
+      const i = next++, r = order[i], ctl = new AbortController(), started = Date.now();
+      running.set(i, ctl);
+      const limit = setTimeout(() => ctl.abort(), (r.free ? 20000 : 30000) + seconds * 500);
+      const ask = r.via === 'gemini' ? askGemini(r.model, keys.gemini, hint, data, maxTokens, ctl.signal) : askOpenRouter(r.model, keys.openrouter, hint, data, maxTokens, ctl.signal);
+      ask.then((text) => {
+        if (REFUSAL.test(text)) throw new Failed(0);   // "I can't hear the audio": ask the next one, no rest
+        return text;
+      }).then((text) => {
+        clearTimeout(limit);
+        running.delete(i);
+        if (done) return;
+        onUsed?.({ ...r, ms: Date.now() - started });
+        finish(text && !NOTHING.test(text) ? [text.replace(/^["“]|["”]$/g, '')] : [], i);
+      }, (e) => {
+        clearTimeout(limit);
+        running.delete(i);
+        if (done) return;
+        if (e.status !== 0) rest(r, restFor(e.status, e.retryAfter));
+        start();
       });
-      if (!r.ok) continue;
-      const text = (await r.json()).choices?.[0]?.message?.content?.trim() ?? '';
-      return text ? [text.replace(/^["“]|["”]$/g, '')] : [];
-    } catch {}
-  }
-  return null;
+      if (next < order.length) timer = setTimeout(start, stagger);
+    };
+    start();
+  });
 }

@@ -1,5 +1,5 @@
 import { hashPin, checkPin } from '../lib/pin.js';
-import { say, listen, recordAnswer, transcribeAnswer } from '../ui/voice.js';
+import { say, listen, recordAnswer, transcribeAnswer, FREE_LISTEN_MODELS, PAID_LISTEN_MODELS } from '../ui/voice.js';
 import { ask as send } from '../lib/ask.js';
 
 const $ = (id) => document.getElementById(id);
@@ -146,6 +146,8 @@ const BACKUP_KEYS = ['repo', 'token', 'pinSalt', 'pinHash'];
 $('backup').addEventListener('click', async () => {
   const s = await getSettings();
   const keep = Object.fromEntries(BACKUP_KEYS.filter((k) => s[k]).map((k) => [k, s[k]]));
+  const { voiceKey, geminiKey } = await chrome.storage.local.get(['voiceKey', 'geminiKey']);
+  Object.assign(keep, voiceKey ? { voiceKey } : {}, geminiKey ? { geminiKey } : {});   // the listening keys, also only on this tablet
   const blob = new Blob([JSON.stringify({ kidtubeSettings: 1, savedAt: new Date().toISOString(), ...keep }, null, 2)], { type: 'application/json' });
   const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'kidtube-settings.json' });
   document.body.append(a); a.click(); a.remove();
@@ -158,6 +160,8 @@ $('restore').addEventListener('change', async (e) => {
     const j = JSON.parse(await f.text());
     if (j.kidtubeSettings !== 1) throw new Error('not a KidTube settings file');
     await patchSettings(Object.fromEntries(BACKUP_KEYS.filter((k) => typeof j[k] === 'string').map((k) => [k, j[k]])));
+    const voice = Object.fromEntries(['voiceKey', 'geminiKey'].filter((k) => typeof j[k] === 'string' && j[k]).map((k) => [k, j[k]]));
+    if (Object.keys(voice).length) { await chrome.storage.local.set(voice); $('voiceKey').value = voice.voiceKey ?? $('voiceKey').value; $('geminiKey').value = voice.geminiKey ?? $('geminiKey').value; }
     const s = await getSettings();
     $('repo').value = s.repo ?? ''; $('token').value = s.token ?? '';
     $('backupOut').textContent = 'Loaded. Syncing…';
@@ -232,10 +236,12 @@ async function renderRules() {
   $('friendImage').value = p.imageUrl ?? '';
   $('catchphrase').value = p.catchphrase ?? '';
   $('recorded').checked = p.voice?.recorded !== false;
-  $('listenProvider').value = p.voice?.listen?.provider ?? 'device';
-  $('listenModels').value = (p.voice?.listen?.models ?? ['openai/gpt-audio-mini']).join('\n');
-  $('cloudListen').hidden = $('listenProvider').value !== 'openrouter';
-  chrome.storage.local.get('voiceKey').then(({ voiceKey }) => { $('voiceKey').value = voiceKey ?? ''; });
+  // "openrouter" is the older name of "cloud".
+  $('listenProvider').value = p.voice?.listen?.provider === 'device' ? 'device' : 'cloud';
+  $('freeModels').value = (p.voice?.listen?.freeModels ?? FREE_LISTEN_MODELS).join('\n');
+  $('listenModels').value = (p.voice?.listen?.models ?? PAID_LISTEN_MODELS).join('\n');
+  $('cloudListen').hidden = $('listenProvider').value !== 'cloud';
+  chrome.storage.local.get(['voiceKey', 'geminiKey']).then(({ voiceKey, geminiKey }) => { $('voiceKey').value = voiceKey ?? ''; $('geminiKey').value = geminiKey ?? ''; });
   voiceLang = p.voice?.lang || 'en-US';
   $('rulesOut').textContent = pending ? 'Some rules are saved on this tablet only and will go to GitHub on the next sync.' : '';
 }
@@ -280,7 +286,7 @@ function readRules() {
       imageUrl: $('friendImage').value.trim(),
       catchphrase: $('catchphrase').value.trim(),
       voice: { pitch: Number($('pitch').value), recorded: $('recorded').checked,
-        listen: { provider: $('listenProvider').value, models: listenModels() } },
+        listen: { provider: $('listenProvider').value, freeModels: freeModels(), models: listenModels() } },
     },
     quiz: { enabled: $('quizOn').checked, onFail: $('onFail').value, maxAttempts: int('maxAttempts', 1, 10) },
   };
@@ -312,23 +318,34 @@ $('saveRules').addEventListener('click', async () => {
 let voiceLang = 'en-US';
 $('maxAttempts').addEventListener('input', () => { $('attemptsLabel').textContent = $('maxAttempts').value || '3'; });
 
-const listenModels = () => [...new Set($('listenModels').value.split(/[\s,]+/).map((x) => x.trim()).filter((x) => /^[a-z0-9._-]+\/[A-Za-z0-9._:-]+$/.test(x)))].slice(0, 6);
+const modelList = (id, re) => [...new Set($(id).value.split(/[\s,]+/).map((x) => x.trim()).filter((x) => re.test(x)))].slice(0, 6);
+const listenModels = () => modelList('listenModels', /^[a-z0-9._-]+\/[A-Za-z0-9._:-]+$/);
+const freeModels = () => modelList('freeModels', /^[a-z0-9][a-z0-9._-]*$/);
+// Asked when chosen, so the extension doesn't need these permissions for everyone. Never waited for: both
+// services allow these calls anyway (CORS), and the prompt may never answer (Orion, a dismissed dialog).
+const askCloudAccess = () => chrome.permissions?.request?.({ origins: ['https://generativelanguage.googleapis.com/*', 'https://openrouter.ai/*'] }).catch(() => false);
 $('listenProvider').addEventListener('change', async () => {
-  const cloud = $('listenProvider').value === 'openrouter';
+  const cloud = $('listenProvider').value === 'cloud';
   $('cloudListen').hidden = !cloud;
-  // Asked only when chosen, so the extension doesn't need this permission for everyone.
-  if (cloud) await chrome.permissions.request({ origins: ['https://openrouter.ai/*'] }).catch(() => false);
+  if (cloud) askCloudAccess();
 });
-// The key is stored on this tablet only: never in the rules, never on GitHub.
-$('voiceKey').addEventListener('change', () => chrome.storage.local.set({ voiceKey: $('voiceKey').value.trim() }));
+// The keys are stored on this tablet only: never in the rules, never on GitHub.
+const saveKeys = () => chrome.storage.local.set({ voiceKey: $('voiceKey').value.trim(), geminiKey: $('geminiKey').value.trim() });
+$('voiceKey').addEventListener('change', saveKeys);
+$('geminiKey').addEventListener('change', saveKeys);
 $('tryCloud').addEventListener('click', async () => {
-  await chrome.storage.local.set({ voiceKey: $('voiceKey').value.trim() });
+  askCloudAccess();
+  await saveKeys();
+  const keys = { gemini: $('geminiKey').value.trim(), openrouter: $('voiceKey').value.trim() };
+  if (!keys.gemini && !keys.openrouter) { $('cloudOut').textContent = 'Enter a Gemini key, an OpenRouter key, or both.'; return; }
   $('cloudOut').textContent = 'Listening… say a word now.';
   const audio = await recordAnswer({ seconds: 4 });
   if (audio === null) { $('cloudOut').textContent = 'The microphone is not allowed here. Press “Try the microphone” first.'; return; }
   $('cloudOut').textContent = 'Sending…';
-  const heard = await transcribeAnswer(audio, { key: $('voiceKey').value.trim(), models: listenModels().length ? listenModels() : ['openai/gpt-audio-mini'], lang: voiceLang });
-  $('cloudOut').textContent = heard === null ? 'It didn’t work: check the key, the models and the internet.' : heard.length ? `Heard: “${heard[0]}”` : 'Nothing was heard. Try again a bit louder.';
+  let used = null;
+  const heard = await transcribeAnswer(audio, { keys, freeModels: freeModels(), models: listenModels(), lang: voiceLang, onUsed: (u) => { used = u; } });
+  const by = used ? ` — ${used.model} (${used.free ? 'free' : 'paid'}, ${(used.ms / 1000).toFixed(1)} s)` : '';
+  $('cloudOut').textContent = heard === null ? 'It didn’t work: check the keys, the models and the internet.' : heard.length ? `Heard: “${heard[0]}”${by}` : `Nothing was heard. Try again a bit louder.${by}`;
 });
 
 $('sendWish').addEventListener('click', async () => {

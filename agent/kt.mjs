@@ -123,7 +123,7 @@ const commands = {
       rules: { minutesPerDay: pc.time?.maxMinutesPerDay, hours: pc.time?.allowed, maxVideoMinutes: Math.round((pc.maxVideoDurationSeconds ?? 0) / 60), minVideoMinutes: Math.round((pc.minVideoDurationSeconds ?? 0) / 60),
         queueSize: pc.queueSize, requiredFirst: pc.requiredFirst ?? 'first', questionsOn: !!pc.quiz?.enabled, friend: pc.presenter?.name, blockedChannels: pc.blockedChannelIds ?? [] },
       defaults: { ...D, videosPerDay: pc.queueSize ?? D.videosPerDay }, videoCounts: counts, newIdeas: ideas(s),
-      geminiLeftToday: gem.left(), voices: { speak: config.voices?.speak?.provider ?? 'device', listen: pc.presenter?.voice?.listen?.provider ?? 'device' },
+      geminiLeftToday: gem.left(), voices: { speak: config.voices?.speak?.provider ?? 'device', listen: pc.presenter?.voice?.listen?.provider ?? 'cloud' },
       wishesHistory: (helper.wishes ?? []).slice(-30), noticed: helper.noticed ?? '', studyPlan: helper.plan ?? '', studyPlanAt: helper.planAt ?? null, recentDiary: (memory.journal ?? []).slice(-5),
       quizTemplates: templateCatalog().map((t) => ({ id: t.id, answer: t.answer, howItWorks: t.howItWorks, params: t.params })) });
   },

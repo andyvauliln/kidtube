@@ -98,7 +98,7 @@ Every change works on the tablet at once and is saved as a `plan` event in `acti
 | Data, YouTube search, checks, saving | `agent/kt.mjs` (commands Claude calls) | plain code, same result every time |
 | Watch videos: transcripts, questions about a video | **Gemini** (free tier) | limits in `agent/config.json` → `transcripts` |
 | Record the friend's voice | **Gemini** speech (free) by default; OpenRouter (paid) or off | `voices.speak.provider`: `device`, `gemini` or `openrouter` |
-| Hear his answers | the tablet's own recognition, or OpenRouter (paid, key on the tablet) | parent page → Talking friend → Hearing his answers |
+| Hear his answers | recorded and sent: free Gemini first, then paid OpenRouter (keys on the tablet); or the tablet's own recognition | parent page → Talking friend → Hearing his answers |
 | Backup if Claude can't run | `agent/run.mjs`, the old fixed program with OpenRouter text models | `orchestrator.fallbackToNode`; `openrouter.mode`: `free-first`, `paid` or `specific` |
 
 ## The daily helper run
@@ -253,8 +253,8 @@ A busy model rests for 30 minutes. A paid model can be added as a last resort (`
 On the parent page, *Use the helper's recorded voice* turns playback off.
 
 **Hearing his answers.** Parent page → *Hearing his answers*:
-- *The tablet's own speech recognition* (default, free).
-- *OpenRouter audio model*: the tablet records his answer (it stops after a short silence) and sends it to the models listed, in order. The default is `openai/gpt-audio-mini`, about $0.00004 an answer. The key is typed on the parent page and stays on the tablet only; use a separate key with a small monthly limit. If it fails, the tablet's own recognition is used. The free audio model on OpenRouter heard nothing in a test, so the default is paid.
+- *Record and send* (default): the tablet records his answer (it stops after a short silence) and sends it to the free Gemini models first (`gemini-3.5-flash-lite`, then `gemini-3.1-flash-lite`, the parent's own Gemini API key, free tier), then to the paid OpenRouter ones (`google/gemini-3.5-flash-lite`, then `openai/gpt-audio-mini`, about $0.0001 an answer). If a model hasn't answered after about 2.5 s the next one starts too, and the first answer wins; a model that hits its limit, fails or is slow rests for a while (a 429 for its Retry-After, else 30 s–5 min), so the next answers skip it. Both keys are typed in Settings and stay on the tablet only (and in *Save settings to a file*). The quiz question is never sent: given it, the models wrote the right answer instead of his. If nothing works, or there is no key, the tablet's own recognition is used. On Gemini's free tier Google may use what is sent to improve its products. OpenRouter's free audio models were tried (2026-10-06): they refuse apps or don't hear the audio.
+- *The tablet's own speech recognition*.
 
 ## Where everything lives, and failures
 
@@ -292,7 +292,7 @@ Orion gets its own build of the same code, from the *Install in Orion* card on t
 | Feature | Quetta | Orion |
 | --- | --- | --- |
 | Other websites blocked | before the page loads (blocking rules) | sent back to his list right after it starts loading |
-| His spoken answers | the tablet's speech recognition | may be missing on iPad/iPhone: he types, or use *Hearing his answers → OpenRouter* |
+| His spoken answers | the tablet's speech recognition | may be missing on iPad/iPhone: *Record and send* (the default) doesn't need it; without keys he types |
 | Updates | automatic | manual: after "update orion", the parent page shows *Install the new version*; download the Orion .zip and install it again |
 | Keeping him in the browser | Family Link | Screen Time |
 

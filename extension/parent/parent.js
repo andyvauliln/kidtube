@@ -2,7 +2,7 @@
 // Changes go to the background (sw.js → planChange), which applies them on this tablet at once and logs them for the helper.
 import { ask } from '../lib/ask.js';
 import { checkPin } from '../lib/pin.js';
-import { say, listen, recordedUrl, recordAnswer, transcribeAnswer } from '../ui/voice.js';
+import { say, listen, recordedUrl, recordAnswer, transcribeAnswer, listenKeys } from '../ui/voice.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { renderMarkdown, promptSteps } from './markdown.js';
 
@@ -88,19 +88,19 @@ function micButton(ta) {
     if (dictating) return dictating.stop();
     const add = (text) => { text = text.trim(); if (text) { ta.value = (ta.value.trim() ? ta.value.trim() + ' ' : '') + text; ta.dispatchEvent(new Event('input')); } };
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const { voiceKey = '' } = await chrome.storage.local.get('voiceKey');
+    const keys = await listenKeys();
     b.classList.add('on');
     b.textContent = '⏹';
     const done = () => { dictating = null; b.classList.remove('on'); b.textContent = '🎤'; };
-    if (voiceKey) {
-      // Cloud: records until you tap ⏹ (at most 2 minutes), then writes it down.
+    if (keys.gemini || keys.openrouter) {
+      // Cloud: records until you tap ⏹ (at most 2 minutes), then writes it down (free Gemini first, then OpenRouter).
       const ctl = new AbortController();
       dictating = { stop: () => ctl.abort() };
       toast('Speak your note, then tap ⏹.');
       const audio = await recordAnswer({ seconds: 120, stopSignal: ctl.signal, silenceStop: false });
       b.textContent = '…';
-      const heard = audio ? await transcribeAnswer(audio, { key: voiceKey, models: ['openai/gpt-audio-mini', 'google/gemini-2.5-flash'], lang, maxTokens: 800,
-        instruction: 'A parent dictates a note about their child\'s videos and learning. Write down exactly what they say, with punctuation, in the language they speak. Nothing else.' }) : null;
+      const heard = audio ? await transcribeAnswer(audio, { keys, lang, maxTokens: 800,
+        instruction: 'A parent dictates a note about their child\'s videos and learning. Use punctuation.' }) : null;
       done();
       if (heard?.length) return add(heard[0]);
       if (heard === null && !SR) return toast('Could not write it down. Use the 🎤 on the iPad keyboard instead.');

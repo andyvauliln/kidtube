@@ -166,15 +166,20 @@
 
       <label for="listenProvider">Hearing his answers</label>
       <select id="listenProvider">
-        <option value="device">The tablet’s own speech recognition (free)</option>
-        <option value="openrouter">OpenRouter audio model (paid, very cheap, often more accurate)</option>
+        <option value="cloud">Record and send: free Gemini first, then paid OpenRouter (more accurate)</option>
+        <option value="device">The tablet’s own speech recognition</option>
       </select>
       <div id="cloudListen" hidden>
-        <label for="listenModels">Models, tried in order (one per line)</label>
-        <textarea id="listenModels" placeholder="openai/gpt-audio-mini"></textarea>
-        <label for="voiceKey">OpenRouter key for this tablet (stays on this tablet only)</label>
+        <p class="hint">His answer is recorded and sent to the first model that works: the free Gemini models, then the paid OpenRouter ones. A model that hits its limit rests a minute and the next one answers. If none work, the tablet’s own recognition is used. Both keys stay on this tablet only.</p>
+        <label for="geminiKey">Gemini API key (free tier, from aistudio.google.com)</label>
+        <input id="geminiKey" type="password" autocomplete="off" placeholder="AIza…">
+        <label for="freeModels">Free Gemini models, tried first, in order (one per line)</label>
+        <textarea id="freeModels" placeholder="gemini-3.5-flash-lite"></textarea>
+        <label for="voiceKey">OpenRouter key (paid, when the free ones fail)</label>
         <input id="voiceKey" type="password" autocomplete="off" placeholder="sk-or-v1-…">
-        <p class="hint">Make a separate key on openrouter.ai with a small monthly limit (for example $1): about $0.00004 per answer. If it fails, the tablet’s own recognition is used.</p>
+        <label for="listenModels">Paid OpenRouter models, tried next, in order (one per line)</label>
+        <textarea id="listenModels" placeholder="openai/gpt-audio-mini"></textarea>
+        <p class="hint">OpenRouter: make a separate key with a small monthly limit (for example $1); about $0.0001 per answer. On Gemini’s free tier Google may use what is sent to improve its products.</p>
         <button id="tryCloud">🎤 Try it: say a word</button>
         <p id="cloudOut" class="hint"></p>
       </div>

@@ -1,6 +1,6 @@
 // The talking friend: says the intro before a video, and after it says what we learned and asks the questions.
 // The service worker decides what comes next; this page only talks, listens and reports.
-import { say, listen, recordedUrl, recordAnswer, transcribeAnswer } from './voice.js';
+import { say, listen, recordedUrl, recordAnswer, transcribeAnswer, listenKeys } from './voice.js';
 import { createRig } from './rig.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { checkPin } from '../lib/pin.js';
@@ -155,10 +155,11 @@ function voiceAnswer(item, resolve) {
     $('heard').textContent = say_(item.lang).listening;
     const lang = item.lang || script.voice?.lang || 'en-US';
     let heard = null;
-    // Cloud listening (parent's choice, key stored on this tablet); the device's own recognition is the fallback.
-    if (script.listen?.provider === 'openrouter' && listenKey) {
-      heard = await transcribeAnswer(await recordAnswer({ seconds: script.listen.seconds ?? 6, onLevel: (l) => mic.style.setProperty('--level', l) }),
-        { key: listenKey, models: script.listen.models, lang, question: item.prompt });
+    // Recorded and sent (free Gemini first, then paid OpenRouter; keys stored on this tablet);
+    // the device's own recognition is the fallback, and the parent can choose it instead.
+    if (script.listen?.provider !== 'device' && (listenKey.gemini || listenKey.openrouter)) {
+      heard = await transcribeAnswer(await recordAnswer({ seconds: script.listen?.seconds ?? 6, onLevel: (l) => mic.style.setProperty('--level', l) }),
+        { keys: listenKey, freeModels: script.listen?.freeModels, models: script.listen?.models, lang });
     }
     if (heard === null) heard = await listen(lang);
     mic.classList.remove('on');
@@ -249,8 +250,8 @@ $('pinOk').onclick = async () => {
 };
 
 script = await send({ type: 'talk', videoId, mode });
-// The OpenRouter key for listening never leaves this tablet (the parent stores it on the parent page).
-const { voiceKey: listenKey = '' } = await chrome.storage.local.get('voiceKey');
+// The keys for listening never leave this tablet (the parent stores them in Settings).
+const listenKey = await listenKeys();
 setupFriend();
 if (!script.lines.length && !script.items.length) finish();
 // Browsers only let a page speak after a tap, so he taps the friend to start.

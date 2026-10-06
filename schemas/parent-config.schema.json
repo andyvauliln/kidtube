@@ -318,10 +318,20 @@
               "properties": {
                 "provider": {
                   "enum": [
+                    "cloud",
                     "device",
                     "openrouter"
                   ],
-                  "description": "device = the browser’s speech recognition; openrouter = recorded and sent to an audio model with the key stored on the tablet"
+                  "description": "cloud (default) = recorded and sent to the free Gemini models, then the paid OpenRouter ones, with keys stored on the tablet; device = the browser’s speech recognition; openrouter = older name of cloud"
+                },
+                "freeModels": {
+                  "type": "array",
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9._-]*$"
+                  },
+                  "maxItems": 6,
+                  "description": "Gemini API models (free tier), tried first, in order"
                 },
                 "models": {
                   "type": "array",
@@ -330,7 +340,7 @@
                     "pattern": "^[a-z0-9._-]+/[A-Za-z0-9._:-]+$"
                   },
                   "maxItems": 6,
-                  "description": "tried in order"
+                  "description": "OpenRouter models (paid), tried after the free ones, in order"
                 },
                 "seconds": {
                   "type": "integer",

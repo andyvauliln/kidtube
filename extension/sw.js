@@ -348,7 +348,7 @@ async function handle(msg, sender) {
         return {
           name, imageUrl: ch?.src ?? (p.imageUrl?.startsWith('https://') ? p.imageUrl : ''), svg: ch?.svg ?? '',
           catchphrase: p.catchphrase ?? '', catchphraseAudioRef: p.catchphraseAudioRef ?? null, phrases: p.phrases ?? {},
-          recorded: p.voice?.recorded !== false, listen: p.voice?.listen ?? { provider: 'device' },
+          recorded: p.voice?.recorded !== false, listen: p.voice?.listen ?? { provider: 'cloud' },
           voice: { ...(p.voice ?? {}), lang }, lang, title: v.title, lines,
           items: items.map((i) => ({ ...i, lang: fullLang(i.lang) ?? lang, supported: quizTypes.includes(i.type) })),
           maxAttempts: config.quiz?.maxAttempts ?? 3, onFail: config.quiz?.onFail ?? 'continue',
@@ -792,7 +792,7 @@ async function helperData(s) {
       requiredFirst: config.requiredFirst ?? 'off', minSecondsBeforeLeave: config.minSecondsBeforeLeave ?? 0, allowSkip: !!config.allowSkip,
       minVideoMinutes: Math.round((config.minVideoDurationSeconds ?? 0) / 60), maxVideoMinutes: Math.round((config.maxVideoDurationSeconds ?? 0) / 60),
       quiz: { enabled: !!config.quiz?.enabled, maxAttempts: config.quiz?.maxAttempts ?? 3, onFail: config.quiz?.onFail ?? 'continue' },
-      friend: { name: p.name || 'Zippy', intro: !!p.intro, outro: !!p.outro, recorded: p.voice?.recorded !== false, listen: p.voice?.listen?.provider ?? 'device' },
+      friend: { name: p.name || 'Zippy', intro: !!p.intro, outro: !!p.outro, recorded: p.voice?.recorded !== false, listen: p.voice?.listen?.provider ?? 'cloud' },
       blockSites: !!config.blockOutboundLinks,
     },
   };

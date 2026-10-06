@@ -52,7 +52,7 @@ Status in Orion, from Kagi's API support table (iOS/iPadOS column) and the iOS r
 | Talk screen opened as a tab page (`tabs.update` to `ui/talk.html`) | `sw.js:470` | ❓ Should work: extension pages render since 1.3.0 | Needs a test |
 | Friend's voice (`speechSynthesis`, mp3 via `<audio>`) | `ui/voice.js` | ✅ WebKit supports both after a tap | The friend screen already asks for a tap |
 | Recorded mp3s kept in Cache Storage | `sw.js:731`, `ui/voice.js` | ❓ Not documented | If it fails, the tablet speaks with its own voice (already the fallback) |
-| Speech recognition (`webkitSpeechRecognition`) | `ui/voice.js` | ❓ Probably missing on iOS (the install page already says so) | He types, or the parent picks *Hearing his answers → OpenRouter* |
+| Speech recognition (`webkitSpeechRecognition`) | `ui/voice.js` | ❓ Probably missing on iOS (the install page already says so) | *Record and send* (the default, with a Gemini or OpenRouter key) doesn't need it; else he types |
 | Recording for OpenRouter (`getUserMedia`, `AudioContext`) | `ui/voice.js` | ❓ Needs a test on an extension page | If it fails, he types |
 | `permissions.request` (OpenRouter) | `options/options.js:278` | ✅ Supported | |
 | PIN (`crypto.subtle` PBKDF2), time zones (`Intl`), `crypto.randomUUID` | `lib/` | ✅ WebKit | |
@@ -65,7 +65,7 @@ Status in Orion, from Kagi's API support table (iOS/iPadOS column) and the iOS r
 - Install: the install page tells the parent to download the .zip and install it with Orion's **+**.
 - The kid flow is the same as in Quetta, if the content scripts and iframes work: list, talking friend, video with covers, questions, locks, minutes.
 - Other websites: without blocking rules, the URL guard sends any page outside `allowedSiteDomains` back to the list. It's tested in `tests/orion.test.mjs` with a fake browser, not in Orion.
-- Hearing his answers falls back to typing, or to OpenRouter if the parent turns it on.
+- Hearing his answers: recorded and sent (free Gemini, then OpenRouter) when a key is set; else typing.
 - Updates: the parent page compares the installed version with `latest.json` and offers the new .zip.
 
 ## What can't work in Orion
@@ -76,7 +76,7 @@ Status in Orion, from Kagi's API support table (iOS/iPadOS column) and the iOS r
 | Stop him from switching KidTube off or removing it | Orion's extension settings live inside Orion. There's no lock and no MDM setting for Orion. MDM *Always On* exists only for Safari extensions. | **Guided Access** keeps him in Orion, but not out of Orion's menus. In Guided Access, a parent can draw over the area with the menu buttons to disable it. For a 4–5-year-old the risk is low; *Watched* and *activity* would show gaps. |
 | Sync while Orion is closed | iOS suspends apps in the background | Sync when he opens the list (see below) |
 | Update by itself (probably) | Store updates are documented, file installs aren't | Manual: a new .zip from the install page. Or publish KidTube unlisted on the Chrome Web Store (one-time 5 USD), install it in Orion from the store, and let Orion's store updates handle it. Store review applies, and iOS store updates need a test. |
-| Speech recognition (probably) | Not documented for Orion's iOS extension pages | Typing or OpenRouter |
+| Speech recognition (probably) | Not documented for Orion's iOS extension pages | Record and send (Gemini / OpenRouter), else typing |
 
 ## Two builds from one code (0.6.2)
 
