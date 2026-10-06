@@ -1,0 +1,150 @@
+// Pieces shared by the parent screens and the settings view: elements, buttons, the toast,
+// and the note-for-the-AI control (type or dictate, then add it, or add it and run the helper now).
+import { ask } from '../lib/ask.js';
+import { recordAnswer, transcribeAnswer, listenKeys } from '../ui/voice.js';
+
+// Set by the page: what to redraw after an undo, and after asking for a run (the header's run status).
+export const hooks = { afterUndo: async () => {}, afterRun: () => {} };
+
+export function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
+export function btn(text, onClick, cls = '') {
+  const b = el('button', cls, text);
+  b.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    b.disabled = true;
+    try { await onClick(b); } finally { b.disabled = false; }
+  });
+  return b;
+}
+
+// --- toast with undo (made on first use, so any page can show it) --------------------------------------
+let toastBox = null, toastText = null, toastUndo = null, toastTimer = null, undoFn = null;
+export function toast(text, undo) {
+  if (!toastBox) {
+    toastBox = el('div', 'toast');
+    toastText = el('span');
+    toastUndo = el('button', '', 'Undo');
+    toastUndo.addEventListener('click', async () => {
+      toastBox.hidden = true;
+      if (undoFn) { const fn = undoFn; undoFn = null; await fn(); await hooks.afterUndo(); }
+    });
+    toastBox.append(toastText, toastUndo);
+    document.body.append(toastBox);
+  }
+  toastText.textContent = text;
+  toastUndo.hidden = !undo;
+  undoFn = undo;
+  toastBox.hidden = false;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => { toastBox.hidden = true; }, undo ? 8000 : 3000);
+}
+
+// --- Update: run the helper now ---------------------------------------------------------------------
+// Your notes go to GitHub first; the server starts the helper within a minute or two (agent/poll.sh).
+// Sends every note waiting on any tab, then runs the helper. Returns false when it could not ask.
+export async function runNow() {
+  toast('Sending your notes and asking the helper to run…');
+  const res = await ask({ type: 'runHelper' });
+  if (!res?.ok) { toast(res?.error ?? 'Could not ask for a run.'); return false; }
+  toast('Asked. The helper starts within a minute or two, reads all your notes and takes about 10–30 minutes.');
+  hooks.afterRun();
+  return true;
+}
+
+// --- writing a note for the helper ------------------------------------------------------------------
+let dictating = null;   // the one recording in progress: { stop }
+function micButton(ta) {
+  const lang = navigator.language || 'en-US';
+  const b = btn('🎤', async () => {
+    if (dictating) return dictating.stop();
+    const add = (text) => { text = text.trim(); if (text) { ta.value = (ta.value.trim() ? ta.value.trim() + ' ' : '') + text; ta.dispatchEvent(new Event('input')); } };
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    const keys = await listenKeys();
+    b.classList.add('on');
+    b.textContent = '⏹';
+    const done = () => { dictating = null; b.classList.remove('on'); b.textContent = '🎤'; };
+    if (keys.gemini || keys.openrouter) {
+      // Cloud: records until you tap ⏹ (at most 2 minutes), then writes it down (free Gemini first, then OpenRouter).
+      const ctl = new AbortController();
+      dictating = { stop: () => ctl.abort() };
+      toast('Speak your note, then tap ⏹.');
+      const audio = await recordAnswer({ seconds: 120, stopSignal: ctl.signal, silenceStop: false });
+      b.textContent = '…';
+      const heard = audio ? await transcribeAnswer(audio, { keys, lang, maxTokens: 800,
+        instruction: 'A parent dictates a note about their child\'s videos and learning. Use punctuation.' }) : null;
+      done();
+      if (heard?.length) return add(heard[0]);
+      if (heard === null && !SR) return toast('Could not write it down. Use the 🎤 on the iPad keyboard instead.');
+      if (heard) return toast('Heard nothing.');
+    }
+    if (!SR) { done(); return toast('Dictation isn’t available here. Use the 🎤 on the iPad keyboard instead.'); }
+    // The device's own speech recognition: keeps listening until you tap ⏹.
+    const r = new SR();
+    r.lang = lang;
+    r.continuous = true;
+    r.interimResults = false;
+    dictating = { stop: () => { try { r.stop(); } catch {} } };
+    r.onresult = (e) => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) add(e.results[i][0].transcript); };
+    r.onerror = (e) => { if (e.error !== 'no-speech' && e.error !== 'aborted') toast('Dictation stopped. You can use the 🎤 on the iPad keyboard instead.'); };
+    r.onend = done;
+    try { r.start(); } catch { done(); toast('Dictation isn’t available here. Use the 🎤 on the iPad keyboard instead.'); }
+  }, 'small mic');
+  b.title = 'Dictate the note';
+  return b;
+}
+
+// textarea + 🎤 + "Add note" + "Add & ↻ Update". save(text) → true when saved.
+export function noteInput({ placeholder, value = '', onInput, save, saveLabel = 'Add note', failText = 'Could not save it. Is parent mode still on?' }) {
+  const ta = el('textarea');
+  ta.maxLength = 2000;
+  ta.placeholder = placeholder;
+  ta.value = value;
+  if (onInput) ta.addEventListener('input', () => onInput(ta.value));
+  const go = async (andRun) => {
+    if (dictating) dictating.stop();
+    const text = ta.value.trim();
+    if (!text) return andRun ? runNow() : undefined;
+    if (!(await save(text))) return toast(failText);
+    ta.value = '';
+    onInput?.('');
+    if (andRun) await runNow(); else toast('Saved. The helper reads it on its next run (or tap ↻ Update).');
+  };
+  const row = el('div', 'noterow');
+  const update = btn('Add & ↻ Update', () => go(true));
+  update.title = 'Save this note, then run the helper now with all your notes';
+  row.append(micButton(ta), btn(saveLabel, () => go(false), 'primary'), update);
+  return { ta, row, nodes: [ta, row] };
+}
+
+// The standing instructions for the helper (Prompt tab and Settings): the list with Remove, and the input.
+// onChange() redraws the page after one is added or removed.
+let promptDraft = '';
+export function promptNotesBox(notes, onChange) {
+  const list = el('ul', 'notes');
+  for (const n of notes) {
+    const li = el('li', 'pnote');
+    const text = el('span', '', n.text);
+    const meta = el('time', '', `${new Date(n.at).toLocaleDateString()}${n.pending ? ' · waiting for the next run' : ''}`);
+    li.append(meta, text, btn('Remove', async () => {
+      const r = await ask({ type: 'promptNote', action: 'remove', noteId: n.id });
+      if (!r?.ok) return toast('Could not remove it. Try again.');
+      toast('Removed. The helper stops following it from its next run.');
+      onChange();
+    }, 'small'));
+    list.append(li);
+  }
+  const input = noteInput({
+    placeholder: 'For example: “Every day one video about animals” · “Questions only in English” · “No videos longer than 8 minutes on school days”',
+    value: promptDraft, onInput: (v) => { promptDraft = v; }, saveLabel: 'Add to the prompt', failText: 'Could not save it. Try again.',
+    save: async (text) => { const r = await ask({ type: 'promptNote', action: 'add', text }); if (r?.ok) setTimeout(onChange, 300); return r?.ok; },
+  });
+  return [
+    el('p', 'muted', 'Standing instructions the helper follows on every run, as part of its prompt. They win over its steps, but not over its safety rules. For one-off wishes send a message to the helper (Settings) or add a note to a video or a list.'),
+    notes.length ? list : el('p', 'muted', 'None yet.'), ...input.nodes,
+  ];
+}

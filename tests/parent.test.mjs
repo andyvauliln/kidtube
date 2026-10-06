@@ -144,6 +144,16 @@ test('prompt changes: added, shown as waiting, removed; the helper gets prompt e
   assert.equal((await fromPage({ type: 'promptNote', action: 'add', text: '  ' })).ok, false);
 });
 
+test('prompt changes also come from the settings page with parent mode off, never from YouTube', async () => {
+  const before = fake.store.settings;
+  fake.store.settings = { ...before, mode: 'kid', parentUntil: 0 };
+  const opts = { url: 'ext://options/options.html', tab: { id: 9, url: 'ext://options/options.html' } };
+  assert.equal((await send({ type: 'promptNote', action: 'add', text: 'More animals' }, opts)).ok, true);
+  assert.equal((await send({ type: 'promptNote', action: 'add', text: 'From the page' })).ok, false);
+  assert.ok((await send({ type: 'helperData' }, opts)).notes.some((n) => n.text === 'More animals'));
+  fake.store.settings = before;
+});
+
 test('kid mode: home is his list again', async () => {
   await fromPage({ type: 'kidHome' });
   assert.equal(fake.store.settings.mode, 'kid');

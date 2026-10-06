@@ -1,0 +1,30 @@
+/* The settings view (settings.js), on top of parent/parent.css. */
+.settings section { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin-bottom: 12px; }
+.settings label { display: block; font-size: 14px; color: var(--muted); margin: 10px 0 4px; }
+.settings button { margin: 8px 8px 0 0; }
+.settings .noterow button, .settings .pnote button { margin: 0; }
+.settings select { width: 100%; font: inherit; padding: 10px; border: 1px solid var(--line); border-radius: 8px; background: var(--card); color: var(--ink); }
+.settings input[type=range] { padding: 0; }
+.settings textarea { min-height: 84px; }
+.settings dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 15px; }
+.settings dt { color: var(--muted); }
+.settings dd { margin: 0; word-break: break-word; }
+.settings .ok { color: var(--ok); }
+.settings .pin { margin: 0; }
+.settings h3 { margin-top: 12px; }
+.settings label.check { display: flex; align-items: center; gap: 10px; color: var(--ink); font-size: 16px; margin: 12px 0 0; }
+.settings label.check input { width: auto; transform: scale(1.3); }
+.settings label.rules-like { align-items: flex-start; }
+.settings label.rules-like input { margin-top: 6px; }
+.settings .hint { color: var(--muted); font-size: 13px; margin: 2px 0 0; }
+.settings .two { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.settings .win { border: 1px solid var(--line); border-radius: 10px; padding: 10px; margin-top: 8px; }
+.settings .days { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.settings .days label { display: inline-flex; align-items: center; gap: 4px; margin: 0; color: var(--ink); font-size: 14px;
+  border: 1px solid var(--line); border-radius: 16px; padding: 4px 10px; }
+.settings .days input { width: auto; }
+.settings .win .two input { padding: 8px; }
+.settings .win button { margin-top: 8px; padding: 6px 10px; }
+.settings .filebtn span { display: inline-block; cursor: pointer; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--muted); margin-left: 6px; color: var(--ink); }
+.settings a.install { display: block; text-align: center; padding: 12px; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; text-decoration: none; margin-top: 10px; }
+@media (max-width: 480px) { .settings .two { grid-template-columns: 1fr; } }

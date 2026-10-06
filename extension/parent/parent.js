@@ -2,7 +2,9 @@
 // Changes go to the background (sw.js → planChange), which applies them on this tablet at once and logs them for the helper.
 import { ask } from '../lib/ask.js';
 import { checkPin } from '../lib/pin.js';
-import { say, listen, recordedUrl, recordAnswer, transcribeAnswer, listenKeys } from '../ui/voice.js';
+import { say, listen, recordedUrl } from '../ui/voice.js';
+import { el, btn, toast, runNow, noteInput, promptNotesBox, hooks } from './kit.js';
+import { mountSettings } from '../settings/settings.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { renderMarkdown, promptSteps } from './markdown.js';
 
@@ -10,21 +12,6 @@ const $ = (id) => document.getElementById(id);
 const view = $('view');
 let data = null;
 
-function el(tag, cls, text) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text != null) e.textContent = text;
-  return e;
-}
-function btn(text, onClick, cls = '') {
-  const b = el('button', cls, text);
-  b.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    b.disabled = true;
-    try { await onClick(b); } finally { b.disabled = false; }
-  });
-  return b;
-}
 const mins = (s) => (s ? `${Math.max(1, Math.round(s / 60))} min` : '');
 const when = (iso) => new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 const dayLabel = (date) => {
@@ -32,21 +19,6 @@ const dayLabel = (date) => {
   const diff = Math.round((new Date(new Date().toDateString()) - new Date(d.toDateString())) / 86400000);
   return diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
 };
-
-// --- toast with undo ----------------------------------------------------------------------------
-let toastTimer = null, undoFn = null;
-function toast(text, undo) {
-  $('toastText').textContent = text;
-  $('toastUndo').hidden = !undo;
-  undoFn = undo;
-  $('toast').hidden = false;
-  clearTimeout(toastTimer);
-  toastTimer = setTimeout(() => { $('toast').hidden = true; }, undo ? 8000 : 3000);
-}
-$('toastUndo').addEventListener('click', async () => {
-  $('toast').hidden = true;
-  if (undoFn) { await undoFn(); undoFn = null; await refresh(); }
-});
 
 // --- the app version: installed, and a download link when there is a newer one -------------------
 async function showVersion() {
@@ -66,85 +38,9 @@ async function showVersion() {
 }
 showVersion();
 
-// --- Update: run the helper now (header) ------------------------------------------------------------
-// Your notes go to GitHub first; the server starts the helper within a minute or two (agent/poll.sh).
+// --- Update: the helper's run status (header) -------------------------------------------------------
 let runTimer = null;
 const RUN_TEXT = { queued: 'Waiting for the server…', running: 'Helper is working…', done: 'Updated', failed: 'Run failed' };
-// Sends every note waiting on any tab, then runs the helper. Returns false when it could not ask.
-async function runNow() {
-  toast('Sending your notes and asking the helper to run…');
-  const res = await ask({ type: 'runHelper' });
-  if (!res?.ok) { toast(res?.error ?? 'Could not ask for a run.'); return false; }
-  toast('Asked. The helper starts within a minute or two, reads all your notes and takes about 10–30 minutes.');
-  showRun();
-  return true;
-}
-
-// --- writing a note for the helper: type or dictate, then add it, or add it and run the helper now -------
-let dictating = null;   // the one recording in progress: { stop }
-function micButton(ta) {
-  const lang = navigator.language || 'en-US';
-  const b = btn('🎤', async () => {
-    if (dictating) return dictating.stop();
-    const add = (text) => { text = text.trim(); if (text) { ta.value = (ta.value.trim() ? ta.value.trim() + ' ' : '') + text; ta.dispatchEvent(new Event('input')); } };
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const keys = await listenKeys();
-    b.classList.add('on');
-    b.textContent = '⏹';
-    const done = () => { dictating = null; b.classList.remove('on'); b.textContent = '🎤'; };
-    if (keys.gemini || keys.openrouter) {
-      // Cloud: records until you tap ⏹ (at most 2 minutes), then writes it down (free Gemini first, then OpenRouter).
-      const ctl = new AbortController();
-      dictating = { stop: () => ctl.abort() };
-      toast('Speak your note, then tap ⏹.');
-      const audio = await recordAnswer({ seconds: 120, stopSignal: ctl.signal, silenceStop: false });
-      b.textContent = '…';
-      const heard = audio ? await transcribeAnswer(audio, { keys, lang, maxTokens: 800,
-        instruction: 'A parent dictates a note about their child\'s videos and learning. Use punctuation.' }) : null;
-      done();
-      if (heard?.length) return add(heard[0]);
-      if (heard === null && !SR) return toast('Could not write it down. Use the 🎤 on the iPad keyboard instead.');
-      if (heard) return toast('Heard nothing.');
-    }
-    if (!SR) { done(); return toast('Dictation isn’t available here. Use the 🎤 on the iPad keyboard instead.'); }
-    // The device's own speech recognition: keeps listening until you tap ⏹.
-    const r = new SR();
-    r.lang = lang;
-    r.continuous = true;
-    r.interimResults = false;
-    dictating = { stop: () => { try { r.stop(); } catch {} } };
-    r.onresult = (e) => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) add(e.results[i][0].transcript); };
-    r.onerror = (e) => { if (e.error !== 'no-speech' && e.error !== 'aborted') toast('Dictation stopped. You can use the 🎤 on the iPad keyboard instead.'); };
-    r.onend = done;
-    try { r.start(); } catch { done(); toast('Dictation isn’t available here. Use the 🎤 on the iPad keyboard instead.'); }
-  }, 'small mic');
-  b.title = 'Dictate the note';
-  return b;
-}
-
-// textarea + 🎤 + "Add note" + "Add & ↻ Update". save(text) → true when saved.
-function noteInput({ placeholder, value = '', onInput, save, saveLabel = 'Add note' }) {
-  const ta = el('textarea');
-  ta.maxLength = 2000;
-  ta.placeholder = placeholder;
-  ta.value = value;
-  if (onInput) ta.addEventListener('input', () => onInput(ta.value));
-  const go = async (andRun) => {
-    if (dictating) dictating.stop();
-    const text = ta.value.trim();
-    if (!text) return andRun ? runNow() : undefined;
-    if (!(await save(text))) return toast('Could not save it. Is parent mode still on?');
-    ta.value = '';
-    onInput?.('');
-    if (andRun) await runNow(); else toast('Saved. The helper reads it on its next run (or tap ↻ Update).');
-  };
-  const row = el('div', 'noterow');
-  const update = btn('Add & ↻ Update', () => go(true));
-  update.title = 'Save this note, then run the helper now with all your notes';
-  row.append(micButton(ta), btn(saveLabel, () => go(false), 'primary'), update);
-  return { ta, row, nodes: [ta, row] };
-}
-
 async function showRun(fresh = false) {
   const box = $('run');
   if (fresh) await ask({ type: 'sync' });
@@ -167,6 +63,9 @@ async function showRun(fresh = false) {
   }, 30000);
 }
 
+hooks.afterUndo = () => refresh();
+hooks.afterRun = () => showRun();
+
 // --- loading and the PIN ---------------------------------------------------------------------------
 async function refresh() {
   const r = await ask({ type: 'parentData' });
@@ -177,6 +76,7 @@ async function refresh() {
   if (!r.parentMode) return showGate();
   $('gate').hidden = true;
   $('tabs').hidden = false;
+  $('settings').href = '#settings';
   if ($('run').hidden) { $('run').hidden = false; showRun(); }
   $('nToday').textContent = r.today.filter((v) => !v.watchedAt).length;
   $('nPlanned').textContent = r.planned.length;
@@ -188,6 +88,7 @@ async function showGate() {
   $('run').hidden = true;
   view.replaceChildren();
   $('gate').hidden = false;
+  $('settings').href = '../options/options.html';   // parent mode is off: the settings page asks for the PIN itself
   const { settings = {} } = await chrome.storage.local.get('settings');
   if (!settings.pinHash) {
     $('gateText').textContent = 'Set a parent PIN in the settings (⚙️) first.';
@@ -478,7 +379,6 @@ function fold(title, ...body) {
   return d;
 }
 
-let promptDraft = '';
 async function renderPrompt() {
   const h = await ask({ type: 'helperData' });
   if (route().tab !== 'prompt') return;
@@ -519,27 +419,7 @@ async function renderPrompt() {
   }
 
   // 2. Your changes to the prompt.
-  const list = el('ul', 'notes');
-  for (const n of h.notes) {
-    const li = el('li', 'pnote');
-    const text = el('span', '', n.text);
-    const meta = el('time', '', `${new Date(n.at).toLocaleDateString()}${n.pending ? ' · waiting for the next run' : ''}`);
-    li.append(meta, text, btn('Remove', async () => {
-      const r = await ask({ type: 'promptNote', action: 'remove', noteId: n.id });
-      if (!r?.ok) return toast('Could not remove it. Is parent mode still on?');
-      toast('Removed. The helper stops following it from its next run.');
-      renderPrompt();
-    }, 'small'));
-    list.append(li);
-  }
-  const input = noteInput({
-    placeholder: 'For example: “Every day one video about animals” · “Questions only in English” · “No videos longer than 8 minutes on school days”',
-    value: promptDraft, onInput: (v) => { promptDraft = v; }, saveLabel: 'Add to the prompt',
-    save: async (text) => { const r = await ask({ type: 'promptNote', action: 'add', text }); if (r?.ok) setTimeout(renderPrompt, 300); return r?.ok; },
-  });
-  box('Your changes to the prompt',
-    el('p', 'muted', 'Standing instructions the helper follows on every run, as part of its prompt. They win over its steps, but not over its safety rules. For one-off wishes use the notes on the other tabs.'),
-    h.notes.length ? list : el('p', 'muted', 'None yet.'), ...input.nodes);
+  box('Your changes to the prompt', ...promptNotesBox(h.notes, () => { if (route().tab === 'prompt') renderPrompt(); }));
 
   // 3. The run, step by step (straight from the prompt).
   if (info?.prompt) {
@@ -639,36 +519,12 @@ async function renderContext() {
   view.replaceChildren(chips, notes, body);
 }
 
-// --- Settings: the same settings page, inside this tab (no second PIN in parent mode) --------------------
+// --- Settings: its own view here (settings/settings.js; no second PIN in parent mode) ---------------------
 
 function renderSettings() {
-  const frame = el('iframe', 'settings');
-  frame.src = '../options/options.html?embedded=1';
-  frame.title = 'Settings';
-  const fallback = el('p', 'muted');
-  fallback.hidden = true;
-  const a = el('a', '', 'Open the settings page');
-  a.href = '../options/options.html';
-  fallback.append('The settings didn’t show here. ', a);
-  const timer = setTimeout(() => { fallback.hidden = false; }, 4000);
-  addEventListener('message', function sized(e) {
-    if (e.source !== frame.contentWindow || e.data?.kidtube !== 'options-size') return;
-    clearTimeout(timer);
-    frame.style.height = `${Math.max(400, e.data.height + 20)}px`;
-    if (!frame.isConnected) removeEventListener('message', sized);
-  });
-  // Same extension origin: also measure the page directly (the message above didn't arrive on Orion).
-  frame.addEventListener('load', () => {
-    clearTimeout(timer);
-    try {
-      const doc = frame.contentDocument;
-      const fit = () => { frame.style.height = `${Math.max(400, doc.documentElement.scrollHeight + 20)}px`; };
-      fit();
-      new ResizeObserver(fit).observe(doc.body);
-      doc.addEventListener('click', () => setTimeout(fit, 50));
-    } catch {}
-  });
-  view.replaceChildren(fallback, frame);
+  const box = el('div');
+  view.replaceChildren(box);
+  mountSettings(box, { inParent: true, onMode: () => refresh() });
 }
 
 // --- one video ---------------------------------------------------------------------------------------

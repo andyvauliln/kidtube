@@ -54,7 +54,7 @@ Status in Orion, from Kagi's API support table (iOS/iPadOS column) and the iOS r
 | Recorded mp3s kept in Cache Storage | `sw.js:731`, `ui/voice.js` | ❓ Not documented | If it fails, the tablet speaks with its own voice (already the fallback) |
 | Speech recognition (`webkitSpeechRecognition`) | `ui/voice.js` | ❓ Probably missing on iOS (the install page already says so) | *Record and send* (the default, with a Gemini or OpenRouter key) doesn't need it; else he types |
 | Recording for OpenRouter (`getUserMedia`, `AudioContext`) | `ui/voice.js` | ❓ Needs a test on an extension page | If it fails, he types |
-| `permissions.request` (OpenRouter) | `options/options.js:278` | ✅ Supported | |
+| `permissions.request` (OpenRouter) | `settings/settings.js` | ✅ Supported | |
 | PIN (`crypto.subtle` PBKDF2), time zones (`Intl`), `crypto.randomUUID` | `lib/` | ✅ WebKit | |
 | GitHub sync (`fetch` to `api.github.com` with the token) | `sw.js` | ✅ Should work (host permission) | |
 | Tablet captions (`fetchTranscript`, cookies to youtube.com) | `sw.js:661` | ❓ | Not needed: Gemini makes the transcripts |

@@ -554,10 +554,9 @@ async function handle(msg, sender) {
       if (!fromExtensionPage(sender)) return { ok: false };
       return withState((s) => helperData(s));
 
-    case 'promptNote': // add a standing instruction for the helper, or remove one
+    case 'promptNote': // add a standing instruction for the helper, or remove one (Prompt tab, or Settings after its PIN)
       if (!fromExtensionPage(sender)) return { ok: false };
       return withState((s) => {
-        if (!parentMode(s)) return { ok: false };
         const text = String(msg.text ?? '').trim().slice(0, 2000);
         if (msg.action === 'add' && !text) return { ok: false };
         if (msg.action === 'remove' && !/^[A-Za-z0-9-]{8,64}$/.test(msg.noteId ?? '')) return { ok: false };

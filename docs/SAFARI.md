@@ -38,7 +38,7 @@ The tablet part is a Chrome MV3 extension in Quetta (Android). These are the pie
 | PIN (PBKDF2 via `crypto.subtle`), time zones (`Intl`), `crypto.randomUUID` | `lib/pin.js`, `lib/time.js` | ✅ | ✅ |
 | GitHub sync: Contents API with a fine-grained token, ETags | `sw.js` sync functions | ✅ Needs host permission for `api.github.com`. | ✅ GitHub's API allows calls from web pages (CORS). The token sits on the iPad, same as today. |
 | Captions fetched on the tablet (`fetchTranscript`, `credentials: 'include'` to youtube.com) | `sw.js:661` | ⚠️ May fail because of Safari's cookie and tracking rules. Not needed any more: Gemini makes the transcripts. | ❌ Blocked by CORS. Not needed (Gemini). |
-| Optional OpenRouter permission (`chrome.permissions.request`) | `options/options.js:278` | ⚠️ Safari handles host access per site; needs a test. Simplest is to list `openrouter.ai` in `host_permissions`. | ✅ No permission needed. |
+| Optional OpenRouter permission (`chrome.permissions.request`) | `settings/settings.js` | ⚠️ Safari handles host access per site; needs a test. Simplest is to list `openrouter.ai` in `host_permissions`. | ✅ No permission needed. |
 | Parent page (`options_page`) | `options/` | ✅ Opens from Safari's extension menu. | ✅ A `#parent` view behind the PIN. |
 
 ## Option A: port the extension to Safari
