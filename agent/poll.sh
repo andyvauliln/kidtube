@@ -122,7 +122,7 @@ $notes
   (cd "$APP" && CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 BASH_DEFAULT_TIMEOUT_MS=900000 BASH_MAX_TIMEOUT_MS=1800000 \
     claude -p "$prompt" --model "${MODEL:-opus}" ${EFFORT:+--effort "$EFFORT"} \
       --permission-mode dontAsk --allowedTools "Bash" "Read" "Edit" "Write" "Glob" "Grep" "Skill" "Agent" "Task" \
-      --add-dir "$STATE" "$DATA" --output-format json) > "$STATE/notes-runs/$(date -u +%Y%m%dT%H%M%SZ).json" 2>> "$log"
+      --add-dir "$STATE" "$DATA" --output-format json < /dev/null) > "$STATE/notes-runs/$(date -u +%Y%m%dT%H%M%SZ).json" 2>> "$log"
   echo "=== claude exit $?" >> "$log"
   # Handled either way: a note that failed is not tried again every minute (the summary says what happened).
   node agent/notes.mjs mark "$STATE/notes-in.json" --state "$STATE" >> "$log"
