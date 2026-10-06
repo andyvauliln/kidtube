@@ -2,6 +2,11 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.9.2 (2026-10-06)
+
+- **Profiles is easy to find:** a **👤 Profiles** tab in parent mode, and a Profiles section near the top of Settings (⚙️ → PIN). Settings works even when parent mode won't turn on.
+- **A test app, "Blank":** add a profile and pick the app *Blank (test: a white page)*. In kid mode, YouTube then shows only a white page. A small ⚙️ in the corner opens Settings, where you switch back. In parent mode you still get your screens.
+
 ## 0.9.1 (2026-10-06)
 
 - **Notes don't pile up any more.** A note stays in its list while it waits for ↻ Update and while the AI works on it. Once the AI has worked on it, it is deleted from the iPad. Tap the status next to ↻ Update to read what the AI did.
