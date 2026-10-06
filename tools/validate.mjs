@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Validates the data files the agent and the tablet exchange (PLAN.md §3).
 //
-//   node tools/validate.mjs <data-dir>          parent-config.json, queue.json, memory.json, activity/*.json + cross-file checks
+//   node tools/validate.mjs <data-dir>          parent-config.json, queue.json, memory.json, activity/*.json + cross-file checks;
+//                                               the root of a repo with profiles: every <app>/<folder>/ that has a profile.json
 //   node tools/validate.mjs <file.json> ...     single files; kind is taken from the file name
 //
 // Exit code 0 when everything is valid, 1 otherwise.
@@ -29,6 +30,7 @@ export function kindOf(path) {
   if (name === 'parent-config.json') return 'parent-config';
   if (name === 'queue.json') return 'queue';
   if (name === 'memory.json') return 'memory';
+  if (name === 'profile.json') return 'profile';
   if (/^\d{4}-\d{2}-\d{2}\.json$/.test(name)) return 'activity';
   if (basename(dirname(path)) === 'transcripts' && /^[A-Za-z0-9_-]{11}\.json$/.test(name)) return 'transcript';
   return null;
@@ -145,6 +147,7 @@ export function validateFile(path, ctx = {}) {
   if (kind === 'parent-config' || kind === 'default-config') errors.push(...checkConfig(data));
   if (kind === 'queue') errors.push(...checkQueue(data, ctx.effectiveConfig));
   if (kind === 'activity') errors.push(...checkActivity(data, path));
+  if (kind === 'profile' && data.folder !== basename(dirname(resolve(path)))) errors.push(`/folder ${data.folder} does not match the folder it is in (${basename(dirname(resolve(path)))})`);
   if (kind === 'transcript' && `${data.videoId}.json` !== basename(path)) errors.push(`/videoId ${data.videoId} does not match file name ${basename(path)}`);
   return { path, kind, data, errors };
 }
@@ -165,6 +168,11 @@ export function validateDataDir(dir) {
   const newestDevice = activityResults.filter((r) => r.data?.device).at(-1)?.data.device;
   const quizTypes = newestDevice?.quizTypes ?? loadQuizTypes();
 
+  // A new profile: the tablet made the folder (profile.json); the helper adds the starter files on its first run.
+  const isNew = existsSync(join(dir, 'profile.json')) && !existsSync(join(dir, 'queue.json'));
+  const missing = (p) => ({ path: p, errors: [isNew ? 'warning: missing (a new profile: the helper adds it on its first run)' : 'missing'] });
+  if (existsSync(join(dir, 'profile.json'))) results.push(validateFile(join(dir, 'profile.json')));
+
   const cfgPath = join(dir, 'parent-config.json');
   if (existsSync(cfgPath)) {
     const r = validateFile(cfgPath);
@@ -174,12 +182,12 @@ export function validateDataDir(dir) {
     }
     results.push(r);
   } else {
-    results.push({ path: cfgPath, errors: ['missing'] });
+    results.push(missing(cfgPath));
   }
 
   for (const name of ['queue.json', 'memory.json']) {
     const p = join(dir, name);
-    results.push(existsSync(p) ? validateFile(p, { effectiveConfig }) : { path: p, errors: ['missing'] });
+    results.push(existsSync(p) ? validateFile(p, { effectiveConfig }) : missing(p));
   }
 
   // Every recording a file points at must be in the repo, or the tablet would play nothing.
@@ -196,6 +204,16 @@ export function validateDataDir(dir) {
   return results;
 }
 
+// The root of a data repo with profiles (<app>/<folder>/profile.json): each profile folder; otherwise the dir itself.
+export function profileDirs(dir) {
+  if (existsSync(join(dir, 'parent-config.json')) || existsSync(join(dir, 'profile.json'))) return [dir];
+  const found = [];
+  for (const app of readdirSync(dir).filter((a) => /^[a-z0-9_-]+$/.test(a) && statSync(join(dir, a)).isDirectory())) {
+    for (const f of readdirSync(join(dir, app))) if (existsSync(join(dir, app, f, 'profile.json'))) found.push(join(dir, app, f));
+  }
+  return found.length ? found.sort() : [dir];
+}
+
 const isError = (msg) => !msg.startsWith('warning:');
 
 function main(argv) {
@@ -203,7 +221,7 @@ function main(argv) {
     console.error('usage: validate.mjs <data-dir> | <file.json> ...');
     return 2;
   }
-  const results = argv.flatMap((p) => (statSync(p).isDirectory() ? validateDataDir(p) : [validateFile(p)]));
+  const results = argv.flatMap((p) => (statSync(p).isDirectory() ? profileDirs(p).flatMap(validateDataDir) : [validateFile(p)]));
   let failed = false;
   for (const r of results) {
     const errs = r.errors.filter(isError);

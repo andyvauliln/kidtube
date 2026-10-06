@@ -5,7 +5,8 @@ import { visibleVideos, waitingIds } from './lib/queue.js';
 import { classifyUrl, homeUrl, watchUrl } from './lib/url.js';
 import { parseCaptions, captionsToText } from './lib/captions.js';
 import { TARGET } from './lib/target.js';
-import { accountFromSwitcher, accountKey } from './lib/account.js';
+import { accountFromSwitcher, accountKey, profileFolder, chooserUrl } from './lib/account.js';
+import { APPS, DEFAULT_APP, appOf } from './lib/apps.js';
 import { PLAN_ACTIONS, applyPlan, applyPlanEvent, pendingPlan, entryFromRecord, applyPromptNotes } from './lib/plan.js';
 
 const SITE_RULE_ID = 100;
@@ -54,44 +55,118 @@ function withState(fn, { account } = {}) {
   });
 }
 
-// --- accounts: everything is kept per YouTube account (email) --------------------------------
-// The signed-in account's data lives under the usual keys; the others wait in "acct:<key>".
-// The parent PIN and the device id belong to the tablet, so they move along with every switch.
-const ACCOUNT_KEYS = [...KEYS.filter((k) => k !== 'parentPass'), 'memory', 'helperInfo'];
-const DEVICE_SETTINGS = ['pinHash', 'pinSalt', 'pinFails', 'pinLockedUntil', 'deviceId'];
+// --- profiles: everything is kept per YouTube account (email) --------------------------------
+// The current profile's data lives under the usual keys; the others wait in "acct:<key>".
+// accounts[key]: { email, name, datasyncId, app, folder, lastSeen }. app + folder = its place in the data repo.
+// The PIN, the mode, the device id and the GitHub connection belong to the tablet, so they move along with every switch.
+const ACCOUNT_KEYS = [...KEYS.filter((k) => k !== 'parentPass'), 'memory', 'helperInfo', 'contextDocs'];
+const DEVICE_SETTINGS = ['pinHash', 'pinSalt', 'pinFails', 'pinLockedUntil', 'deviceId', 'mode', 'parentUntil', 'repo', 'token'];
+// After the parent picks a profile, YouTube shows the old account until Google has signed in the new one.
+const HOLD_MS = 15 * 60000;
 const currentAccount = async () => (await chrome.storage.local.get('account')).account?.key ?? null;
 
-async function useAccount(info) {
-  const key = accountKey(info);
-  if (!key) return { ok: false };
-  const me = { key, email: info.email ?? null, name: info.name ?? null, datasyncId: info.datasyncId ?? null };
+// The record of a profile, with its app and folder given once.
+function profileRecord(accounts, key, info, app) {
+  const old = accounts[key] ?? {};
+  const taken = Object.entries(accounts).filter(([k]) => k !== key).map(([, a]) => a.folder).filter(Boolean);
+  return {
+    email: info.email ?? old.email ?? null, name: info.name ?? old.name ?? null, datasyncId: info.datasyncId || old.datasyncId || null,
+    app: old.app ?? (APPS[app] ? app : DEFAULT_APP), folder: old.folder ?? profileFolder(info, taken), lastSeen: new Date().toISOString(),
+  };
+}
+
+// info: { email, name, datasyncId } from YouTube, or { email } when the parent picks a profile (byParent).
+async function useAccount(info, { byParent = false, app } = {}) {
+  if (!accountKey(info)) return { ok: false };
   const r = await serial(async () => {
-    const g = await chrome.storage.local.get(['account', 'accounts']);
+    const g = await chrome.storage.local.get(['account', 'accounts', 'profileHold']);
     const accounts = g.accounts ?? {};
     const cur = g.account;
-    const remember = () => { accounts[key] = { ...(accounts[key] ?? {}), email: me.email, name: me.name, datasyncId: me.datasyncId, lastSeen: new Date().toISOString() }; };
-    // The first account seen on this tablet keeps what is already here.
+    let key = accountKey(info);
+    // YouTube's id alone (no email): the profile that already has that id.
+    if (!info.email && info.datasyncId) key = Object.keys(accounts).find((k) => accounts[k].datasyncId === info.datasyncId) ?? key;
+    const hold = !byParent && g.profileHold?.until > Date.now() ? g.profileHold : null;
+    if (hold && key !== hold.key) {
+      // An account YouTube can't name, not known here: the one Google has just signed in for the parent's pick.
+      if (!info.email && !accounts[key] && accounts[hold.key]) {
+        accounts[hold.key] = { ...accounts[hold.key], datasyncId: info.datasyncId };
+        await chrome.storage.local.set({ accounts, account: { ...cur, datasyncId: info.datasyncId } });
+        await chrome.storage.local.remove('profileHold');
+        return { switched: false };
+      }
+      return { held: true };   // still the old account: wait for the parent's pick
+    }
+    if (hold) await chrome.storage.local.remove('profileHold');
     // A profile known only by YouTube's id becomes the same profile under its email.
-    const same = cur && (cur.key === key || (me.datasyncId && cur.key === accountKey({ datasyncId: me.datasyncId })));
+    const ytKey = info.datasyncId ? accountKey({ datasyncId: info.datasyncId }) : null;
+    if (info.email && ytKey && ytKey !== key && accounts[ytKey] && !accounts[key]) { accounts[key] = accounts[ytKey]; delete accounts[ytKey]; }
+    const same = cur && (cur.key === key || cur.key === ytKey);
+    accounts[key] = profileRecord(accounts, key, info, app);
+    const { lastSeen, ...rec } = accounts[key];
+    const me = { key, ...rec };
+    // The first account seen on this tablet keeps what is already here.
     if (!cur || same) {
       if (cur && cur.key !== key) delete accounts[cur.key];
-      remember();
       await chrome.storage.local.set({ account: me, accounts });
       return { switched: false };
     }
     const work = await chrome.storage.local.get(ACCOUNT_KEYS);
-    const alias = me.datasyncId ? `acct:${accountKey({ datasyncId: me.datasyncId })}` : null;
+    const alias = ytKey && ytKey !== key ? `acct:${ytKey}` : null;
     const saved = await chrome.storage.local.get([`acct:${key}`, ...(alias ? [alias] : [])]);
     const next = saved[`acct:${key}`] ?? (alias && saved[alias]) ?? {};
     const device = Object.fromEntries(DEVICE_SETTINGS.filter((k) => work.settings?.[k] != null).map((k) => [k, work.settings[k]]));
     next.settings = { ...(next.settings ?? {}), ...device };
-    remember();
-    await chrome.storage.local.set({ [`acct:${cur.key}`]: work, ...next, account: me, accounts });
+    await chrome.storage.local.set({ [`acct:${cur.key}`]: work, ...next, account: me, accounts, ...(byParent ? { profileHold: { key, until: Date.now() + HOLD_MS } } : {}) });
     await chrome.storage.local.remove([`acct:${key}`, ...(alias ? [alias] : []), ...ACCOUNT_KEYS.filter((k) => !(k in next))]);
     return { switched: true };
   });
   if (r.switched) { await applySiteRules(); sync(); }
-  return { ok: true, ...r };
+  return { ok: !r.held, ...r };
+}
+
+// Parent mode → Profiles.
+async function profilesView() {
+  const { account, accounts = {}, profileHold } = await chrome.storage.local.get(['account', 'accounts', 'profileHold']);
+  return {
+    ok: true, current: account?.key ?? null, apps: Object.values(APPS).map((a) => ({ id: a.id, label: a.label })),
+    waitingFor: profileHold?.until > Date.now() ? profileHold.key : null,
+    profiles: Object.entries(accounts).map(([key, a]) => ({ key, email: a.email, name: a.name, app: a.app ?? DEFAULT_APP, folder: a.folder ?? null, lastSeen: a.lastSeen ?? null }))
+      .sort((a, b) => (b.lastSeen ?? '').localeCompare(a.lastSeen ?? '')),
+  };
+}
+
+async function removeProfile(key) {
+  return serial(async () => {
+    const { account, accounts = {} } = await chrome.storage.local.get(['account', 'accounts']);
+    if (!accounts[key] || account?.key === key) return { ok: false, error: 'Switch to another profile first.' };
+    delete accounts[key];
+    await chrome.storage.local.set({ accounts });
+    await chrome.storage.local.remove(`acct:${key}`);
+    return { ok: true };
+  });
+}
+
+// For the screens (no lock: safe inside withState): "kidtube/johnnypitt.ind/", or null before the first sync.
+async function folderShown() {
+  const a = (await chrome.storage.local.get('account')).account;
+  return a?.folder ? `${a.app ?? DEFAULT_APP}/${a.folder}/` : null;
+}
+
+// Profiles from before 0.9.0 have no folder yet: the current one gets it on the first sync.
+async function profileBase() {
+  return serial(async () => {
+    const { account, accounts = {} } = await chrome.storage.local.get(['account', 'accounts']);
+    if (!account?.key) return null;
+    if (!account.folder || !account.app) {
+      const rec = accounts[account.key] ?? {};
+      const taken = Object.entries(accounts).filter(([k]) => k !== account.key).map(([, a]) => a.folder).filter(Boolean);
+      account.app = rec.app ?? account.app ?? DEFAULT_APP;
+      account.folder = rec.folder ?? account.folder ?? profileFolder(account, taken);
+      accounts[account.key] = { ...rec, email: account.email ?? rec.email ?? null, app: account.app, folder: account.folder };
+      await chrome.storage.local.set({ account, accounts });
+    }
+    return account.folder ? `${account.app}/${account.folder}/` : null;
+  });
 }
 
 // --- parent mode: the parent's screens instead of his list, no rules, nothing counted ----------
@@ -508,6 +583,27 @@ async function handle(msg, sender) {
       if (!msg.loggedIn) return { ok: false };  // signed out: stay with the last account
       return useAccount({ ...(accountFromSwitcher(msg.switcher ?? '') ?? {}), datasyncId: msg.datasyncId });
 
+    // Parent mode → Profiles: another email, with its own lists, settings, notes and helper.
+    case 'profiles':
+      if (!fromExtensionPage(sender)) return { ok: false };
+      return profilesView();
+
+    case 'switchProfile': // a known profile (key) or a new one (email, app); then Google signs in that account
+    case 'addProfile': {
+      if (!fromExtensionPage(sender) || !(await withState((s) => parentMode(s)))) return { ok: false, error: 'Only in parent mode.' };
+      const { accounts = {} } = await chrome.storage.local.get('accounts');
+      const email = msg.type === 'addProfile' ? String(msg.email ?? '').trim().toLowerCase() : accounts[msg.key]?.email ?? null;
+      const key = msg.type === 'addProfile' ? accountKey({ email }) : msg.key;
+      if (!key || (msg.type === 'switchProfile' && !accounts[key])) return { ok: false, error: msg.type === 'addProfile' ? 'That doesn’t look like an email.' : 'Unknown profile.' };
+      if (msg.type === 'addProfile' && msg.app && !APPS[msg.app]) return { ok: false, error: 'Unknown app.' };
+      const r = await useAccount(key.startsWith('yt:') ? { datasyncId: key.slice(3) } : { email }, { byParent: true, app: msg.app });
+      return { ...r, chooser: email ? chooserUrl(email, lastHost) : null };
+    }
+
+    case 'removeProfile': // only this tablet's copy; the data repo keeps the folder
+      if (!fromExtensionPage(sender) || !(await withState((s) => parentMode(s)))) return { ok: false, error: 'Only in parent mode.' };
+      return removeProfile(msg.key);
+
     case 'setMode': // settings page or parent screens, after the PIN
       if (!['kid', 'parent'].includes(msg.mode)) return { ok: false, error: 'Unknown mode.' };
       if (!fromExtensionPage(sender)) return { ok: false, error: `Refused: the request did not come from a KidTube page (${sender.url ?? sender.tab?.url ?? 'no address'}).` };
@@ -586,10 +682,10 @@ async function handle(msg, sender) {
       });
     case 'contextNote':
       if (!fromExtensionPage(sender)) return { ok: false };
-      return withState((s) => {
+      return withState(async (s) => {
         if (!parentMode(s)) return { ok: false };
         const text = String(msg.text ?? '').trim().slice(0, 2000);
-        if (!text || !CONTEXT_DOCS.includes(msg.doc)) return { ok: false };
+        if (!text || !(await contextDocsOf()).includes(msg.doc)) return { ok: false };
         const ev = { ...newEvent('context', { doc: msg.doc, text }), held: true };
         s.outbox.push(ev);
         ((s.notes ??= {}).contextNotes ??= []).push(ev);
@@ -632,6 +728,7 @@ async function handle(msg, sender) {
         return {
           version: chrome.runtime.getManifest().version,
           repo: s.settings.repo || DEFAULT_REPO,
+          folder: await folderShown(),
           hasToken: !!s.settings.token,
           sync: s.syncStatus,
           configUpdatedAt: config.updatedAt,
@@ -858,27 +955,43 @@ function ghHeaders(token, accept = 'application/vnd.github.raw+json') {
   return h;
 }
 
-async function fetchDataFile(repo, token, path, etag) {
+// Where the current profile's files are: one data repo for the tablet, one folder per profile (<app>/<folder>/).
+async function dataLocation(settings) {
+  return { repo: settings.repo || DEFAULT_REPO, base: await profileBase() };
+}
+const contentsUrl = (loc, path) => `https://api.github.com/repos/${loc.repo}/contents/${loc.base}${path}`;
+
+// profile.json: who this folder belongs to. The helper on the server finds new profiles by it.
+async function writeProfileFile(loc, token) {
+  const { account } = await chrome.storage.local.get('account');
+  if (await getRepoFile(loc, token, 'profile.json')) return;
+  await putRepoFile(loc, token, 'profile.json', {
+    schemaVersion: 1, app: account.app, folder: account.folder, email: account.email ?? null, name: account.name ?? null,
+    createdAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
+  }, null, `new profile ${account.app}/${account.folder}`);
+}
+
+async function fetchDataFile(loc, token, path, etag) {
   const headers = ghHeaders(token);
   if (etag) headers['If-None-Match'] = etag;
-  const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, { headers, cache: 'no-store' });
+  const r = await fetch(contentsUrl(loc, path), { headers, cache: 'no-store' });
   if (r.status === 304) return { notModified: true };
-  if (!r.ok) throw new Error(await explainHttp(r.status, repo, token, path));
+  if (!r.ok) throw new Error(await explainHttp(r.status, loc, token, path));
   return { json: await r.json(), etag: r.headers.get('etag') };
 }
 
-// Context documents (parent mode → Context): Markdown in kidtube-data context/, written by the helper.
-const CONTEXT_DOCS = ['kid', 'strategy', 'math', 'letters', 'world'];
-async function pullContext(repo, token, etags) {
+// Context documents (parent mode → Context): Markdown in the profile's context/, written by the helper.
+const contextDocsOf = async () => appOf((await chrome.storage.local.get('account')).account).contextDocs;
+async function pullContext(loc, token, etags) {
   const { contextDocs = {} } = await chrome.storage.local.get('contextDocs');
   let changed = false;
-  for (const d of CONTEXT_DOCS) {
+  for (const d of await contextDocsOf()) {
     const path = `context/${d}.md`;
     const headers = ghHeaders(token);
     if (contextDocs[d] && etags[path]) headers['If-None-Match'] = etags[path];
-    const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, { headers, cache: 'no-store' });
+    const r = await fetch(contentsUrl(loc, path), { headers, cache: 'no-store' });
     if (r.status === 304 || r.status === 404) continue;
-    if (!r.ok) throw new Error(await explainHttp(r.status, repo, token, path));
+    if (!r.ok) throw new Error(await explainHttp(r.status, loc, token, path));
     contextDocs[d] = { text: await r.text(), at: new Date().toISOString() };
     etags[path] = r.headers.get('etag');
     changed = true;
@@ -887,7 +1000,8 @@ async function pullContext(repo, token, etags) {
 }
 
 // GitHub says 404 both for "no such file" and "this token can't see the repo". Tell them apart.
-async function explainHttp(status, repo, token, path) {
+async function explainHttp(status, loc, token, path) {
+  const repo = loc.repo;
   if (status === 401) return 'GitHub says the token is wrong or expired. Make a new one and paste it again.';
   if (status === 403) return `GitHub refused the token for ${repo}. Check the token's Contents permission.`;
   if (status !== 404) return `${path}: GitHub answered ${status}.`;
@@ -899,7 +1013,7 @@ async function explainHttp(status, repo, token, path) {
   if (repoRes.status === 404) {
     return `The token${login ? ` (${login})` : ''} works but can't see ${repo}. On GitHub, edit the token: Repository access → Only select repositories → ${repo.split('/')[1]}.`;
   }
-  return `${path} is missing in ${repo}.`;
+  return `${loc.base}${path} is missing in ${repo}.`;
 }
 
 const okConfig =(c) => c && c.schemaVersion === 1 && typeof c === 'object' && !Array.isArray(c);
@@ -924,14 +1038,23 @@ function sync() {
 async function doSync() {
   const { settings = {}, data = {}, account } = await chrome.storage.local.get(['settings', 'data', 'account']);
   const acct = account?.key ?? null;   // a switch to another account during this sync drops what it fetched
-  const repo = settings.repo || DEFAULT_REPO;
+  const loc = await dataLocation(settings);
   const token = settings.token || '';
   const etags = data.etags ?? {};
   const status = { at: new Date().toISOString(), errors: [] };
+  if (!loc.base) {   // no YouTube account seen yet, so no profile: the built-in list until one is
+    await applySiteRules();
+    status.errors.push('Waiting for the YouTube account: open YouTube once, signed in. Until then the built-in list is used.');
+    await withState((s) => { s.syncStatus = status; }, { account: acct });
+    return status;
+  }
+  if (token && !data.profileFile) {
+    try { await writeProfileFile(loc, token); await withState((s) => { s.data.profileFile = true; }, { account: acct }); } catch {}
+  }
   const update = {};
   for (const [key, path, ok] of [['config', 'parent-config.json', okConfig], ['queue', 'queue.json', okQueue]]) {
     try {
-      const r = await fetchDataFile(repo, token, path, data[key] ? etags[path] : null);
+      const r = await fetchDataFile(loc, token, path, data[key] ? etags[path] : null);
       if (r.notModified) continue;
       if (!ok(r.json)) throw new Error(`${path}: not a valid schemaVersion 1 file, keeping the last good copy`);
       update[key] = r.json;
@@ -944,7 +1067,7 @@ async function doSync() {
   let memory = null;
   if (token) {
     try {
-      const r = await fetchDataFile(repo, token, 'memory.json', data.memoryMeta ? etags['memory.json'] : null);
+      const r = await fetchDataFile(loc, token, 'memory.json', data.memoryMeta ? etags['memory.json'] : null);
       if (!r.notModified && r.json?.schemaVersion === 1) {
         memory = r.json;
         etags['memory.json'] = r.etag;
@@ -956,7 +1079,7 @@ async function doSync() {
   let helperInfo = null;
   if (token) {
     try {
-      const r = await fetchDataFile(repo, token, 'helper.json', data.helperMeta ? etags['helper.json'] : null);
+      const r = await fetchDataFile(loc, token, 'helper.json', data.helperMeta ? etags['helper.json'] : null);
       if (!r.notModified && r.json?.schemaVersion === 1 && typeof r.json.prompt === 'string') {
         helperInfo = r.json;
         etags['helper.json'] = r.etag;
@@ -967,15 +1090,15 @@ async function doSync() {
   // run-status.json: a run asked for from parent mode (agent/poll.sh on the server writes it).
   if (token) {
     try {
-      const r = await fetchDataFile(repo, token, 'run-status.json', data.runStatus ? etags['run-status.json'] : null);
+      const r = await fetchDataFile(loc, token, 'run-status.json', data.runStatus ? etags['run-status.json'] : null);
       if (!r.notModified && r.json?.schemaVersion === 1) { update.runStatus = r.json; etags['run-status.json'] = r.etag; }
     } catch {}
     try {   // runs.json: time, turns and cost of the latest runs (agent/runlog.mjs)
-      const r = await fetchDataFile(repo, token, 'runs.json', data.runs ? etags['runs.json'] : null);
+      const r = await fetchDataFile(loc, token, 'runs.json', data.runs ? etags['runs.json'] : null);
       if (!r.notModified && Array.isArray(r.json?.runs)) { update.runs = r.json.runs.slice(-10); etags['runs.json'] = r.etag; }
     } catch {}
   }
-  if (token) { try { await pullContext(repo, token, etags); } catch (e) { status.errors.push('Context documents: ' + String(e.message ?? e)); } }
+  if (token) { try { await pullContext(loc, token, etags); } catch (e) { status.errors.push('Context documents: ' + String(e.message ?? e)); } }
   const done = await withState((s) => {
     Object.assign(s.data, update, { etags });
     s.syncStatus = status;
@@ -989,12 +1112,12 @@ async function doSync() {
   const report = (prefix, msg) => { if (!status.errors.some((x) => msg.includes(x) || x.includes(msg))) status.errors.push(prefix + msg); };
   const rules = await uploadLocalConfig();
   if (rules.saved === 'tablet' && token) report('Rules: ', rules.error.replace(/^Saved on this tablet\. GitHub: /, ''));
-  try { await flushOutbox(repo, token); } catch (e) { if (token) report('Saving what he watched: ', String(e.message ?? e)); }
+  try { await flushOutbox(loc, token); } catch (e) { if (token) report('Saving what he watched: ', String(e.message ?? e)); }
   if (token) {
-    try { await pullPlan(repo, token, acct); } catch (e) { report('Changes from other devices: ', String(e.message ?? e)); }
-    try { await uploadTranscripts(repo, token); } catch (e) { report('Transcripts: ', String(e.message ?? e)); }
-    try { await loadCharacter(repo, token); } catch (e) { report('Talking friend picture: ', String(e.message ?? e)); }
-    try { await syncAudio(repo, token); } catch (e) { report('Talking friend recordings: ', String(e.message ?? e)); }
+    try { await pullPlan(loc, token, acct); } catch (e) { report('Changes from other devices: ', String(e.message ?? e)); }
+    try { await uploadTranscripts(loc, token); } catch (e) { report('Transcripts: ', String(e.message ?? e)); }
+    try { await loadCharacter(loc, token); } catch (e) { report('Talking friend picture: ', String(e.message ?? e)); }
+    try { await syncAudio(loc, token); } catch (e) { report('Talking friend recordings: ', String(e.message ?? e)); }
   }
   status.errors = [...new Set(status.errors)];
   await withState((s) => { s.syncStatus = status; }, { account: acct });
@@ -1003,7 +1126,7 @@ async function doSync() {
 
 // The parent's plan changes made on another device (activity files since the helper last read them),
 // so every tablet shows the same lists. Changes the helper has read are already in its files: dropped here.
-async function pullPlan(repo, token, acct) {
+async function pullPlan(loc, token, acct) {
   const { data = {} } = await chrome.storage.local.get('data');
   const since = data.memoryMeta?.processedThrough ?? null;
   const tz = (await effective({ data })).config.timezone;
@@ -1017,7 +1140,7 @@ async function pullPlan(repo, token, acct) {
   }
   const found = [];
   for (const date of dates) {
-    const f = await getRepoFile(repo, token, `activity/${date}.json`);
+    const f = await getRepoFile(loc, token, `activity/${date}.json`);
     for (const e of f?.json?.events ?? []) if (['plan', 'prompt'].includes(e.type) && (!since || e.at > since)) found.push(e);
   }
   const memory = await getMemory();
@@ -1052,7 +1175,8 @@ async function releaseNotes() {
 async function requestRun() {
   const { settings = {} } = await chrome.storage.local.get('settings');
   if (!settings.token) return { ok: false, error: 'Needs the GitHub token (Settings → Connection).' };
-  const repo = settings.repo || DEFAULT_REPO;
+  const loc = await dataLocation(settings);
+  if (!loc.base) return { ok: false, error: 'No profile yet: open YouTube once, signed in.' };
   await releaseNotes();
   await sync();
   const left = await withState((s) => s.outbox.length);
@@ -1060,8 +1184,8 @@ async function requestRun() {
   const req = { schemaVersion: 1, id: crypto.randomUUID(), at: new Date().toISOString() };
   try {
     for (let i = 0; i < 3; i++) {
-      const old = await getRepoFile(repo, settings.token, 'requests/run.json');
-      if (await putRepoFile(repo, settings.token, 'requests/run.json', req, old?.sha, 'tablet: run the helper now')) {
+      const old = await getRepoFile(loc, settings.token, 'requests/run.json');
+      if (await putRepoFile(loc, settings.token, 'requests/run.json', req, old?.sha, 'tablet: run the helper now')) {
         await withState((s) => { s.data.runRequest = { id: req.id, at: req.at }; });
         return { ok: true, ...(await withState((s) => runView(s))) };
       }
@@ -1084,25 +1208,25 @@ function runView(s) {
 }
 
 // Reads a JSON file with its sha (null when it doesn't exist yet).
-async function getRepoFile(repo, token, path) {
-  const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, { headers: ghHeaders(token, 'application/vnd.github+json'), cache: 'no-store' });
+async function getRepoFile(loc, token, path) {
+  const r = await fetch(contentsUrl(loc, path), { headers: ghHeaders(token, 'application/vnd.github+json'), cache: 'no-store' });
   if (r.status === 404) return null;
-  if (!r.ok) throw new Error(await explainHttp(r.status, repo, token, path));
+  if (!r.ok) throw new Error(await explainHttp(r.status, loc, token, path));
   const j = await r.json();
   const text = new TextDecoder().decode(Uint8Array.from(atob(j.content.replace(/\n/g, '')), (c) => c.charCodeAt(0)));
   return { json: JSON.parse(text), sha: j.sha };
 }
 
 // Returns true when written, false on a sha conflict (someone else wrote first).
-async function putRepoFile(repo, token, path, json, sha, message) {
-  const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+async function putRepoFile(loc, token, path, json, sha, message) {
+  const r = await fetch(contentsUrl(loc, path), {
     method: 'PUT',
     headers: { ...ghHeaders(token, 'application/vnd.github+json'), 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, content: toBase64(JSON.stringify(json, null, 2) + '\n'), ...(sha ? { sha } : {}) }),
   });
   if (r.ok) return true;
   if (r.status === 409 || r.status === 422) return false;
-  throw new Error(await explainHttp(r.status, repo, token, path));
+  throw new Error(await explainHttp(r.status, loc, token, path));
 }
 
 // Rules from the parent page: used on the tablet at once, then written into parent-config.json
@@ -1116,13 +1240,14 @@ async function saveRules(patch) {
 async function uploadLocalConfig() {
   const { settings = {}, localConfig, account } = await chrome.storage.local.get(['settings', 'localConfig', 'account']);
   if (!localConfig) return { saved: 'github' };
-  const repo = settings.repo || DEFAULT_REPO, token = settings.token || '';
+  const loc = await dataLocation(settings), token = settings.token || '';
+  if (!loc.base) return { saved: 'tablet', error: 'No profile yet (open YouTube once), so the rules are saved on this tablet only.' };
   if (!token) return { saved: 'tablet', error: 'No GitHub token yet, so the rules are saved on this tablet only.' };
   try {
     for (let attempt = 0; attempt < 3; attempt++) {
-      const cur = await getRepoFile(repo, token, 'parent-config.json');
+      const cur = await getRepoFile(loc, token, 'parent-config.json');
       const next = { ...mergeConfig(cur?.json ?? { schemaVersion: 1 }, localConfig), schemaVersion: 1, updatedAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z') };
-      if (await putRepoFile(repo, token, 'parent-config.json', next, cur?.sha, 'Rules changed on the tablet')) {
+      if (await putRepoFile(loc, token, 'parent-config.json', next, cur?.sha, 'Rules changed on the tablet')) {
         await withState((s) => {
           s.data.config = next;
           if (s.data.etags) delete s.data.etags['parent-config.json'];
@@ -1138,7 +1263,7 @@ async function uploadLocalConfig() {
 }
 
 // Writes queued events into activity/YYYY-MM-DD.json, de-duplicated by eventId (PLAN.md §3.3).
-async function flushOutbox(repo, token) {
+async function flushOutbox(loc, token) {
   const all = (await chrome.storage.local.get('outbox')).outbox ?? [];
   const outbox = all.filter((e) => !e.held);   // notes wait for ↻ Update
   const { settings = {}, data = {}, localConfig } = await chrome.storage.local.get(['settings', 'data', 'localConfig']);
@@ -1154,7 +1279,7 @@ async function flushOutbox(repo, token) {
   for (const [date, events] of Object.entries(byDate)) {
     const path = `activity/${date}.json`;
     for (let attempt = 0; attempt < 3; attempt++) {
-      const cur = await getRepoFile(repo, token, path);
+      const cur = await getRepoFile(loc, token, path);
       const file = cur?.json ?? { schemaVersion: 1, date, events: [] };
       const have = new Set(file.events.map((e) => e.eventId));
       file.events.push(...events.filter((e) => !have.has(e.eventId)));
@@ -1165,7 +1290,7 @@ async function flushOutbox(repo, token) {
         ...(queue.updatedAt ? { queueUpdatedAt: queue.updatedAt } : {}),
         lastSyncAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'),
       };
-      if (await putRepoFile(repo, token, path, file, cur?.sha, `activity ${date}`)) { events.forEach((e) => sent.add(e.eventId)); break; }
+      if (await putRepoFile(loc, token, path, file, cur?.sha, `activity ${date}`)) { events.forEach((e) => sent.add(e.eventId)); break; }
       await new Promise((r) => setTimeout(r, 500 * (attempt + 1)));
     }
   }
@@ -1207,7 +1332,7 @@ export async function fetchTranscript(videoId) {
   return file;
 }
 
-async function uploadTranscripts(repo, token) {
+async function uploadTranscripts(loc, token) {
   const { transcripts = {}, data = {}, account } = await chrome.storage.local.get(['transcripts', 'data', 'account']);
   const { queue } = await effective({ data, planLog: (await chrome.storage.local.get('planLog')).planLog });
   // Today's videos first, then the planned ones (`upcoming`) so the helper can prepare them.
@@ -1220,9 +1345,9 @@ async function uploadTranscripts(repo, token) {
   for (const id of due) {
     const path = `transcripts/${id}.json`;
     try {
-      if (await getRepoFile(repo, token, path)) { done[id] = { status: 'uploaded', at: Date.now() }; continue; }
+      if (await getRepoFile(loc, token, path)) { done[id] = { status: 'uploaded', at: Date.now() }; continue; }
       const file = await fetchTranscript(id);
-      await putRepoFile(repo, token, path, file, null, `transcript ${id}`);
+      await putRepoFile(loc, token, path, file, null, `transcript ${id}`);
       done[id] = { status: 'uploaded', at: Date.now(), available: file.available };
     } catch (e) {
       done[id] = { status: 'error', at: Date.now(), error: String(e.message ?? e).slice(0, 200) };
@@ -1250,7 +1375,7 @@ export function audioRefs(queue, config) {
   return refs;
 }
 
-async function syncAudio(repo, token) {
+async function syncAudio(loc, token) {
   if (!self.caches) return;
   const { data = {}, localConfig } = await chrome.storage.local.get(['data', 'localConfig']);
   const { config, queue } = await effective({ data, localConfig });
@@ -1260,7 +1385,7 @@ async function syncAudio(repo, token) {
   let failed = 0;
   for (const path of want) {
     if (await cache.match(audioKey(path))) continue;
-    const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, { headers: { ...ghHeaders(token), Accept: 'application/vnd.github.raw+json' }, cache: 'no-store' });
+    const r = await fetch(contentsUrl(loc, path), { headers: { ...ghHeaders(token), Accept: 'application/vnd.github.raw+json' }, cache: 'no-store' });
     if (!r.ok) { failed++; continue; }
     await cache.put(audioKey(path), new Response(await r.blob(), { headers: { 'Content-Type': path.endsWith('.mp3') ? 'audio/mpeg' : path.endsWith('.ogg') ? 'audio/ogg' : 'audio/wav' } }));
   }
@@ -1269,18 +1394,18 @@ async function syncAudio(repo, token) {
 
 // --- the talking friend's picture from the private data repo ("repo:characters/x.svg") --------
 
-async function loadCharacter(repo, token) {
+async function loadCharacter(loc, token) {
   const { data = {}, localConfig, character, account } = await chrome.storage.local.get(['data', 'localConfig', 'character', 'account']);
   const only = { account: account?.key ?? null };
   const { config } = await effective({ data, localConfig });
   const ref = config.presenter?.imageUrl ?? '';
   if (!ref.startsWith('repo:')) { if (character) await withState((s) => { s.character = null; }, only); return; }
   const path = ref.slice(5);
-  const r = await fetch(`https://api.github.com/repos/${repo}/contents/${path}`, {
+  const r = await fetch(contentsUrl(loc, path), {
     headers: { ...ghHeaders(token), ...(character?.path === path && character.etag ? { 'If-None-Match': character.etag } : {}) }, cache: 'no-store',
   });
   if (r.status === 304) return;
-  if (!r.ok) throw new Error(await explainHttp(r.status, repo, token, path));
+  if (!r.ok) throw new Error(await explainHttp(r.status, loc, token, path));
   const etag = r.headers.get('etag');
   if (path.endsWith('.svg')) {
     const svg = await r.text();

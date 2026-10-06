@@ -6,13 +6,15 @@ import { join } from 'node:path';
 
 const iso = (d = new Date()) => d.toISOString().replace(/\.\d+Z$/, 'Z');
 
-export function helperInfo(root, config) {
+// where: the profile of this run (agent/lib/profile.mjs locate): its app's prompts and its own defaults.
+export function helperInfo(root, config, where = {}) {
   // What the helper reads: the system prompt, the steps, and the step details (skills), in that order.
   const skills = ['helper-find-videos', 'helper-write-words', 'helper-notes'].map((n) => {
     const f = join(root, '.claude/skills', n, 'SKILL.md');
     return existsSync(f) ? { name: n, text: readFileSync(f, 'utf8').replace(/^---[\s\S]*?---\n/, '').trim() } : null;
   }).filter(Boolean);
-  const prompt = [readFileSync(join(root, 'agent/SYSTEM.md'), 'utf8'), readFileSync(join(root, 'agent/DAILY.md'), 'utf8')].join('\n\n');
+  const app = where.appConfig ?? {};
+  const prompt = [readFileSync(join(root, app.system ?? 'agent/SYSTEM.md'), 'utf8'), readFileSync(join(root, app.daily ?? 'agent/DAILY.md'), 'utf8')].join('\n\n');
   const commands = readFileSync(join(root, 'agent/kt.mjs'), 'utf8').split('\n')
     .map((l) => l.match(/^\/\/\s+node agent\/kt\.mjs (\S+)(.*?)\s{2,}(\S.*)$/)).filter(Boolean)
     .map(([, cmd, args, what]) => ({ command: `${cmd}${args}`.trim(), what: what.trim() }));
@@ -28,7 +30,8 @@ export function helperInfo(root, config) {
       tools: ['node agent/kt.mjs (its toolkit, below)', 'Read (files)'],
     },
     commands,
-    defaults: config.defaults ?? {},
+    defaults: where.defaults ?? config.defaults ?? {},
+    ...(where.profile ? { profile: where.profile.path } : {}),
     transcripts: { provider: config.transcripts?.provider ?? 'gemini', maxVideosPerDay: config.transcripts?.maxVideosPerDay, maxMinutesPerDay: config.transcripts?.maxMinutesPerDay,
       secondsPerRequest: config.transcripts?.secondsPerRequest, models: config.transcripts?.models ?? [] },
     voices: { provider: speak.provider ?? 'device', voice: speak.voice ?? null, maxMinutes: speak.maxMinutes ?? null, style: speak.style ?? '',

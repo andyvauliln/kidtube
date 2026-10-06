@@ -15,6 +15,7 @@ test('captions: old and srv3 formats, entities, 20-second lines', () => {
 
 const fake = installFakeChrome();
 await import('../extension/sw.js');
+fake.store.account = { key: 'kid@example.com', email: 'kid@example.com', app: 'kidtube', folder: 'kid' };
 const send = (msg) => new Promise((resolve) => fake.listeners.message[0](msg, { tab: { id: 7, url: 'https://m.youtube.com/' } }, resolve));
 
 test('sync uploads a transcript for each listed video once, and the friend picture is loaded', async () => {
@@ -33,12 +34,12 @@ test('sync uploads a transcript for each listed video once, and the friend pictu
       assert.ok(!u.includes('fmt=srv3'));
       return ok('<transcript><text start="1" dur="2">spiders have eight legs</text></transcript>');
     }
-    if (u.includes('/contents/transcripts/') && opts.method === 'PUT') {
+    if (u.includes('/contents/kidtube/kid/transcripts/') && opts.method === 'PUT') {
       put[u.split('/').pop()] = JSON.parse(Buffer.from(JSON.parse(opts.body).content, 'base64').toString('utf8'));
       return ok({});
     }
-    if (u.includes('/contents/transcripts/')) return { ok: false, status: 404, json: async () => ({}), headers: { get: () => null } };
-    if (u.endsWith('/contents/characters/pika.svg')) return ok('<svg xmlns="http://www.w3.org/2000/svg"><ellipse id="mouth"/></svg>');
+    if (u.includes('/contents/kidtube/kid/transcripts/')) return { ok: false, status: 404, json: async () => ({}), headers: { get: () => null } };
+    if (u.endsWith('/contents/kidtube/kid/characters/pika.svg')) return ok('<svg xmlns="http://www.w3.org/2000/svg"><ellipse id="mouth"/></svg>');
     if (u.includes('/contents/')) return { ok: false, status: 404, json: async () => ({}), headers: { get: () => null } };
     return realFetch(url, opts);
   };

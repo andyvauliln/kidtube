@@ -2,6 +2,31 @@
 
 *Written 2026-10-06, starting from version 0.8.7. Background: [HOW-IT-WORKS.md](HOW-IT-WORKS.md), [CONFIGURATION.md](CONFIGURATION.md), [PLAN-DEVICES.md](PLAN-DEVICES.md).*
 
+## Status (2026-10-06)
+
+**Built, not released yet:** steps 0–4 and the `migrate-root` command (step 5).
+- Tests: `npm test` passes (132 tests). New tests are in `tests/parent.test.mjs` (Profiles) and `tests/profiles.test.mjs` (server side, `migrate-root`, `init-profile`).
+- Desktop Chromium with the extension loaded (Playwright):
+  - adding `second.kid@gmail.com` switches the profile, keeps parent mode on and starts an empty history;
+  - Google's sign-in opens with that email filled in;
+  - switching back brings the first profile's history back;
+  - Settings shows the profile's folder.
+- `claude -p` passes `KIDTUBE_PROFILE` on to the commands it runs (checked).
+
+**Waiting:**
+1. Release 0.9.0 for Quetta and Orion.
+2. Run `node agent/kt.mjs migrate-root kidtube/johnnypitt.ind johnnypitt.ind@gmail.com`.
+3. Set `"profiles": ["kidtube/johnnypitt.ind"]` (or `"kidtube/*"`) in `agent/config.json`.
+
+Until step 3, `profiles` stays empty, so the helper keeps using the old layout at the repo root and the nightly run is unchanged.
+
+**Differences from the plan below:**
+- No code is gated by app yet. There is only one app; the registry, the `app` field and the folders are in place.
+- The context documents on the tablet (`contextDocs`) are now per profile. Before, every account on the tablet shared one copy.
+- `run.mjs` keeps its own pid lock in `run.pid`. It used to write into, and then delete, the `run.lock` file that `daily.sh` and `poll.sh` lock.
+- `poll.sh` and `daily.sh` loop over the profiles. A profile's run asked for from parent mode runs only that profile.
+- Still assumes a 4–5-year-old: the backup program's prompts (`agent/lib/prompts.mjs`, used only when Claude can't run). Claude's prompts now take the child from `context/kid.md`.
+
 ## Context
 Today the tablet already keeps settings, lists, history and memory per YouTube email (`useAccount` in `extension/sw.js:57-95`). But:
 - the only way to change the account is to change it in YouTube, and nothing shows the known accounts;

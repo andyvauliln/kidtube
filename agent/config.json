@@ -11,6 +11,17 @@
   "dataRepo": "andyvauliln/kidtube-data",
   "dataDir": "~/.local/share/kidtube/kidtube-data",
   "stateDir": "~/.local/share/kidtube/state",
+  "profiles": [],
+  "profilesNote": "Which profiles the helper runs, one after another: \"kidtube/<folder>\" (a folder in the data repo), \"kidtube/*\" (every folder with a profile.json), or {\"path\": \"kidtube/x\", \"defaults\": {...}} with its own defaults. Empty: the old layout, one child at the root of the repo. See agent/lib/profile.mjs.",
+  "apps": {
+    "kidtube": {
+      "label": "KidTube (YouTube)",
+      "daily": "agent/DAILY.md",
+      "system": "agent/SYSTEM.md",
+      "fallback": "agent/run.mjs",
+      "contextDocs": ["kid", "strategy", "math", "letters", "world"]
+    }
+  },
   "envFile": "~/.config/kidtube/agent.env",
   "timezone": "UTC",
   "schedule": "30 3 * * *",

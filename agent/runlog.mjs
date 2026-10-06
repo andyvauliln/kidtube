@@ -3,12 +3,13 @@
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { homedir } from 'node:os';
 import { readJson, writeJson, syncClone, commitAndPush } from './lib/data.mjs';
+import { locate } from './lib/profile.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const config = JSON.parse(readFileSync(join(ROOT, 'agent/config.json'), 'utf8'));
-const dataDir = (process.env.KIDTUBE_DATA_DIR ?? config.dataDir).replace(/^~/, homedir());
+// runs.json of this run's profile (KIDTUBE_PROFILE); the clone is pulled and pushed as a whole.
+const { cloneDir, dataDir, profile } = locate(config);
 const [file, kind] = process.argv.slice(2);
 let r = {};
 try { r = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { console.log(`=== no JSON result from claude (${e.message})`); }
@@ -22,10 +23,10 @@ const run = {
 };
 console.log(`=== run: ${JSON.stringify(run)}`);
 try {
-  syncClone(dataDir, config.dataRepo);
+  syncClone(cloneDir, config.dataRepo);
   const path = join(dataDir, 'runs.json');
   const log = readJson(path, { schemaVersion: 1, runs: [] });
   log.runs = [...log.runs, run].slice(-60);
   writeJson(path, log);
-  commitAndPush(dataDir, `helper: run log (${run.minutes ?? '?'} min, ${run.turns ?? '?'} turns)`);
+  commitAndPush(cloneDir, `helper: run log (${run.minutes ?? '?'} min, ${run.turns ?? '?'} turns)${profile ? ` (${profile.path})` : ''}`);
 } catch (e) { console.log(`=== runs.json not saved: ${e.message}`); }

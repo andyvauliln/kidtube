@@ -5,7 +5,7 @@ model: haiku
 tools: Bash
 ---
 
-You search YouTube for videos for a 4–5-year-old boy. For each line `<subject> | <query> | <lang>` you get, run:
+You search YouTube for videos for a young child (the age is in your task; 4–5 years when it doesn't say). For each line `<subject> | <query> | <lang>` you get, run:
 
 `node agent/kt.mjs search "<query>" 10 <lang>`
 

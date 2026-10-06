@@ -15,8 +15,10 @@
 //   node agent/kt.mjs notes '<json>'             {diary, noticed, plan, requiredFirst}: shown in parent mode
 //   node agent/kt.mjs save                       voices, files, checks, commit + push
 //   node agent/kt.mjs info                       publish helper.json now (what the parent sees in the Prompt tab)
-import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, readdirSync, unlinkSync } from 'node:fs';
-import { join, dirname } from 'node:path';
+//   node agent/kt.mjs init-profile               a new profile's starter files (KIDTUBE_PROFILE=kidtube/<folder>)
+//   node agent/kt.mjs migrate-root <app/folder>  once: move the old one-child files at the repo root into that profile
+import { readFileSync, writeFileSync, appendFileSync, existsSync, mkdirSync, readdirSync, unlinkSync, renameSync, rmSync, statSync } from 'node:fs';
+import { join, dirname, basename } from 'node:path';
 import { homedir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
@@ -28,23 +30,28 @@ import { tooHard } from './lib/prompts.mjs';
 import { createGemini } from './lib/gemini.mjs';
 import { createVoices, audioPath } from './lib/voices.mjs';
 import { search } from '../tools/video-info.mjs';
+import { locate } from './lib/profile.mjs';
+import { mergeConfig } from '../extension/lib/merge.js';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const home = (p) => p.replace(/^~(?=\/)/, homedir());
 const iso = (d = new Date()) => d.toISOString().replace(/\.\d+Z$/, 'Z');
 const config = JSON.parse(readFileSync(join(ROOT, 'agent/config.json'), 'utf8'));
-const dataDir = home(process.env.KIDTUBE_DATA_DIR ?? config.dataDir);
-const stateDir = home(process.env.KIDTUBE_STATE_DIR ?? config.stateDir);
+// One profile per run (KIDTUBE_PROFILE, e.g. kidtube/johnnypitt.ind): its folder in the clone, its own state.
+// The clone is pulled and pushed as a whole; the log and the Gemini quota (stateRoot) are shared by all profiles.
+const where = locate(config);
+const { cloneDir, dataDir, stateDir, stateRoot } = where;
+const PROFILE = where.profile?.path ?? '';
 mkdirSync(stateDir, { recursive: true });
 const env = { ...readEnv(home(config.envFile)), ...process.env };
 const SESSION = join(stateDir, 'session.json');
-const D = config.defaults;
+const D = where.defaults;
 // Videos per day = the parent's "Videos on the home screen" (parent mode → Settings).
 const perDay = () => readJson(join(dataDir, 'parent-config.json'))?.queueSize ?? D.videosPerDay;
 // A line in the daily log (helper.log), next to what daily.sh writes.
-const log = (msg) => { try { appendFileSync(join(stateDir, 'helper.log'), `[${new Date().toISOString().slice(11, 19)}] ${msg}\n`); } catch {} };
+const log = (msg) => { try { appendFileSync(join(stateRoot, 'helper.log'), `[${new Date().toISOString().slice(11, 19)}]${PROFILE ? ` [${PROFILE}]` : ''} ${msg}\n`); } catch {} };
 const ready = (videos) => new Set(Object.keys(videos).filter((id) => transcript(dataDir, id)?.available));
-const gemFor = (s) => createGemini({ apiKey: env.GEMINI_API_KEY ?? '', stateDir, config: config.transcripts, today: s.today, log: () => {} });
+const gemFor = (s) => createGemini({ apiKey: env.GEMINI_API_KEY ?? '', stateDir: stateRoot, config: config.transcripts, today: s.today, log: () => {} });
 const ideas = (s) => {
   const r = ideasAllowed(s.videos, { target: D.planTarget ?? 50, geminiLeft: gemFor(s).left().videos, perDay: perDay() });
   return { ...r, addedToday: s.newIds.length, stillAllowed: Math.max(0, r.allowed - s.newIds.length) };
@@ -66,8 +73,8 @@ const parse = (s, what) => {
     s = existsSync(f) ? readFileSync(f, 'utf8') : fail(`${what}: no file ${f}`);
   }
   try { return JSON.parse(s); } catch { return fail(`${what}: not valid JSON`); } };
-// Context documents in kidtube-data context/: about him, the overall strategy, one per subject.
-const CONTEXT_DOCS = ['kid', 'strategy', 'math', 'letters', 'world'];
+// Context documents in the profile's context/: about the child, the overall strategy, one per subject.
+const CONTEXT_DOCS = where.appConfig.contextDocs ?? ['kid', 'strategy', 'math', 'letters', 'world'];
 const SUBJECTS = ['math', 'letters', 'world', 'other'];
 const readContext = () => Object.fromEntries(CONTEXT_DOCS.map((d) => {
   const f = join(dataDir, 'context', `${d}.md`);
@@ -89,7 +96,8 @@ const [cmd = 'help', ...args] = process.argv.slice(2);
 const commands = {
   // ---------------------------------------------------------------------------------------------
   start() {
-    syncClone(dataDir, config.dataRepo);
+    syncClone(cloneDir, config.dataRepo);
+    seedProfile();
     const memory = readJson(paths.memory);
     const queue = readJson(paths.queue);
     const pc = readJson(paths.config);
@@ -104,7 +112,7 @@ const commands = {
     const { events, devices } = activitySince(dataDir, since);
     const news = applyActivity(helper.videos, events, { minSecondsBeforeLeave: pc.minSecondsBeforeLeave ?? 120 });
     const lastEvent = events.map((e) => e.at).sort().at(-1);
-    const gem = createGemini({ apiKey: env.GEMINI_API_KEY ?? '', stateDir, config: config.transcripts, today, log: () => {} });
+    const gem = createGemini({ apiKey: env.GEMINI_API_KEY ?? '', stateDir: stateRoot, config: config.transcripts, today, log: () => {} });
     const s = { today, tz, startedAt: iso(), videos: helper.videos, processedThrough: lastEvent && lastEvent > (since ?? '') ? lastEvent : since,
       newIds: [], todayIds: null, searchCache: {}, notes: null, rewritten: [], touched: [...new Set([...news.watched, ...news.quiz, ...news.notes, ...news.plan].map((x) => x.videoId).filter((id) => helper.videos[id]))],
       quizTypes: devices.at(-1)?.quizTypes ?? ['text', 'choice'], wishes: news.wishes,
@@ -115,7 +123,7 @@ const commands = {
     const counts = {};
     for (const v of Object.values(helper.videos)) counts[v.status] = (counts[v.status] ?? 0) + 1;
     const { edited, prompt, context: contextNotes, ...tablet } = news;
-    out({ ok: true, today, timezone: tz, since,
+    out({ ok: true, ...(PROFILE ? { profile: PROFILE } : {}), today, timezone: tz, since,
       promptNotes: s.promptNotes.map((n) => n.text),
       // Context documents (kidtube-data context/*.md) and the parent's new notes on them (parent mode → Context).
       context: readContext(), contextNotes,
@@ -201,7 +209,7 @@ const commands = {
   async transcribe() {
     const s = load();
     if (!env.GEMINI_API_KEY) fail('GEMINI_API_KEY is missing');
-    const gem = createGemini({ apiKey: env.GEMINI_API_KEY, stateDir, config: config.transcripts, today: s.today, log: () => {} });
+    const gem = createGemini({ apiKey: env.GEMINI_API_KEY, stateDir: stateRoot, config: config.transcripts, today: s.today, log: () => {} });
     const likelyToday = s.todayIds ?? composeToday(s.videos, { today: s.today, count: perDay() + (D.spares ?? 0), blockedChannelIds: readJson(paths.config).blockedChannelIds });
     const order = args.length ? args : [...new Set([...likelyToday, ...s.newIds, ...upcoming(s.videos, likelyToday, { today: s.today }).map((u) => u.videoId)])];
     const done = [], skipped = [], errors = [];
@@ -227,7 +235,7 @@ const commands = {
     const [id, question] = args;
     const v = s.videos[id];
     if (!v || !question) fail('ask <videoId> "<question>"');
-    const gem = createGemini({ apiKey: env.GEMINI_API_KEY, stateDir, config: config.transcripts, today: s.today, log: () => {} });
+    const gem = createGemini({ apiKey: env.GEMINI_API_KEY, stateDir: stateRoot, config: config.transcripts, today: s.today, log: () => {} });
     try { out({ ok: true, answer: await gem.ask({ videoId: id, ...v }, question), left: gem.left() }); }
     catch (e) { fail(e.message); }
   },
@@ -326,7 +334,7 @@ const commands = {
     writeJson(paths.queue, queue);
     writeJson(paths.config, pc);
     writeJson(paths.memory, memory);
-    writeJson(join(dataDir, 'helper.json'), helperInfo(ROOT, config));
+    writeJson(join(dataDir, 'helper.json'), helperInfo(ROOT, config, where));
     for (const [doc, text] of Object.entries(s.notes?.context ?? {})) {
       mkdirSync(join(dataDir, 'context'), { recursive: true });
       writeFileSync(join(dataDir, 'context', `${doc}.md`), text.trim() + '\n');
@@ -334,28 +342,89 @@ const commands = {
     try { execFileSync(process.execPath, [join(ROOT, 'tools/validate.mjs'), dataDir], { encoding: 'utf8', stdio: 'pipe' }); }
     catch (e) {
       const why = `${e.stdout ?? ''}${e.stderr ?? ''}`.split('\n').filter((l) => /FAIL|^\s{4,}/.test(l)).slice(0, 20).join('\n');
-      syncClone(dataDir, config.dataRepo);
+      syncClone(cloneDir, config.dataRepo);
       return fail(`the files did not pass the checks, nothing was saved:\n${why}`);
     }
-    commitAndPush(dataDir, `helper: ${s.today}: ${s.todayIds.length} today, ${s.newIds.length} new ideas`);
+    commitAndPush(cloneDir, `helper: ${s.today}: ${s.todayIds.length} today, ${s.newIds.length} new ideas${PROFILE ? ` (${PROFILE})` : ''}`);
     writeFileSync(join(stateDir, 'last-save'), s.today);
     s.saved = true;
     store(s);
     out({ ok: true, today: s.todayIds, spares, newIdeas: s.newIds, voices: voiceReport });
   },
 
+  'init-profile'() {   // a new profile's starter files (start does this too), pushed now
+    syncClone(cloneDir, config.dataRepo);
+    const added = seedProfile();
+    out({ ok: true, profile: PROFILE, added, pushed: added.length ? commitAndPush(cloneDir, `helper: new profile ${PROFILE}`) : false });
+  },
+  // Once, when profiles came (0.9.0): the one child's files at the root of the repo move into their profile.
+  // A tablet that already wrote into the profile folder keeps that: activity days are merged, rules merged.
+  'migrate-root'() {
+    const [target, email] = args;
+    const m = String(target ?? '').match(/^([a-z0-9_-]+)\/([a-z0-9._-]+)$/);
+    if (!m || !config.apps?.[m[1]]) fail('usage: migrate-root <app>/<folder> [email]  (an app from config.json apps)');
+    syncClone(cloneDir, config.dataRepo);
+    const dest = join(cloneDir, target);
+    const moved = moveInto(cloneDir, dest, ROOT_ITEMS);
+    if (!existsSync(join(dest, 'profile.json'))) writeJson(join(dest, 'profile.json'), { schemaVersion: 1, app: m[1], folder: m[2], email: email ?? null, name: null, createdAt: iso() });
+    // The server's own notes about this child (last save, requests, handled notes) move with it.
+    const state = moveInto(stateRoot, join(stateRoot, target), STATE_ITEMS);
+    out({ ok: true, moved, state, pushed: commitAndPush(cloneDir, `helper: the files at the root moved into ${target}`) });
+  },
   info() {
     // A daily session works in the same clone: wait for it (save writes helper.json anyway).
     const cur = existsSync(SESSION) ? JSON.parse(readFileSync(SESSION, 'utf8')) : null;
     if (cur && !cur.saved && Date.now() - Date.parse(cur.startedAt) < 3 * 3600e3) fail('a daily session is running; its save publishes helper.json');
-    syncClone(dataDir, config.dataRepo);
-    writeJson(join(dataDir, 'helper.json'), helperInfo(ROOT, config));
-    out({ ok: true, pushed: commitAndPush(dataDir, 'helper: helper.json (how the helper works)') });
+    syncClone(cloneDir, config.dataRepo);
+    writeJson(join(dataDir, 'helper.json'), helperInfo(ROOT, config, where));
+    out({ ok: true, pushed: commitAndPush(cloneDir, `helper: helper.json (how the helper works)${PROFILE ? ` (${PROFILE})` : ''}`) });
   },
 
   help() { console.log(readFileSync(fileURLToPath(import.meta.url), 'utf8').split('\n').filter((l) => l.startsWith('//')).join('\n')); },
 };
 
+
+// What one child had at the root of the data repo before profiles, and in the server's state folder.
+const ROOT_ITEMS = ['parent-config.json', 'queue.json', 'memory.json', 'helper.json', 'runs.json', 'run-status.json',
+  'activity', 'context', 'characters', 'transcripts', 'audio', 'requests'];
+const STATE_ITEMS = ['session.json', 'last-save', 'on-demand', 'last-request', 'dry-run.json', 'runs',
+  'notes-handled.json', 'notes-runs.log', 'notes-limit', 'notes-in.json', 'notes-result.json', 'notes-runs'];
+
+// Moves each item from `from` into `to`. A file already there wins, except: activity days are merged by eventId
+// and parent-config.json gets the rules written there on top of the old file.
+function moveInto(from, to, items) {
+  const moved = [];
+  const move = (a, b) => {
+    if (!existsSync(b)) { mkdirSync(dirname(b), { recursive: true }); renameSync(a, b); return; }
+    if (statSync(a).isDirectory()) { for (const f of readdirSync(a)) move(join(a, f), join(b, f)); rmSync(a, { recursive: true, force: true }); return; }
+    if (/\/activity\/\d{4}-\d{2}-\d{2}\.json$/.test(b)) {
+      const old = readJson(a), cur = readJson(b);
+      const seen = new Set(cur.events.map((e) => e.eventId));
+      cur.events = [...cur.events, ...old.events.filter((e) => !seen.has(e.eventId))].sort((x, y) => x.at.localeCompare(y.at));
+      writeJson(b, cur);
+    } else if (basename(b) === 'parent-config.json') {
+      writeJson(b, { ...mergeConfig(readJson(a), readJson(b)), schemaVersion: 1 });
+    }
+    unlinkSync(a);
+  };
+  for (const it of items) if (existsSync(join(from, it))) { move(join(from, it), join(to, it)); moved.push(it); }
+  return moved;
+}
+
+// A new profile (the tablet made its folder with profile.json): the starter files it doesn't have yet,
+// from data-repo-template/<app>/ and the tablet's starter list. Returns what was added.
+function seedProfile() {
+  if (!PROFILE) return [];
+  const tpl = join(ROOT, 'data-repo-template', where.app);
+  const added = [];
+  const copy = (from, to) => { if (!existsSync(join(dataDir, to)) && existsSync(from)) { mkdirSync(dirname(join(dataDir, to)), { recursive: true }); writeFileSync(join(dataDir, to), readFileSync(from)); added.push(to); } };
+  copy(join(tpl, 'parent-config.json'), 'parent-config.json');
+  copy(join(tpl, 'memory.json'), 'memory.json');
+  copy(join(ROOT, 'extension/default-queue.json'), 'queue.json');
+  for (const d of CONTEXT_DOCS) copy(join(tpl, 'context', `${d}.md`), `context/${d}.md`);
+  if (added.length) log(`new profile: added ${added.join(', ')}`);
+  return added;
+}
 
 // Recorded voice for every line the friend says today (config voices.speak).
 async function makeVoices(queue, pc, s) {

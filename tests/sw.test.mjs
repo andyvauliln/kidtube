@@ -24,6 +24,8 @@ async function play(seconds) {
   for (let left = seconds; left > 0; left -= 15) r = await send({ type: 'tick', videoId: fake.store.session?.videoId, seconds: Math.min(15, left) });
   return r;
 }
+// One profile (a YouTube account): its files are under kidtube/kid/ in the data repo.
+fake.store.account = { key: 'kid@example.com', email: 'kid@example.com', app: 'kidtube', folder: 'kid' };
 // Keep the tests inside the allowed hours whatever time it is now.
 fake.store.data = { config: { schemaVersion: 1, updatedAt: '2026-10-01T00:00:00Z', time: { allowed: [{ days: ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'], from: '00:00', to: '23:59' }], maxMinutesPerDay: 20 } } };
 
@@ -128,11 +130,12 @@ test('rules are merged into parent-config.json on GitHub, then the local copy is
   let written = null;
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url, opts = {}) => {
-    if (String(url).endsWith('/contents/parent-config.json') && opts.method === 'PUT') {
+    if (String(url).includes('/contents/parent-config.json')) throw new Error('outside the profile folder');
+    if (String(url).endsWith('/contents/kidtube/kid/parent-config.json') && opts.method === 'PUT') {
       written = JSON.parse(Buffer.from(JSON.parse(opts.body).content, 'base64').toString('utf8'));
       return { ok: true, status: 200, json: async () => ({}) };
     }
-    if (String(url).endsWith('/contents/parent-config.json')) {
+    if (String(url).endsWith('/contents/kidtube/kid/parent-config.json')) {
       return { ok: true, status: 200, json: async () => ({ sha: 'abc', content: Buffer.from(JSON.stringify(remote)).toString('base64') }) };
     }
     return realFetch(url, opts);

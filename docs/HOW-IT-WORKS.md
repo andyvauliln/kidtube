@@ -86,7 +86,7 @@ Tap a video for its page: why it's on the list, what he learns, the summary, the
 
 Every change works on the tablet at once and is saved as a `plan` event in `activity/<day>.json` (notes as `parentNote`, list notes as `wish` with `list`). The other devices pick it up on their next sync. The helper applies them on its next run, ahead of its own choices.
 
-**Per YouTube account.** KidTube reads which YouTube account is signed in (its email, from YouTube's own account switcher). Every setting, rule, list, history, note and the GitHub connection belong to that account: sign in with another account and it starts fresh, with its own settings. Signing out keeps the last account. The parent PIN is the same for all accounts on the tablet.
+**Profiles (one per YouTube account).** KidTube reads which YouTube account is signed in (its email, from YouTube's own account switcher). Every rule, list, history and note belongs to that account's profile, and so do its files on GitHub (`kidtube-data/kidtube/<email name>/`) and its helper runs: another child is another profile and starts fresh. In parent mode, tap the account at the top → **Profiles** to switch to another email or add one; Google's account chooser then opens so YouTube uses the same account. Signing out keeps the last profile. The PIN, parent mode and the GitHub connection belong to the tablet, the same for every profile.
 
 **In a chat with Claude** in this repo: say what you want, for example "one Russian fairy tale a day", "harder questions" or "run it now". Claude edits the code or the prompts, or runs the helper by hand.
 

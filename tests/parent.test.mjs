@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { installFakeChrome } from './fake-chrome.mjs';
 import { applyPlan, pendingPlan, applyPlanEvent } from '../extension/lib/plan.js';
-import { accountFromSwitcher, accountKey } from '../extension/lib/account.js';
+import { accountFromSwitcher, accountKey, profileFolder, chooserUrl } from '../extension/lib/account.js';
 
 const fake = installFakeChrome();
 await import('../extension/sw.js');
@@ -174,14 +174,17 @@ test('each YouTube account has its own data; the PIN stays the same', async () =
   const r = await send({ type: 'account', loggedIn: true, datasyncId: 'BBB||', switcher });
   assert.equal(r.switched, true);
   assert.equal(fake.store.account.key, 'other@example.com');
-  assert.equal(fake.store.settings.token, undefined);              // fresh settings
+  assert.equal(fake.store.settings.token, 't1');                   // the GitHub connection belongs to the tablet
   assert.equal(fake.store.settings.pinHash, 'H');                  // same PIN
+  assert.equal(fake.store.account.folder, 'other');                // its own folder in the data repo
   assert.equal(fake.store.planLog, undefined);
   assert.equal(fake.store['acct:yt:AAA'].settings.token, 't1');
   await send({ type: 'account', loggedIn: false });                // signed out: nothing changes
   assert.equal(fake.store.account.key, 'other@example.com');
+  fake.store.settings.queueSize = 3;                               // a setting of this profile only
   await send({ type: 'account', loggedIn: true, datasyncId: 'AAA||', switcher: '' });          // back again
-  assert.equal(fake.store.settings.token, 't1');
+  assert.equal(fake.store.account.key, 'yt:AAA');
+  assert.equal(fake.store.settings.queueSize, undefined);
   assert.ok(fake.store.planLog.events.length > 0);
 });
 
@@ -242,7 +245,9 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
   globalThis.fetch = async (url, init = {}) => {
     const m = String(url).match(/api\.github\.com\/repos\/[^/]+\/[^/]+\/contents\/(.+)$/);
     if (!m) return realFetch(url, init);
-    const path = decodeURIComponent(m[1]);
+    const base = `${fake.store.account.app}/${fake.store.account.folder}/`;
+    assert.ok(decodeURIComponent(m[1]).startsWith(base), m[1]);   // only inside the profile's folder
+    const path = decodeURIComponent(m[1]).slice(base.length);
     if (init.method === 'PUT') {
       const body = JSON.parse(init.body);
       files[path] = { json: JSON.parse(Buffer.from(body.content, 'base64').toString('utf8')), sha: `sha-${puts.length}` };
@@ -284,4 +289,56 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
     globalThis.fetch = realFetch;
     fake.store.settings = { ...fake.store.settings, token: '' };
   }
+});
+
+test('profile folders: the email’s name part, given once; a clash adds the domain', () => {
+  assert.equal(profileFolder({ email: 'JohnnyPitt.Ind@gmail.com' }), 'johnnypitt.ind');
+  assert.equal(profileFolder({ email: 'kid@school.org' }, ['kid']), 'kid-school');
+  assert.equal(profileFolder({ email: 'kid@school.org' }, ['kid', 'kid-school']), 'kid-school-2');
+  assert.equal(profileFolder({ datasyncId: 'AbC||' }), 'yt-abc');
+  assert.equal(profileFolder({}), null);
+  assert.ok(chooserUrl('a+b@x.com').startsWith('https://accounts.google.com/AccountChooser?Email=a%2Bb%40x.com&continue='));
+});
+
+test('parent mode → Profiles: add an email, start fresh, wait for Google, switch back', async () => {
+  const send2 = (msg) => send(msg, { tab: YT });
+  fake.store.settings = { ...fake.store.settings, pinHash: 'H', pinSalt: 'S', repo: 'me/data', token: 't1' };
+  await fromPage({ type: 'setMode', mode: 'parent' });
+  const first = fake.store.account.key;
+  fake.store.history = [{ videoId: ids[0], at: '2026-10-05T10:00:00Z' }];
+
+  assert.equal((await send2({ type: 'addProfile', email: 'second@example.com' })).ok, false, 'only from the parent screens');
+  assert.equal((await fromPage({ type: 'addProfile', email: 'not an email' })).ok, false);
+  const r = await fromPage({ type: 'addProfile', email: 'Second@Example.com', app: 'kidtube' });
+  assert.equal(r.switched, true);
+  assert.ok(r.chooser.includes('Email=second%40example.com'));
+  assert.equal(fake.store.account.key, 'second@example.com');
+  assert.equal(fake.store.account.folder, 'second');
+  assert.equal(fake.store.account.app, 'kidtube');
+  assert.equal(fake.store.history, undefined, 'a new profile starts fresh');
+  assert.equal(fake.store.data, undefined);
+  assert.equal((await fromPage({ type: 'parentData' })).parentMode, true, 'parent mode stays on');
+  assert.equal(fake.store.settings.token, 't1');
+
+  // YouTube still shows the old account until Google signs in the new one: no switch back.
+  const other = `)]}'\n${JSON.stringify({ header: { email: { simpleText: 'other@example.com' } }, items: [{ accountItem: { isSelected: true } }] })}`;
+  assert.equal((await send2({ type: 'account', loggedIn: true, datasyncId: 'BBB||', switcher: other })).held, true);
+  assert.equal(fake.store.account.key, 'second@example.com');
+  const second = `)]}'\n${JSON.stringify({ header: { email: { simpleText: 'second@example.com' } }, items: [{ accountItem: { isSelected: true } }] })}`;
+  await send2({ type: 'account', loggedIn: true, datasyncId: 'CCC||', switcher: second });
+  assert.equal(fake.store.profileHold, undefined, 'the account the parent picked arrived');
+  assert.equal(fake.store.accounts['second@example.com'].datasyncId, 'CCC||');
+
+  const list = await fromPage({ type: 'profiles' });
+  assert.equal(list.current, 'second@example.com');
+  assert.ok(list.profiles.some((p) => p.key === first));
+  assert.equal((await fromPage({ type: 'removeProfile', key: 'second@example.com' })).ok, false, 'not the current one');
+
+  const back = await fromPage({ type: 'switchProfile', key: first });
+  assert.equal(back.switched, true);
+  assert.equal(fake.store.account.key, first);
+  assert.equal(fake.store.history.length, 1, 'its own history is back');
+  assert.equal((await fromPage({ type: 'removeProfile', key: 'second@example.com' })).ok, true);
+  assert.equal(fake.store['acct:second@example.com'], undefined);
+  assert.ok(!(await fromPage({ type: 'profiles' })).profiles.some((p) => p.key === 'second@example.com'));
 });

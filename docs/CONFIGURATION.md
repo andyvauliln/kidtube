@@ -38,9 +38,13 @@ Changed in parent mode → Settings (or the options page); the helper also write
 
 ### 1.2 Per-device settings (stored on the tablet only)
 
-`token` (GitHub token for kidtube-data), `repo`, `deviceId`, parent mode (`mode`; it stays on until the parent switches back — `parentUntil` is only left from versions before 0.8.9, which had a timer).
+`token` (GitHub token for kidtube-data), `repo`, `deviceId`, the PIN, parent mode (`mode`; it stays on until the parent switches back — `parentUntil` is only left from versions before 0.8.9, which had a timer). Since 0.9.0 these belong to the tablet and are the same for every profile; everything else (rules, lists, history, notes) belongs to the profile.
 
-### 1.3 Files the tablet reads from kidtube-data
+### 1.2a Profiles (0.9.0)
+
+A profile = one YouTube (Google) account email, with one app (`kidtube` for now). Its files are in its own folder of the data repo, `<app>/<folder>/`, where the folder is the email's name part (`johnnypitt.ind@gmail.com` → `kidtube/johnnypitt.ind/`), given once and never changed. Parent mode → tap the account at the top → **Profiles**: switch to a known one, add an email (starts empty), or remove one from the tablet. After a switch, Google's account chooser opens so YouTube signs in to the same account; for 15 minutes YouTube's report of the old account is ignored. On its first sync a profile writes `profile.json` into its folder. App registry: `extension/lib/apps.js` (tablet), `apps` in `agent/config.json` (server).
+
+### 1.3 Files the tablet reads from kidtube-data (in the profile's folder)
 
 - `queue.json` — today's 10 videos **plus up to 10 spares** (intro/outro text + recordings, quiz ids), and `upcoming` (planned list).
 - `memory.json` — the helper's record of every video (parent mode Planned / History).
@@ -84,6 +88,8 @@ Nothing is substituted into the prompt text itself; these numbers reach Claude t
 | `orchestrator.runner` / `model`                    | claude / sonnet              | Who runs the day (`node` = backup only).                                       |
 | `orchestrator.onDemandPerDay`                      | 6                            | Runs from parent mode (↻ Update) per day.                                      |
 | `orchestrator.fallbackToNode`                      | true                         | Run the backup if nothing was saved.                                           |
+| `profiles`                                         | ["kidtube/johnnypitt.ind"]   | Profiles the helper runs, one after another (`"kidtube/*"` = every folder with a `profile.json`; `{ "path", "defaults" }` = own defaults). Empty = old layout at the repo root. |
+| `apps.<app>`                                       | kidtube                      | Per app: `daily` / `system` prompts, `fallback` program, `contextDocs`.        |
 | `defaults.videosPerDay`                            | 10                           | Fallback only: today's list size is "Videos on the home screen" (`queueSize`). |
 | `defaults.planTarget`                              | 50                           | No searching once the plan has this many open videos.                          |
 | `defaults.newIdeas`                                | 10                           | Upper bound for the backup script; Claude's limit = `ideas.stillAllowed`.      |
@@ -192,7 +198,7 @@ If a step fails, note it, carry on, and mention it in the diary. Only `save` mus
   - `subjects`: open videos per subject and what he watched in the last 7 days per subject.
   - `wishesHistory` (your earlier messages), `noticed`, `studyPlan`, `recentDiary` (its own notes from earlier runs); `quizTemplates`: the question types it may use.
 2. **Parent mode on the tablet** is the only place you talk to it: messages, notes on videos, approve / remove / must-watch, Prompt-tab notes, Settings. Its notes back to you (what it noticed, study plan, diary) are shown in parent mode → Prompt.
-3. **Context documents** in kidtube-data `context/`: `kid.md` (about him), `strategy.md` (goals, balance between subjects, languages, channels), and `math.md`, `letters.md`, `world.md` (goal, where he is now, next steps, good search queries, good channels, question ideas). The helper rewrites them through `notes`; the parent adds notes in parent mode → Context (many per document, typed or dictated). Each video has a `subject` (`math`, `letters`, `world`, `other` or none), set through `notes`. Today's subject mix follows "Balance between subjects" in `strategy`.
+3. **Context documents** in the profile's `context/`: `kid.md` (about the child: age, languages, likes), `strategy.md` (goals, balance between subjects, languages, channels), and `math.md`, `letters.md`, `world.md` (goal, where he is now, next steps, good search queries, good channels, question ideas). The helper rewrites them through `notes`; the parent adds notes in parent mode → Context (many per document, typed or dictated). Each video has a `subject` (`math`, `letters`, `world`, `other` or none), set through `notes`. Today's subject mix follows "Balance between subjects" in `strategy`.
 4. **Per video on demand**: `videos` list, `transcript`, `ask`.
 
 

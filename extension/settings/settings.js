@@ -159,6 +159,7 @@ const MARKUP = `
     <input id="token" type="password" autocomplete="off" placeholder="github_pat_…">
     <button class="primary" id="save">Save</button>
     <span id="saveOut" class="muted"></span>
+    <p class="muted">One repo and token for every profile on this tablet; each profile has its own folder in it.</p>
     <p class="muted">Reinstalling KidTube (a new version on Orion) erases these settings. KidTube keeps a copy on its install page and takes it back by itself after a reinstall (it opens that page). If that fails, use a file: save it once; after a reinstall, set a PIN and load the file.
       The file holds your GitHub token: keep it on this device only.</p>
     <button id="backup">Save settings to a file</button>
@@ -207,8 +208,8 @@ export function mountSettings(root, { inParent = false, onMode = () => {} } = {}
     const on = s.mode === 'parent' && (!s.parentUntil || s.parentUntil > Date.now());
     for (const r of root.querySelectorAll('input[name=mode]')) r.checked = r.value === (on ? 'parent' : 'kid');
     $('account').textContent = account
-      ? `YouTube account: ${account.email || account.name || account.key}. Every setting here, the lists and the history belong to this account; another account has its own. The PIN is the same for all.`
-      : 'No YouTube account seen yet: open YouTube once. Settings are kept per YouTube account.';
+      ? `Profile: ${account.email || account.name || account.key}. Every setting here, the lists and the history belong to this profile; another email has its own (parent screens → tap the account at the top → Profiles). The PIN and the GitHub connection are the same for all.`
+      : 'No YouTube account seen yet: open YouTube once. Settings are kept per profile (YouTube account).';
     $('modeOut').textContent = on && s.parentUntil ? `Parent mode is on until ${new Date(s.parentUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` : '';
   }
 
@@ -240,6 +241,7 @@ export function mountSettings(root, { inParent = false, onMode = () => {} } = {}
       ['Videos he can open', `${st.visible} (${st.queueSource})`],
       ['Watched today', `${st.playedMinutesToday} of ${st.maxMinutesPerDay || '∞'} min`],
       ['Data repo', `${st.repo}${st.hasToken ? '' : ' · no token yet'}`],
+      ['This profile’s folder', st.folder ?? 'given on the first sync (open YouTube once)'],
       ['Last sync', st.sync?.at ? new Date(st.sync.at).toLocaleString() : 'never'],
       ['List updated', st.queueUpdatedAt ? new Date(st.queueUpdatedAt).toLocaleString() : '—'],
       ['Waiting to upload', `${st.outbox} events`],

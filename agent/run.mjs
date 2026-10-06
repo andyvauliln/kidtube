@@ -20,6 +20,7 @@ import { understandPrompt, choosePrompt, contentPrompt, notesPrompt } from './li
 import { search } from '../tools/video-info.mjs';
 import { helperInfo } from './lib/info.mjs';
 import { createGemini } from './lib/gemini.mjs';
+import { locate } from './lib/profile.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const home = (p) => p.replace(/^~(?=\/)/, homedir());
@@ -34,8 +35,10 @@ const REWRITE = args.includes('--rewrite');     // write today's words and quest
 const cmd = args.find((a) => !a.startsWith('--')) ?? 'run';
 
 const config = JSON.parse(readFileSync(join(ROOT, 'agent/config.json'), 'utf8'));
-const dataDir = home(process.env.KIDTUBE_DATA_DIR ?? config.dataDir);
-const stateDir = home(process.env.KIDTUBE_STATE_DIR ?? config.stateDir);
+// One profile per run (KIDTUBE_PROFILE); the clone, the log and the API quotas are shared (agent/lib/profile.mjs).
+const where = locate(config);
+const { cloneDir, dataDir, stateDir, stateRoot } = where;
+const PROFILE = where.profile?.path ?? '';
 mkdirSync(stateDir, { recursive: true });
 const env = { ...readEnv(home(config.envFile)), ...process.env };
 
@@ -50,8 +53,8 @@ function localDate(tz) {
   catch { return new Date().toISOString().slice(0, 10); }
 }
 
-// One run at a time (a slow model call can outlast the schedule).
-const lock = join(stateDir, 'run.lock');
+// One run at a time (a slow model call can outlast the schedule). Not run.lock: daily.sh and poll.sh flock that file.
+const lock = join(stateDir, 'run.pid');
 if (existsSync(lock)) {
   const pid = Number(readFileSync(lock, 'utf8'));
   try { process.kill(pid, 0); console.error(`another run is going (pid ${pid})`); process.exit(1); } catch { /* stale */ }
@@ -70,7 +73,7 @@ try {
 // One crontab line, tagged so it can be replaced: the run's output goes to state/helper.log.
 function schedule() {
   const tag = '# kidtube-helper';
-  const line = `${config.schedule} cd ${ROOT} && PATH=${dirname(process.execPath)}:$HOME/.local/bin:/usr/bin:/bin agent/daily.sh >> ${join(stateDir, 'helper.log')} 2>&1 ${tag}`;
+  const line = `${config.schedule} cd ${ROOT} && PATH=${dirname(process.execPath)}:$HOME/.local/bin:/usr/bin:/bin agent/daily.sh >> ${join(stateRoot, 'helper.log')} 2>&1 ${tag}`;
   let current = '';
   try { current = execFileSync('crontab', ['-l'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }); } catch {}
   const next = `${current.split('\n').filter((l) => l && !l.includes(tag)).concat(line).join('\n')}\n`;
@@ -81,14 +84,14 @@ function schedule() {
 
 async function run() {
   if (!env.OPENROUTER_API_KEY) throw new Error(`OPENROUTER_API_KEY is missing in ${config.envFile}`);
-  syncClone(dataDir, config.dataRepo);
+  syncClone(cloneDir, config.dataRepo);
   const paths = { memory: join(dataDir, 'memory.json'), queue: join(dataDir, 'queue.json'), config: join(dataDir, 'parent-config.json') };
   const memory = readJson(paths.memory);
   const queue = readJson(paths.queue);
   const pc = readJson(paths.config);
   const helper = (memory.helper ??= { videos: {} });
   const videos = helper.videos;
-  const D = config.defaults;
+  const D = where.defaults;
   const tz = /\//.test(pc.timezone ?? '') ? pc.timezone : config.timezone;
   const today = localDate(tz);
   const journal = [];
@@ -125,7 +128,7 @@ async function run() {
   // The parent's changes to the helper's instructions (parent screens → Prompt) count as wishes here.
   if (helper.promptNotes.length) wishes += `\n## The parent's standing instructions for the helper\n${helper.promptNotes.map((n) => `- ${n.text}`).join('\n')}`;
 
-  const llm = createLLM({ apiKey: env.OPENROUTER_API_KEY, stateDir, config: { ...config.llm, openrouter: config.openrouter }, log });
+  const llm = createLLM({ apiKey: env.OPENROUTER_API_KEY, stateDir: stateRoot, config: { ...config.llm, openrouter: config.openrouter }, log });
 
   // 3. What to look for.
   let want = { summary: '', searches: [], videosPerDay: pc.queueSize ?? D.videosPerDay, newIdeas: D.newIdeas, languageMins: D.languageMins, requiredFirst: D.requiredFirst };
@@ -136,7 +139,7 @@ async function run() {
   const perDay = clamp(want.videosPerDay, 1, 20, pc.queueSize ?? D.videosPerDay);
   // No searching once the plan is full; otherwise no more ideas than Gemini can transcribe today.
   const room = ideasAllowed(videos, { target: D.planTarget ?? 50, perDay,
-    geminiLeft: createGemini({ apiKey: env.GEMINI_API_KEY ?? '', stateDir, config: config.transcripts, today, log: () => {} }).left().videos });
+    geminiLeft: createGemini({ apiKey: env.GEMINI_API_KEY ?? '', stateDir: stateRoot, config: config.transcripts, today, log: () => {} }).left().videos });
   const newIdeas = Math.min(clamp(want.newIdeas, 0, 15, D.newIdeas), room.allowed);
   log(`plan: ${room.open} open videos (target ${room.target}), new ideas allowed today: ${newIdeas}`);
   const languageMins = Object.fromEntries(Object.entries(want.languageMins ?? {}).filter(([l, n]) => /^[a-z]{2}$/.test(l) && Number.isInteger(n) && n > 0).map(([l, n]) => [l, Math.min(n, perDay)]));
@@ -184,7 +187,7 @@ async function run() {
   // 6a. Transcripts: Gemini watches the videos (today's first, then new ideas, then planned ones),
   // within the daily limits in config.transcripts. The tablet still uploads them too when it is on.
   if (env.GEMINI_API_KEY && config.transcripts?.provider === 'gemini') {
-    const gemini = createGemini({ apiKey: env.GEMINI_API_KEY, stateDir, config: config.transcripts, today, log });
+    const gemini = createGemini({ apiKey: env.GEMINI_API_KEY, stateDir: stateRoot, config: config.transcripts, today, log });
     let got = 0;
     for (const id of [...new Set([...todayIds, ...newIds, ...upcoming(videos, todayIds, { today }).map((u) => u.videoId)])]) {
       const old = transcript(dataDir, id);
@@ -275,7 +278,7 @@ async function run() {
   writeJson(paths.queue, queue);
   writeJson(paths.config, pc);
   writeJson(paths.memory, memory);
-  writeJson(join(dataDir, 'helper.json'), helperInfo(ROOT, config));
+  writeJson(join(dataDir, 'helper.json'), helperInfo(ROOT, config, where));
 
   if (DRY) {
     writeJson(join(stateDir, 'dry-run.json'), { today: todayIds, newIds, want, notes, videos: Object.fromEntries([...todayIds, ...newIds].map((id) => [id, videos[id]])) });
@@ -283,7 +286,7 @@ async function run() {
     for (const q of queue.videos) log(`  ${q.required ? '⭐' : '  '} ${q.videoId} ${q.lang ?? 'en'} ${q.title}${q.intro ? '' : ' (no words yet)'}`);
     log('want:', JSON.stringify({ ...want, searches: want.searches.map((s) => s.query) }));
     if (problems.length) log('problems:', problems.join('\n  '));
-    syncClone(dataDir, config.dataRepo); // throw the local changes away
+    syncClone(cloneDir, config.dataRepo); // throw the local changes away
     return;
   }
 
@@ -292,10 +295,10 @@ async function run() {
     execFileSync(process.execPath, [join(ROOT, 'tools/validate.mjs'), dataDir], { encoding: 'utf8', stdio: 'pipe' });
   } catch (e) {
     const out = `${e.stdout ?? ''}${e.stderr ?? ''}`.split('\n').filter((l) => /FAIL|^\s{4,}/.test(l)).slice(0, 20).join('\n');
-    syncClone(dataDir, config.dataRepo);
+    syncClone(cloneDir, config.dataRepo);
     throw new Error(`the new files did not pass the checks, nothing was saved:\n${out}`);
   }
-  commitAndPush(dataDir, `helper: ${today}: ${journal.join(', ')}`);
+  commitAndPush(cloneDir, `helper: ${today}: ${journal.join(', ')}${PROFILE ? ` (${PROFILE})` : ''}`);
   writeFileSync(join(stateDir, 'last-save'), today);
   log('saved to GitHub');
 

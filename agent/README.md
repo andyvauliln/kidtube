@@ -81,6 +81,16 @@ The steps below describe the old program `run.mjs`. The Claude session follows t
 | Prompt | Read the helper's diary, *What I noticed* and study plan; add standing changes to its prompt |
 | Settings | *Videos on the home screen* is the number of videos per day |
 
+## Profiles (since 0.9.0)
+
+Each child (YouTube account) is a profile with its own folder in `kidtube-data`: `kidtube/<email name>/`, for example `kidtube/johnnypitt.ind/`. `profiles` in `config.json` lists the ones the helper runs; it runs them one after another, each with its own state folder (`state/kidtube/<folder>/`: session, last save, requests, notes). The log, the run lock and the API quotas are shared.
+
+- `"kidtube/*"` runs every folder that has a `profile.json` (the tablet writes it when a new profile syncs for the first time).
+- A new profile gets its starter files from `data-repo-template/kidtube/` on its first run (`node agent/kt.mjs init-profile` does it at once).
+- By hand: `KIDTUBE_PROFILE=kidtube/<folder> node agent/kt.mjs info`. Without it, the first profile in the list is used.
+- `apps` in `config.json`: which prompts each app's runs use. Only `kidtube` exists so far.
+- Moving the old one-child layout into a profile, once: `node agent/kt.mjs migrate-root kidtube/<folder> <email>`, then set `profiles`.
+
 ## Setup (once)
 
 1. **Keys** (OpenRouter, Gemini) are in `~/.config/kidtube/agent.env` (only your user can read it, and it's never committed).

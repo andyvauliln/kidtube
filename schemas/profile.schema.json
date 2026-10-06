@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "profile.schema.json",
+  "title": "profile.json: who a profile folder (<app>/<folder>/) in the data repo belongs to",
+  "description": "Written by the tablet on a profile's first sync (or by agent/kt.mjs migrate-root). The helper finds new profiles by it (config.json profiles \"kidtube/*\").",
+  "type": "object",
+  "required": ["schemaVersion", "app", "folder"],
+  "additionalProperties": false,
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "app": { "type": "string", "pattern": "^[a-z0-9_-]+$" },
+    "folder": { "type": "string", "pattern": "^[a-z0-9._-]+$" },
+    "email": { "type": ["string", "null"] },
+    "name": { "type": ["string", "null"] },
+    "createdAt": { "type": "string", "format": "date-time" }
+  }
+}
