@@ -2,6 +2,10 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.9.3 (2026-10-06)
+
+- A new profile no longer shows "parent-config.json / queue.json is missing" as a problem. Settings says it is being set up, and the server makes its starter list and rules within a minute or two.
+
 ## 0.9.2 (2026-10-06)
 
 - **Profiles is easy to find:** a **👤 Profiles** tab in parent mode, and a Profiles section near the top of Settings (⚙️ → PIN). Settings works even when parent mode won't turn on.
