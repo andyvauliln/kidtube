@@ -2,6 +2,18 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.8.7 (2026-10-06)
+
+- **Hearing his answers** now records his voice and sends it, instead of the browser's own recognition (which is weak or missing on the iPad):
+  - first the **free** Gemini models, with your own Gemini API key (from aistudio.google.com);
+  - then the **paid** OpenRouter models (about $0.0001 an answer) when the free ones hit their limit or fail.
+  - If a model is slow, the next one starts after about 2.5 s and the first answer wins. A model that hit its limit is skipped for a while.
+  - If nothing works, or no key is set, the tablet's own recognition is used.
+- Settings → Talking friend → *Hearing his answers*: a field for each key and each model list. **🎤 Try it** shows which model answered and how fast.
+- *Save settings to a file* now also keeps both keys.
+- The 🎤 for parent notes uses the same models.
+- The quiz question is no longer sent with his answer. With it, the models sometimes wrote down the right answer instead of what he said.
+
 ## 0.8.6 (2026-10-06)
 
 - Parent mode PIN screen: after you tap **Turn on parent mode** it now says what is happening ("Checking the PIN…", "Turning on…") and, if parent mode stays off, why. Please send a screenshot of that message.
