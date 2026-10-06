@@ -257,6 +257,7 @@ export function mountSettings(root, { inParent = false, onMode = () => {} } = {}
       ['Transcripts on GitHub', `${st.transcripts.uploaded} of ${st.transcripts.total} videos${st.transcripts.missing ? ` (${st.transcripts.missing} without captions)` : ''}`],
     ];
     $('status').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', k), el('dd', v)]));
+    for (const n of st.sync?.notes ?? []) $('status').append(el('dt', 'Note'), el('dd', n));
     for (const e of st.sync?.errors ?? []) $('status').append(el('dt', 'Problem'), el('dd', e, 'err'));
   }
 

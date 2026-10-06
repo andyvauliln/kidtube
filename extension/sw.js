@@ -994,7 +994,11 @@ async function fetchDataFile(loc, token, path, etag) {
   if (etag) headers['If-None-Match'] = etag;
   const r = await fetch(contentsUrl(loc, path), { headers, cache: 'no-store' });
   if (r.status === 304) return { notModified: true };
-  if (!r.ok) throw new Error(await explainHttp(r.status, loc, token, path));
+  if (!r.ok) {
+    const e = new Error(await explainHttp(r.status, loc, token, path));
+    e.missing = r.status === 404 && e.message.endsWith(`${path} is missing in ${loc.repo}.`);   // the repo is fine, the file isn't there
+    throw e;
+  }
   return { json: await r.json(), etag: r.headers.get('etag') };
 }
 
@@ -1075,6 +1079,7 @@ async function doSync() {
     try { await writeProfileFile(loc, token); await withState((s) => { s.data.profileFile = true; }, { account: acct }); } catch {}
   }
   const update = {};
+  const missing = [];
   for (const [key, path, ok] of [['config', 'parent-config.json', okConfig], ['queue', 'queue.json', okQueue]]) {
     try {
       const r = await fetchDataFile(loc, token, path, data[key] ? etags[path] : null);
@@ -1083,9 +1088,11 @@ async function doSync() {
       update[key] = r.json;
       etags[path] = r.etag;
     } catch (e) {
-      status.errors.push(String(e.message ?? e));
+      if (e.missing) missing.push(path); else status.errors.push(String(e.message ?? e));
     }
   }
+  // A new profile: the server makes its starter files within a minute or two (agent/poll.sh → kt.mjs init-profile).
+  if (missing.length) status.notes = [`New profile: ${loc.base} has no ${missing.join(' or ')} yet. The server sets it up within a minute or two; until then the built-in starter list is used.`];
   // memory.json: the helper's notes on every video (parent mode: planned videos, summaries, questions).
   let memory = null;
   if (token) {

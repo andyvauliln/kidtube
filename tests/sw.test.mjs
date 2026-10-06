@@ -148,3 +148,18 @@ test('rules are merged into parent-config.json on GitHub, then the local copy is
   assert.equal(written.allowSkip, true, 'earlier tablet-only rules go up too');
   assert.equal(fake.store.localConfig, null);
 });
+
+test('a new profile without its files yet: a note, not a problem', async () => {
+  await chrome.storage.local.set({ settings: { ...fake.store.settings, token: 'github_pat_ok' }, data: { ...fake.store.data, config: undefined, queue: undefined } });
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, opts) => {
+    const u = String(url);
+    if (u === 'https://api.github.com/user') return { ok: true, status: 200, json: async () => ({ login: 'me' }) };
+    if (u === 'https://api.github.com/repos/andyvauliln/kidtube-data') return { ok: true, status: 200, json: async () => ({}) };
+    return realFetch(url, opts);
+  };
+  const r = await send({ type: 'sync' });
+  globalThis.fetch = realFetch;
+  assert.ok(!r.errors.some((e) => e.includes('parent-config.json') || e.includes('queue.json')), r.errors.join(' | '));
+  assert.match(r.notes[0], /^New profile: kidtube\/kid\/ has no parent-config\.json or queue\.json yet/);
+});

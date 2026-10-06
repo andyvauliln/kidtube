@@ -293,6 +293,7 @@ function syncLine() {
   if (!data.hasToken) bits.push('No GitHub token for this account yet: changes stay on this tablet (Settings → Connection).');
   else if (data.waiting) bits.push(`${data.waiting} change${data.waiting > 1 ? 's' : ''} waiting to upload.`);
   if (data.sync?.errors?.length) bits.push(`Sync problem: ${data.sync.errors[0]}`);
+  else if (data.sync?.notes?.length) bits.push(data.sync.notes[0]);
   if (data.parentUntil) bits.push(`Parent mode until ${when(new Date(data.parentUntil).toISOString())}.`);
   return el('p', 'muted', bits.join(' '));
 }

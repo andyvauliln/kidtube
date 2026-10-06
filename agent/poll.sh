@@ -40,6 +40,12 @@ if [ "$PROFILE" = "-" ]; then PROFILE=""; DATA=$CLONE; STATE=$SROOT
 else DATA="$CLONE/$PROFILE"; STATE="$SROOT/$PROFILE"; fi
 [ -d "$DATA" ] || exit 0
 mkdir -p "$STATE"
+# A new profile (the tablet wrote its profile.json): its starter files now, no AI (kt.mjs init-profile),
+# so the tablet gets a list and rules on its next sync instead of waiting for the night.
+if [ -n "$PROFILE" ] && [ -f "$DATA/profile.json" ] && [ ! -f "$DATA/queue.json" ]; then
+  echo "=== $(date -u +%FT%TZ) new profile $PROFILE: starter files" >> "$SROOT/helper.log"
+  KIDTUBE_PROFILE="$PROFILE" node agent/kt.mjs init-profile >> "$SROOT/helper.log" 2>&1
+fi
 # What is there to do: a new run request, new notes, or both.
 id=""
 req="$DATA/requests/run.json"
