@@ -2,6 +2,10 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.8.6 (2026-10-06)
+
+- Parent mode PIN screen: after you tap **Turn on parent mode** it now says what is happening ("Checking the PIN…", "Turning on…") and, if parent mode stays off, why. Please send a screenshot of that message.
+
 ## 0.8.5 (2026-10-05)
 
 - Fixes "something went wrong" when installing 0.8.3 and 0.8.4 in Orion.
