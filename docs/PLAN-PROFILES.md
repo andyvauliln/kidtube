@@ -4,21 +4,24 @@
 
 ## Status (2026-10-06)
 
-**Built, not released yet:** steps 0–4 and the `migrate-root` command (step 5).
+**Released and migrated:**
+- 0.9.0 is released for Quetta (it updates itself) and Orion (download it by hand).
+- The data now lives in `kidtube-data/kidtube/johnnypitt.ind/`, and its server state in `state/kidtube/johnnypitt.ind/`.
+- `agent/config.json` has `"profiles": ["kidtube/johnnypitt.ind", "kidtube/*"]`, so a new profile gets helper runs once the tablet has written its `profile.json`.
+
+**Checks:**
 - Tests: `npm test` passes (132 tests). New tests are in `tests/parent.test.mjs` (Profiles) and `tests/profiles.test.mjs` (server side, `migrate-root`, `init-profile`).
 - Desktop Chromium with the extension loaded (Playwright):
-  - adding `second.kid@gmail.com` switches the profile, keeps parent mode on and starts an empty history;
+  - adding an email switches the profile, keeps parent mode on and starts an empty history;
   - Google's sign-in opens with that email filled in;
   - switching back brings the first profile's history back;
   - Settings shows the profile's folder.
-- `claude -p` passes `KIDTUBE_PROFILE` on to the commands it runs (checked).
+- `claude -p` passes `KIDTUBE_PROFILE` on to the commands it runs.
+- After the migration, one `poll.sh` cycle ran for the profile, and `kt.mjs start` read it: 10 today, 25 ideas, all 5 context documents.
 
-**Waiting:**
-1. Release 0.9.0 for Quetta and Orion.
-2. Run `node agent/kt.mjs migrate-root kidtube/johnnypitt.ind johnnypitt.ind@gmail.com`.
-3. Set `"profiles": ["kidtube/johnnypitt.ind"]` (or `"kidtube/*"`) in `agent/config.json`.
-
-Until step 3, `profiles` stays empty, so the helper keeps using the old layout at the repo root and the nightly run is unchanged.
+**Not checked on a device yet:**
+- Google's account chooser inside Quetta and Orion, and YouTube then reporting the new email.
+- The first sync of a brand-new profile from the tablet (it writes `profile.json`).
 
 **Differences from the plan below:**
 - No code is gated by app yet. There is only one app; the registry, the `app` field and the folders are in place.
