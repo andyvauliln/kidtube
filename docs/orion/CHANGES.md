@@ -2,6 +2,13 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.9.5 (2026-10-07)
+
+- **Profiles & apps is its own page**, no longer a tab inside KidTube. Open it from the 👤 email at the top of the parent screens, from Settings, or from the Blank page. It needs parent mode or the PIN.
+- **A switch goes straight on:** for a KidTube profile, Google asks you to sign in with that email and then YouTube uses that account. For a Blank profile, the white page opens, in parent mode too (before, the parent screens stayed, so nothing seemed to change).
+- If YouTube still shows the old account, Profiles & apps says which one and has **Sign in to YouTube again**.
+- A wrong email shows its error right under the form.
+
 ## 0.9.4 (2026-10-07)
 
 - **Blank test profile has a way out you can see:** instead of a faint ⚙️ in the corner, the white page now says "Blank test profile. To leave it: Settings → Profiles." and has a big **⚙️ Settings** button at the bottom.
