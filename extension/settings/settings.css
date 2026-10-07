@@ -28,3 +28,4 @@
 .settings .filebtn span { display: inline-block; cursor: pointer; padding: 8px 14px; border-radius: 10px; border: 1px solid var(--muted); margin-left: 6px; color: var(--ink); }
 .settings a.install { display: block; text-align: center; padding: 12px; border-radius: 8px; background: var(--accent); color: #fff; font-weight: 600; text-decoration: none; margin-top: 10px; }
 @media (max-width: 480px) { .settings .two { grid-template-columns: 1fr; } }
+a.button { display: inline-block; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line, #ddd); background: #fff; color: inherit; text-decoration: none; font-weight: 600; }

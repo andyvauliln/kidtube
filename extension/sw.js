@@ -78,6 +78,7 @@ function profileRecord(accounts, key, info, app) {
 // info: { email, name, datasyncId } from YouTube, or { email } when the parent picks a profile (byParent).
 async function useAccount(info, { byParent = false, app } = {}) {
   if (!accountKey(info)) return { ok: false };
+  let holdChanged = false;
   const r = await serial(async () => {
     const g = await chrome.storage.local.get(['account', 'accounts', 'profileHold']);
     const accounts = g.accounts ?? {};
@@ -94,11 +95,14 @@ async function useAccount(info, { byParent = false, app } = {}) {
         accounts[hold.key] = { ...accounts[hold.key], datasyncId: info.datasyncId };
         await chrome.storage.local.set({ accounts, account: { ...cur, datasyncId: info.datasyncId } });
         await chrome.storage.local.remove('profileHold');
+        holdChanged = true;
         return { switched: false };
       }
-      return { held: true };   // still the old account: wait for the parent's pick
+      // Still the old account: wait for the parent's pick. The Profiles page shows which one YouTube has.
+      if (info.email && hold.seen !== info.email) await chrome.storage.local.set({ profileHold: { ...hold, seen: info.email } });
+      return { held: true };
     }
-    if (hold) await chrome.storage.local.remove('profileHold');
+    if (hold) { await chrome.storage.local.remove('profileHold'); holdChanged = true; }
     // A profile known only by YouTube's id becomes the same profile under its email.
     const ytKey = info.datasyncId ? accountKey({ datasyncId: info.datasyncId }) : null;
     if (info.email && ytKey && ytKey !== key && accounts[ytKey] && !accounts[key]) { accounts[key] = accounts[ytKey]; delete accounts[ytKey]; }
@@ -124,6 +128,8 @@ async function useAccount(info, { byParent = false, app } = {}) {
     return { switched: true };
   });
   if (r.switched) { await applySiteRules(); sync(); }
+  else if (holdChanged) await applySiteRules();   // the sign-in is over: Google's other pages are closed again
+  if (byParent && r.switched) chrome.alarms.create('profileHold', { when: Date.now() + HOLD_MS + 1000 });
   return { ok: !r.held, ...r };
 }
 
@@ -133,6 +139,9 @@ async function profilesView() {
   return {
     ok: true, current: account?.key ?? null, apps: Object.values(APPS).map((a) => ({ id: a.id, label: a.label })),
     waitingFor: profileHold?.until > Date.now() ? profileHold.key : null,
+    youtubeHas: profileHold?.until > Date.now() ? profileHold.seen ?? null : null,
+    signIn: profileHold?.until > Date.now() && account?.email ? chooserUrl(account.email, lastHost) : null,
+    currentPage: appOf(account).page ? chrome.runtime.getURL(appOf(account).page) : null,
     profiles: Object.entries(accounts).map(([key, a]) => ({ key, email: a.email, name: a.name, app: a.app ?? DEFAULT_APP, folder: a.folder ?? null, lastSeen: a.lastSeen ?? null }))
       .sort((a, b) => (b.lastSeen ?? '').localeCompare(a.lastSeen ?? '')),
   };
@@ -307,11 +316,12 @@ async function guard(s, tabId, href) {
   if (c.kind === 'internal') return null;
   if (c.kind === 'external') return externalGuard(c.host);         // normally DNR blocks them; this is the fallback
   lastHost = c.host || lastHost;
-  // Parent mode: YouTube's home is the parent's screens; everything else on YouTube is open.
-  if (parentMode(s)) return c.kind === 'home' ? chrome.runtime.getURL(PARENT_PAGE) : null;
-  // A profile whose app isn't KidTube: YouTube shows that app's page instead (the blank test app: a white page).
+  // A profile whose app isn't KidTube: YouTube shows that app's page instead (the blank test app: a white page),
+  // in parent mode too: KidTube's parent screens are not that app's screens.
   const app = appOf((await chrome.storage.local.get('account')).account);
   if (app.page) return chrome.runtime.getURL(app.page);
+  // Parent mode: YouTube's home is the parent's screens; everything else on YouTube is open.
+  if (parentMode(s)) return c.kind === 'home' ? chrome.runtime.getURL(PARENT_PAGE) : null;
   // A parent watching from the parent page: that one video in that one tab, no kid rules.
   const pass = s.parentPass;
   if (pass) {
@@ -604,7 +614,9 @@ async function handle(msg, sender) {
       if (msg.type === 'addProfile' && msg.app && !APPS[msg.app]) return { ok: false, error: 'Unknown app.' };
       const r = await useAccount(key.startsWith('yt:') ? { datasyncId: key.slice(3) } : { email }, { byParent: true, app: msg.app });
       const app = appOf((await chrome.storage.local.get('account')).account);
-      return { ...r, app: app.id, chooser: email && r.switched && usesYouTube(app) ? chooserUrl(email, lastHost) : null };
+      // Next: Google signs in the same email for YouTube, or the app's own page (an app not on YouTube).
+      return { ...r, app: app.id, chooser: email && r.switched && usesYouTube(app) ? chooserUrl(email, lastHost) : null,
+        open: app.page ? chrome.runtime.getURL(app.page) : null };
     }
 
     case 'removeProfile': // only this tablet's copy; the data repo keeps the folder
@@ -623,7 +635,8 @@ async function handle(msg, sender) {
     case 'openParent': // a YouTube home tab in parent mode becomes the parent's screens
       return withState(async (s) => {
         if (!parentMode(s) || tabId == null) return { ok: false };
-        await chrome.tabs.update(tabId, { url: chrome.runtime.getURL(PARENT_PAGE) });
+        const app = appOf((await chrome.storage.local.get('account')).account);   // another app: its own page (as guard)
+        await chrome.tabs.update(tabId, { url: chrome.runtime.getURL(app.page ?? PARENT_PAGE) });
         return { ok: true };
       });
 
@@ -837,6 +850,7 @@ async function parentData(s) {
     .map((id) => cardOf(id, {}, recs[id], s));
   return {
     account: (await chrome.storage.local.get('account')).account ?? null,
+    app: appOf((await chrome.storage.local.get('account')).account).id,
     parentUntil: s.settings.parentUntil || 0, parentMode: parentMode(s), mode: s.settings.mode ?? null,
     today, planned, history: historyDays(s, recs, config), lists: s.notes?.lists ?? {},
     hasMemory: !!memory, memoryAt: memory?.updatedAt ?? null, queueUpdatedAt: queue.updatedAt ?? null,
@@ -1465,9 +1479,13 @@ function toBase64(text) {
 }
 
 // Every top-level page outside allowedSiteDomains is blocked (PLAN.md C16).
-const allowedDomains = (config) => [...new Set([...(config.allowedSiteDomains ?? []), 'youtube.com', 'andyvauliln.github.io'])];
+// While Google signs in a profile's account (profileHold), all of google.com stays open: the sign-in can pass
+// through www.google.com or gds.google.com ("make sure you can sign in"), and a blocked step is a dead page.
+const allowedDomains = (config, signingIn = false) =>
+  [...new Set([...(config.allowedSiteDomains ?? []), 'youtube.com', 'andyvauliln.github.io', ...(signingIn ? ['google.com'] : [])])];
+const signingIn = (s) => s.profileHold?.until > Date.now();
 async function applySiteRules() {
-  const s = await chrome.storage.local.get(['data', 'localConfig']);
+  const s = await chrome.storage.local.get(['data', 'localConfig', 'profileHold']);
   const { config } = await effective({ data: s.data ?? {}, localConfig: s.localConfig });
   // Orion has no blocking rules (its build drops the permission): externalGuard does the job there.
   if (TARGET === 'orion') { dnrWorks = false; return; }
@@ -1477,7 +1495,7 @@ async function applySiteRules() {
       removeRuleIds: [SITE_RULE_ID],
       addRules: config.blockOutboundLinks ? [{
         id: SITE_RULE_ID, priority: 1, action: { type: 'block' },
-        condition: { resourceTypes: ['main_frame'], excludedRequestDomains: allowedDomains(config) },
+        condition: { resourceTypes: ['main_frame'], excludedRequestDomains: allowedDomains(config, signingIn(s)) },
       }] : [],
     });
     dnrWorks = true;
@@ -1494,10 +1512,10 @@ async function externalGuard(host) {
     dnrWorks ??= (await chrome.storage.local.get('dnrWorks')).dnrWorks ?? !!chrome.declarativeNetRequest?.updateDynamicRules;
     if (dnrWorks) return null;
   }
-  const s = await chrome.storage.local.get(['data', 'localConfig']);
+  const s = await chrome.storage.local.get(['data', 'localConfig', 'profileHold']);
   const { config } = await effective({ data: s.data ?? {}, localConfig: s.localConfig });
   if (!config.blockOutboundLinks) return null;
-  const allowed = allowedDomains(config).some((d) => host === d || host.endsWith(`.${d}`));
+  const allowed = allowedDomains(config, signingIn(s)).some((d) => host === d || host.endsWith(`.${d}`));
   return allowed ? null : homeUrl('www.youtube.com');
 }
 
@@ -1565,4 +1583,4 @@ chrome.runtime.onInstalled.addListener(async ({ reason } = {}) => {
   if (reason === 'install' && !settings.token) chrome.tabs.create({ url: INSTALL_PAGE }).catch(() => {});
 });
 chrome.runtime.onStartup.addListener(start);
-chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'poll') sync(); });
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'poll') sync(); else if (a.name === 'profileHold') applySiteRules(); });

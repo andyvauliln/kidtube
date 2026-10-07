@@ -66,12 +66,15 @@ New messages in `sw.js` (allowed only from extension pages, `fromExtensionPage`,
 - **`switchProfile {key}`** and **`addProfile {email, app}`**:
   - Both call the existing `useAccount` (marked as "by the parent"), which already saves the current data under `acct:<cur>` and loads the other profile's data, or empty data for a new one. A new email gets nothing copied over (a fresh start).
   - Then they set the device-level key `profileHold = { key, until: now + 15 min }`.
-  - They return the URL that opens Google's account chooser for that email: `https://accounts.google.com/AccountChooser?Email=<email>&continue=https://m.youtube.com/`.
+  - They return the URL that opens Google's account chooser for that email (`chooser`), or, for an app that isn't on YouTube, that app's page (`open`). Since 0.9.5 the chooser comes back through YouTube's own sign-in handler, as YouTube's Sign in button does: `https://accounts.google.com/AccountChooser?service=youtube&Email=<email>&continue=https://m.youtube.com/signin?action_handle_signin=true&app=m&…&noapp=1`. Without it YouTube could keep the account it had.
+  - While the hold is on, all of `google.com` is open (the sign-in can pass through www.google.com or gds.google.com); it closes when the account arrives or the hold runs out (alarm `profileHold`). The hold also remembers which account YouTube still shows (`seen`), and the switcher says so.
 - **`removeProfile {key}`**: allowed only for a profile that isn't the current one. It deletes `acct:<key>` and its `accounts` entry, on the tablet only.
 - **The `account` message from YouTube** (`sw.js:505`):
   - While `profileHold` is active, a report of a *different* account is ignored. Otherwise YouTube would switch back to the old profile before Google has finished the sign-in.
   - A report of the held account clears the hold.
   - When the hold has run out, it switches automatically, as it does today.
+
+**Since 0.9.5: Profiles & apps is its own page** (`extension/profiles/profiles.html`), above the apps, not part of KidTube. It opens from the 👤 in KidTube's parent header, from Settings and from an app's own page (the Blank page), with parent mode on or the PIN. A switch goes straight on: to Google's sign-in, or to the app's page. A profile whose app isn't KidTube gets its app's page on YouTube in parent mode too, and KidTube's parent page sends it to the switcher. What follows is the 0.9.0 design:
 
 The parent screen (`extension/parent/parent.js` + `parent.html`):
 - The account line `#who` (`parent.js:74`) becomes a button that opens a **Profiles** panel:

@@ -3,7 +3,7 @@
 import { ask } from '../lib/ask.js';
 import { checkPin } from '../lib/pin.js';
 import { say, listen, recordedUrl } from '../ui/voice.js';
-import { el, btn, toast, runNow, noteInput, noteBox, promptNotesBox, profilesPanel, hooks } from './kit.js';
+import { el, btn, toast, runNow, noteInput, noteBox, promptNotesBox, hooks } from './kit.js';
 import { mountSettings } from '../settings/settings.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { renderMarkdown, promptSteps } from './markdown.js';
@@ -72,7 +72,9 @@ async function refresh() {
   const r = await ask({ type: 'parentData' });
   if (!r || r.ok === false) { view.replaceChildren(el('p', 'err', 'KidTube’s background did not answer. Close this page and open it again.')); return; }
   data = r;
-  $('who').textContent = `👤 ${r.account?.email || r.account?.name || 'YouTube account not seen yet'}`;
+  // These are KidTube's screens: a profile with another app goes to the switcher (old #profiles links too).
+  if ((r.app && r.app !== 'kidtube') || location.hash === '#profiles') { location.replace('../profiles/profiles.html'); return; }
+  $('who').textContent = `👤 ${r.account?.email || r.account?.name || 'YouTube account not seen yet'} ⇄`;
   if (!r.parentMode) return showGate();
   $('gate').hidden = true;
   $('tabs').hidden = false;
@@ -128,7 +130,7 @@ $('pin').addEventListener('keydown', (e) => e.key === 'Enter' && $('pinGo').clic
 $('kid').addEventListener('click', () => ask({ type: 'kidHome' }));
 
 // --- routing: #today, #planned, #history, #prompt, #settings, #profiles, #v=<videoId> ----------------
-const TABS = ['today', 'planned', 'history', 'context', 'prompt', 'settings', 'profiles'];
+const TABS = ['today', 'planned', 'history', 'context', 'prompt', 'settings'];
 function route() {
   const h = location.hash.slice(1);
   const m = h.match(/^v=([A-Za-z0-9_-]{11})/);
@@ -152,7 +154,6 @@ function render() {
   if (r.tab === 'context') return renderContext();
   if (r.tab === 'prompt') return renderPrompt();
   if (r.tab === 'settings') return renderSettings();
-  if (r.tab === 'profiles') return renderProfiles();
   return renderToday();
 }
 addEventListener('hashchange', render);
@@ -183,14 +184,6 @@ function animate(dir) {
   view.classList.remove('from-left', 'from-right');
   void view.offsetWidth;
   view.classList.add(dir > 0 ? 'from-right' : 'from-left');
-}
-
-// --- Profiles (the Profiles tab, or tap the account in the header) ----------------------------------
-
-async function renderProfiles() {
-  const box = el('div');
-  view.replaceChildren(el('h2', '', 'Profiles'), box);
-  await profilesPanel(box, { onStay: () => { location.hash = 'today'; refresh(); } });
 }
 
 // --- shared pieces ---------------------------------------------------------------------------------

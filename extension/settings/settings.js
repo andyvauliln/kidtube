@@ -3,7 +3,7 @@
 import { hashPin } from '../lib/pin.js';
 import { say, listen, recordAnswer, transcribeAnswer, FREE_LISTEN_MODELS, PAID_LISTEN_MODELS } from '../ui/voice.js';
 import { ask as send } from '../lib/ask.js';
-import { el as make, noteInput, noteBox, promptNotesBox, profilesPanel } from '../parent/kit.js';
+import { el as make, noteInput, noteBox, promptNotesBox } from '../parent/kit.js';
 
 const MARKUP = `
   <section class="ainote">
@@ -14,8 +14,9 @@ const MARKUP = `
 
   <section id="profilesSection">
     <h2>Profiles</h2>
-    <p class="muted">Each email (YouTube account) has its own lists, rules, notes and helper, and its own app.</p>
-    <div id="profilesBox"><p class="muted">Loading…</p></div>
+    <p class="muted" id="profileNow"></p>
+    <p class="muted">Each profile is one email with its own app, lists, rules, notes and helper.</p>
+    <a class="button" href="../profiles/profiles.html">👤 Profiles & apps</a>
   </section>
 
   <section>
@@ -204,9 +205,9 @@ export function mountSettings(root, { inParent = false, onMode = () => {} } = {}
   root.innerHTML = MARKUP;
   const $ = (id) => root.querySelector(`#${id}`);
   $('openParent').hidden = inParent;
-  // The parent screens have their own Profiles tab.
-  $('profilesSection').hidden = inParent;
-  if (!inParent) profilesPanel($('profilesBox'));
+  chrome.storage.local.get('account').then(({ account }) => {
+    $('profileNow').textContent = account ? `Now: ${account.email || account.key} · app ${account.app ?? 'kidtube'}` : 'No profile yet.';
+  });
   $('watched').hidden = inParent;
   let voiceLang = 'en-US';
 

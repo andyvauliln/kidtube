@@ -297,7 +297,17 @@ test('profile folders: the email’s name part, given once; a clash adds the dom
   assert.equal(profileFolder({ email: 'kid@school.org' }, ['kid', 'kid-school']), 'kid-school-2');
   assert.equal(profileFolder({ datasyncId: 'AbC||' }), 'yt-abc');
   assert.equal(profileFolder({}), null);
-  assert.ok(chooserUrl('a+b@x.com').startsWith('https://accounts.google.com/AccountChooser?Email=a%2Bb%40x.com&continue='));
+  // Back through YouTube's own sign-in handler, so YouTube takes the account Google signed in.
+  const u = new URL(chooserUrl('a+b@x.com'));
+  assert.equal(u.origin + u.pathname, 'https://accounts.google.com/AccountChooser');
+  assert.equal(u.searchParams.get('Email'), 'a+b@x.com');
+  assert.equal(u.searchParams.get('service'), 'youtube');
+  const back = new URL(u.searchParams.get('continue'));
+  assert.equal(back.origin + back.pathname, 'https://m.youtube.com/signin');
+  assert.equal(back.searchParams.get('action_handle_signin'), 'true');
+  assert.equal(back.searchParams.get('noapp'), '1', 'Android must not open the YouTube app');
+  assert.equal(back.searchParams.get('next'), 'https://m.youtube.com/');
+  assert.equal(new URL(new URL(chooserUrl('a@x.com', 'www.youtube.com')).searchParams.get('continue')).searchParams.get('app'), 'desktop');
 });
 
 test('parent mode → Profiles: add an email, start fresh, wait for Google, switch back', async () => {
@@ -324,9 +334,16 @@ test('parent mode → Profiles: add an email, start fresh, wait for Google, swit
   const other = `)]}'\n${JSON.stringify({ header: { email: { simpleText: 'other@example.com' } }, items: [{ accountItem: { isSelected: true } }] })}`;
   assert.equal((await send2({ type: 'account', loggedIn: true, datasyncId: 'BBB||', switcher: other })).held, true);
   assert.equal(fake.store.account.key, 'second@example.com');
+  const waiting = await fromPage({ type: 'profiles' });
+  assert.equal(waiting.waitingFor, 'second@example.com');
+  assert.equal(waiting.youtubeHas, 'other@example.com', 'the switcher says which account YouTube still shows');
+  assert.ok(waiting.signIn.includes('Email=second%40example.com'));
+  const open = () => fake.rules?.[0]?.condition.excludedRequestDomains ?? [];
+  assert.ok(open().includes('google.com'), 'Google’s sign-in pages stay open while it signs in');
   const second = `)]}'\n${JSON.stringify({ header: { email: { simpleText: 'second@example.com' } }, items: [{ accountItem: { isSelected: true } }] })}`;
   await send2({ type: 'account', loggedIn: true, datasyncId: 'CCC||', switcher: second });
   assert.equal(fake.store.profileHold, undefined, 'the account the parent picked arrived');
+  assert.ok(!open().includes('google.com'), 'and are closed again once it has');
   assert.equal(fake.store.accounts['second@example.com'].datasyncId, 'CCC||');
 
   const list = await fromPage({ type: 'profiles' });
@@ -374,11 +391,12 @@ test('the tablet keeps no history: notes the AI worked on (notes-done.json) and 
   assert.ok(fake.store.outbox.some((e) => e.eventId === darker.eventId)); // not sent yet: still waits for ↻ Update
 });
 
-test('a profile with the blank test app: YouTube is a white page in kid mode, YouTube’s account doesn’t switch it, nothing syncs', async () => {
+test('a profile with the blank test app: YouTube is a white page in kid and parent mode, YouTube’s account doesn’t switch it, nothing syncs', async () => {
   const first = fake.store.account.key;
   const r = await fromPage({ type: 'addProfile', email: 'blank@example.com', app: 'blank' });
   assert.equal(r.switched, true);
   assert.equal(r.chooser, null, 'no Google sign-in for an app that is not on YouTube');
+  assert.equal(r.open, 'ext://ui/blank.html', 'the switcher goes straight to the app');
   assert.equal(fake.store.account.app, 'blank');
   assert.equal(fake.store.profileHold, undefined);
   await fromPage({ type: 'setMode', mode: 'kid' });
@@ -393,7 +411,8 @@ test('a profile with the blank test app: YouTube is a white page in kid mode, Yo
   try { await send({ type: 'sync' }); } finally { globalThis.fetch = realFetch; }
   assert.equal(calls, 0, 'the blank app has nothing in the data repo');
   await fromPage({ type: 'setMode', mode: 'parent' });
-  assert.equal(await navigate('https://m.youtube.com/'), 'ext://parent/parent.html', 'parent mode still opens the parent screens');
+  assert.equal(await navigate('https://m.youtube.com/'), 'ext://ui/blank.html', 'KidTube’s parent screens are not this app’s screens');
+  assert.equal((await fromPage({ type: 'parentData' })).app, 'blank', 'the parent page sends it to the switcher');
   assert.equal((await fromPage({ type: 'switchProfile', key: first })).switched, true);
   assert.equal(fake.store.account.app, 'kidtube');
 });
