@@ -13,10 +13,10 @@ const MARKUP = `
   </section>
 
   <section id="profilesSection">
-    <h2>Profiles</h2>
+    <h2>Apps and accounts</h2>
     <p class="muted" id="profileNow"></p>
-    <p class="muted">Each profile is one email with its own app, lists, rules, notes and helper.</p>
-    <a class="button" href="../profiles/profiles.html">👤 Profiles & apps</a>
+    <p class="muted">Each YouTube account has its own apps; each app its own lists, rules, notes and helper. Another account or app: go back to the apps header on YouTube, sign in there and open or create the app.</p>
+    <a class="button" href="../apps/apps.html">⬆ Apps header</a>
   </section>
 
   <section>
@@ -218,7 +218,7 @@ export function mountSettings(root, { inParent = false, onMode = () => {} } = {}
     const on = s.mode === 'parent' && (!s.parentUntil || s.parentUntil > Date.now());
     for (const r of root.querySelectorAll('input[name=mode]')) r.checked = r.value === (on ? 'parent' : 'kid');
     $('account').textContent = account
-      ? `Profile: ${account.email || account.name || account.key}. Every setting here, the lists and the history belong to this profile; another email has its own (parent screens → tap the account at the top → Profiles). The PIN and the GitHub connection are the same for all.`
+      ? `Profile: ${account.email || account.name || account.key}. Every setting here, the lists and the history belong to this profile; another account or app has its own (⬆ Apps header). The PIN and the GitHub connection are the same for all.`
       : 'No YouTube account seen yet: open YouTube once. Settings are kept per profile (YouTube account).';
     $('modeOut').textContent = on && s.parentUntil ? `Parent mode is on until ${new Date(s.parentUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` : '';
   }

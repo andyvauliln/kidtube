@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KidTube apps</title>
+<link rel="stylesheet" href="../parent/parent.css">
+<link rel="stylesheet" href="../settings/settings.css">
+<style>
+  main { max-width: 680px; padding-top: 16px; }
+  h1 { margin-bottom: 4px; }
+  .box { margin-top: 12px; }
+  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+  .ok { color: #1b5e20; }
+  .foot { margin-top: 20px; }
+</style>
+<body>
+<main>
+  <h1>KidTube apps</h1>
+  <p class="muted">The apps header on YouTube: sign in there, then open or create an app for that account. One PIN and one GitHub connection for every account and app on this tablet.</p>
+
+  <section id="gate" class="box" hidden>
+    <h2 id="gateTitle">Enter PIN</h2>
+    <input id="pin" class="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8">
+    <input id="pin2" class="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="repeat" hidden>
+    <button class="primary" id="pinGo">OK</button>
+    <p class="err" id="pinErr"></p>
+  </section>
+
+  <div id="main" hidden>
+    <section class="box">
+      <h2>Now</h2>
+      <p id="now" class="muted"></p>
+      <div class="actions"><button class="primary" id="leave">⬆ Show the apps header on YouTube</button></div>
+    </section>
+
+    <section class="box" id="github">
+      <h2>GitHub</h2>
+      <p class="muted">Every app keeps its data in one GitHub repo: a folder per account and app (for example <code>kidtube/ann/</code>). With the connection the header finds the apps an account already has.</p>
+      <label for="repo">Data repo (owner/name)</label>
+      <input id="repo" placeholder="andyvauliln/kidtube-data">
+      <label for="token">GitHub token (fine-grained, this repo only, Contents: read and write)</label>
+      <input id="token" type="password" autocomplete="off" placeholder="github_pat_…">
+      <div class="actions"><button class="primary" id="save">Save and check</button></div>
+      <p id="saveOut" class="muted"></p>
+    </section>
+    <p class="foot"><a href="../options/options.html">⚙️ Settings of the current app</a></p>
+  </div>
+</main>
+<script src="../parent/boot.js"></script>
+<script type="module" src="apps.js"></script>
+</body>
+</html>

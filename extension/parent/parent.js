@@ -72,9 +72,9 @@ async function refresh() {
   const r = await ask({ type: 'parentData' });
   if (!r || r.ok === false) { view.replaceChildren(el('p', 'err', 'KidTube’s background did not answer. Close this page and open it again.')); return; }
   data = r;
-  // These are KidTube's screens: a profile with another app goes to the switcher (old #profiles links too).
-  if ((r.app && r.app !== 'kidtube') || location.hash === '#profiles') { location.replace('../profiles/profiles.html'); return; }
-  $('who').textContent = `👤 ${r.account?.email || r.account?.name || 'YouTube account not seen yet'} ⇄`;
+  // These are KidTube's screens: a profile with another app goes to the apps page.
+  if (r.app && r.app !== 'kidtube') { location.replace('../apps/apps.html'); return; }
+  $('who').textContent = `👤 ${r.account?.email || r.account?.name || 'no account'} · ⬆ Apps`;
   if (!r.parentMode) return showGate();
   $('gate').hidden = true;
   $('tabs').hidden = false;
@@ -129,7 +129,7 @@ $('pinGo').addEventListener('click', async () => {
 $('pin').addEventListener('keydown', (e) => e.key === 'Enter' && $('pinGo').click());
 $('kid').addEventListener('click', () => ask({ type: 'kidHome' }));
 
-// --- routing: #today, #planned, #history, #prompt, #settings, #profiles, #v=<videoId> ----------------
+// --- routing: #today, #planned, #history, #prompt, #settings, #v=<videoId> ----------------
 const TABS = ['today', 'planned', 'history', 'context', 'prompt', 'settings'];
 function route() {
   const h = location.hash.slice(1);

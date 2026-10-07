@@ -45,13 +45,12 @@ export function profileFolder({ email, datasyncId }, taken = []) {
   return folder;
 }
 
-// Google's account chooser for this email (Profiles → Switch), coming back through YouTube's own sign-in
-// handler, as YouTube's Sign in button does: without it YouTube can keep the account it had. noapp=1 keeps
-// Android from opening the YouTube app instead.
+// Google's account chooser (the header's Switch account; with an email, that one is picked), coming back through
+// YouTube's own sign-in handler, as YouTube's Sign in button does: without it YouTube can keep the account it
+// had. noapp=1 keeps Android from opening the YouTube app instead.
 export function chooserUrl(email, host = 'm.youtube.com') {
   const site = host === 'www.youtube.com' ? host : 'm.youtube.com';
   const home = `https://${site}/`;
-  if (!email) return home;
   const back = `https://${site}/signin?action_handle_signin=true&app=${site === 'm.youtube.com' ? 'm' : 'desktop'}&hl=en&next=${encodeURIComponent(home)}&feature=mobile&noapp=1`;
-  return `https://accounts.google.com/AccountChooser?service=youtube&Email=${encodeURIComponent(email)}&continue=${encodeURIComponent(back)}`;
+  return `https://accounts.google.com/AccountChooser?service=youtube${email ? `&Email=${encodeURIComponent(email)}` : ''}&continue=${encodeURIComponent(back)}`;
 }

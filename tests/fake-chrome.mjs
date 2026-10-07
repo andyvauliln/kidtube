@@ -2,7 +2,8 @@
 import { readFileSync } from 'node:fs';
 
 export function installFakeChrome() {
-  const store = {};
+  // An app runs (no apps header): the tests of the apps header set shell themselves.
+  const store = { shell: { on: false, locked: false } };
   const listeners = {};
   const on = (name) => ({ addListener: (fn) => ((listeners[name] ??= []).push(fn)) });
   const nav = { updates: [] };

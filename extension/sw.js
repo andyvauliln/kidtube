@@ -5,8 +5,8 @@ import { visibleVideos, waitingIds } from './lib/queue.js';
 import { classifyUrl, homeUrl, watchUrl } from './lib/url.js';
 import { parseCaptions, captionsToText } from './lib/captions.js';
 import { TARGET } from './lib/target.js';
-import { accountFromSwitcher, accountKey, profileFolder, chooserUrl } from './lib/account.js';
-import { APPS, DEFAULT_APP, appOf, usesYouTube } from './lib/apps.js';
+import { accountFromSwitcher, profileFolder, chooserUrl } from './lib/account.js';
+import { APPS, DEFAULT_APP, appOf } from './lib/apps.js';
 import { PLAN_ACTIONS, applyPlan, applyPlanEvent, pendingPlan, entryFromRecord, applyPromptNotes } from './lib/plan.js';
 
 const SITE_RULE_ID = 100;
@@ -61,10 +61,15 @@ function withState(fn, { account } = {}) {
 // The PIN, the mode, the device id and the GitHub connection belong to the tablet, so they move along with every switch.
 const ACCOUNT_KEYS = [...KEYS.filter((k) => k !== 'parentPass'), 'memory', 'helperInfo', 'contextDocs'];
 const DEVICE_SETTINGS = ['pinHash', 'pinSalt', 'pinFails', 'pinLockedUntil', 'deviceId', 'mode', 'parentUntil', 'repo', 'token'];
-// After the parent picks a profile, YouTube shows the old account until it is signed in to the new one. Until
-// then (profileHold, at most HOLD_MS) KidTube steps aside on YouTube, so YouTube's own Sign in can be used.
-const HOLD_MS = 15 * 60000;
-const holdOf = (account, h) => (h?.until > Date.now() && h.key === account?.key ? h : null);
+// The apps header (shell): no app runs, so YouTube is plain YouTube with KidTube's header on top, where the
+// parent signs in, connects GitHub and opens or creates an app for the signed-in email. { on, locked, why }:
+// locked = YouTube is covered until a grown-up enters the PIN (an app stopped because YouTube's account changed).
+// No shell key yet: a tablet from before 0.9.8 keeps running its profile; a new one starts at the header.
+async function shellOf(g) {
+  const { shell, account } = g ?? await chrome.storage.local.get(['shell', 'account']);
+  return shell ?? { on: !account, locked: false };
+}
+const shellOpen = (sh) => sh.on && !sh.locked;
 const currentAccount = async () => (await chrome.storage.local.get('account')).account?.key ?? null;
 
 // A profile is an email with one app, so one email can have a profile in each app. KidTube's key is the email
@@ -75,7 +80,7 @@ const baseOf = (key) => key.replace(new RegExp(`^(${Object.keys(APPS).join('|')}
 // Tablets from 0.9.2 to 0.9.5 keyed a Blank profile by its email alone: give it its "<app>:" key, so that the
 // same email can also have a KidTube profile. Call inside serial().
 async function migrateProfileKeys() {
-  const g = await chrome.storage.local.get(['account', 'accounts', 'profileHold']);
+  const g = await chrome.storage.local.get(['account', 'accounts']);
   const accounts = g.accounts ?? {};
   const moves = Object.entries(accounts).map(([k, a]) => [k, keyFor(a.app, baseOf(k))]).filter(([k, want]) => k !== want && !accounts[want]);
   if (!moves.length) return;
@@ -86,142 +91,152 @@ async function migrateProfileKeys() {
     delete accounts[k];
     if (saved[`acct:${k}`]) set[`acct:${want}`] = saved[`acct:${k}`];
     if (g.account?.key === k) set.account = { ...g.account, key: want };
-    if (g.profileHold?.key === k) set.profileHold = { ...g.profileHold, key: want };
   }
   await chrome.storage.local.set({ ...set, accounts });
   await chrome.storage.local.remove(moves.map(([k]) => `acct:${k}`).filter((k) => saved[k]));
 }
 
 // The record of a profile, with its app and folder given once (unique within its app: blank/ann and kidtube/ann).
-function profileRecord(accounts, key, info, app) {
+// folder: the one the data repo already has for this email and app (found by the header).
+function profileRecord(accounts, key, info, app, folder) {
   const old = accounts[key] ?? {};
   const myApp = old.app ?? (APPS[app] ? app : DEFAULT_APP);
   const taken = Object.entries(accounts).filter(([k, a]) => k !== key && (a.app ?? DEFAULT_APP) === myApp).map(([, a]) => a.folder).filter(Boolean);
   return {
     email: info.email ?? old.email ?? null, name: info.name ?? old.name ?? null, datasyncId: info.datasyncId || old.datasyncId || null,
-    app: myApp, folder: old.folder ?? profileFolder(info, taken), lastSeen: new Date().toISOString(),
+    app: myApp, folder: old.folder ?? folder ?? profileFolder(info, taken), lastSeen: new Date().toISOString(),
   };
 }
 
-// info: { email, name, datasyncId } from YouTube, or { email } when the parent picks a profile (byParent, with
-// its key: the email alone can't say which app's profile).
-async function useAccount(info, { byParent = false, app, key: picked } = {}) {
-  if (!accountKey(info)) return { ok: false };
-  let holdChanged = false;
+// Makes the profile <key> (an email in one app) the current one: the current profile's data goes to
+// "acct:<its key>", the new one's comes back (a new profile starts empty). The header's Open and Create.
+async function useProfile(info, { app, key, folder }) {
   const r = await serial(async () => {
     await migrateProfileKeys();
-    const g = await chrome.storage.local.get(['account', 'accounts', 'profileHold']);
+    const g = await chrome.storage.local.get(['account', 'accounts']);
     const accounts = g.accounts ?? {};
     const cur = g.account;
-    let key = (byParent && picked) || accountKey(info);
-    // YouTube's id alone (no email): the YouTube profile that already has that id.
-    if (!byParent && !info.email && info.datasyncId) key = Object.keys(accounts).find((k) => accounts[k].datasyncId === info.datasyncId && usesYouTube(appOf(accounts[k]))) ?? key;
-    // The current profile's app isn't on YouTube: YouTube's account doesn't change it. Google signing in its
-    // email (the parent's switch) ends the sign-in.
-    if (!byParent && cur && !usesYouTube(appOf(cur))) {
-      if (g.profileHold && info.email && info.email === cur.email) { await chrome.storage.local.remove('profileHold'); holdChanged = true; return { held: true, signedIn: true }; }
-      return { held: true };
-    }
-    const hold = !byParent && g.profileHold?.until > Date.now() ? g.profileHold : null;
-    if (hold && key !== hold.key) {
-      // An account YouTube can't name, not known here: the one Google has just signed in for the parent's pick.
-      if (!info.email && !accounts[key] && accounts[hold.key]) {
-        accounts[hold.key] = { ...accounts[hold.key], datasyncId: info.datasyncId };
-        await chrome.storage.local.set({ accounts, account: { ...cur, datasyncId: info.datasyncId } });
-        await chrome.storage.local.remove('profileHold');
-        holdChanged = true;
-        return { switched: false, signedIn: true };
-      }
-      // Still another account: wait for the parent's pick (ytAccount says which one YouTube has).
-      return { held: true };
-    }
-    let signedIn = false;
-    if (hold) { await chrome.storage.local.remove('profileHold'); holdChanged = signedIn = true; }
-    // A profile known only by YouTube's id becomes the same profile under its email.
-    const ytKey = info.datasyncId ? accountKey({ datasyncId: info.datasyncId }) : null;
-    if (info.email && ytKey && ytKey !== key && accounts[ytKey] && !accounts[key]) { accounts[key] = accounts[ytKey]; delete accounts[ytKey]; }
-    const same = cur && (cur.key === key || cur.key === ytKey);
-    accounts[key] = profileRecord(accounts, key, info, app);
+    accounts[key] = profileRecord(accounts, key, info, app, folder);
     const { lastSeen, ...rec } = accounts[key];
     const me = { key, ...rec };
-    // The first account seen on this tablet keeps what is already here.
-    if (!cur || same) {
-      if (cur && cur.key !== key) delete accounts[cur.key];
+    // The first profile on this tablet keeps what is already here.
+    if (!cur || cur.key === key) {
       await chrome.storage.local.set({ account: me, accounts });
-      return { switched: false, signedIn };
+      return { switched: false };
     }
     const work = await chrome.storage.local.get(ACCOUNT_KEYS);
-    const alias = ytKey && ytKey !== key ? `acct:${ytKey}` : null;
-    const saved = await chrome.storage.local.get([`acct:${key}`, ...(alias ? [alias] : [])]);
-    const next = saved[`acct:${key}`] ?? (alias && saved[alias]) ?? {};
+    const next = (await chrome.storage.local.get(`acct:${key}`))[`acct:${key}`] ?? {};
     const device = Object.fromEntries(DEVICE_SETTINGS.filter((k) => work.settings?.[k] != null).map((k) => [k, work.settings[k]]));
     next.settings = { ...(next.settings ?? {}), ...device };
-    // Every profile with an email: Google signs that email in (YouTube for KidTube; the parent asked for it for every app).
-    const holdOn = byParent && me.email ? { profileHold: { key, since: Date.now(), until: Date.now() + HOLD_MS } } : {};
-    await chrome.storage.local.set({ [`acct:${cur.key}`]: work, ...next, account: me, accounts, ...holdOn });
-    await chrome.storage.local.remove([`acct:${key}`, ...(alias ? [alias] : []), ...ACCOUNT_KEYS.filter((k) => !(k in next)), ...(byParent && !holdOn.profileHold ? ['profileHold'] : [])]);
+    await chrome.storage.local.set({ [`acct:${cur.key}`]: work, ...next, account: me, accounts });
+    await chrome.storage.local.remove([`acct:${key}`, ...ACCOUNT_KEYS.filter((k) => !(k in next))]);
     return { switched: true };
   });
-  if (r.switched) { await applySiteRules(); sync(); }
-  else if (holdChanged) await applySiteRules();   // the sign-in is over: Google's other pages are closed again
-  if (byParent && r.switched) chrome.alarms.create('profileHold', { when: Date.now() + HOLD_MS + 1000 });
-  return { ok: !r.held, ...r };
+  if (r.switched) sync();
+  return { ok: true, ...r };
 }
 
-// Parent mode → Profiles.
-async function profilesView() {
-  await serial(migrateProfileKeys);
-  const { account, accounts = {}, profileHold, ytAccount } = await chrome.storage.local.get(['account', 'accounts', 'profileHold', 'ytAccount']);
-  return {
-    ok: true, current: account?.key ?? null, apps: Object.values(APPS).map((a) => ({ id: a.id, label: a.label })),
-    waitingFor: holdOf(account, profileHold)?.key ?? null,
-    // The account YouTube showed last (null: signed out; undefined: never seen), and whether the profile needs a sign-in.
-    youtubeHas: ytAccount ? ytAccount.email ?? null : undefined,
-    needsSignIn: !!account?.email && ytAccount?.email !== account.email,
-    youtube: homeUrl(lastHost),
-    currentPage: appStart(account),
-    profiles: Object.entries(accounts).map(([key, a]) => ({ key, email: a.email, name: a.name, app: a.app ?? DEFAULT_APP, folder: a.folder ?? null, lastSeen: a.lastSeen ?? null }))
-      .sort((a, b) => (b.lastSeen ?? '').localeCompare(a.lastSeen ?? '')),
-  };
+// YouTube's page says who is signed in. At the header this only changes what the header shows. While an app
+// runs, another account (or none) stops it: the app's data belongs to its email. A grown-up's PIN then opens
+// the header; in parent mode it opens at once.
+async function youtubeAccount(info, loggedIn) {
+  const signedOut = !loggedIn && !info.email;
+  await chrome.storage.local.set({ ytAccount: { email: info.email ?? null, loggedIn: !signedOut, datasyncId: info.datasyncId || null, at: Date.now() } });
+  const g = await chrome.storage.local.get(['shell', 'account', 'accounts', 'settings']);
+  const sh = await shellOf(g);
+  const cur = g.account;
+  if (sh.on || !cur?.email) return { ok: true, shell: sh };
+  const ds = String(info.datasyncId ?? '').split('||')[0];
+  const other = signedOut ? 'YouTube is signed out'
+    : info.email && info.email !== cur.email ? `YouTube is signed in to ${info.email}`
+      : !info.email && ds && cur.datasyncId && ds !== String(cur.datasyncId).split('||')[0] ? 'YouTube is signed in to another account' : null;
+  if (!other) {
+    if (info.email && info.datasyncId && !cur.datasyncId) {   // remember YouTube's id: it tells accounts apart without an email
+      const accounts = { ...(g.accounts ?? {}), [cur.key]: { ...(g.accounts?.[cur.key] ?? {}), datasyncId: info.datasyncId } };
+      await chrome.storage.local.set({ account: { ...cur, datasyncId: info.datasyncId }, accounts });
+    }
+    return { ok: true };
+  }
+  const locked = !!g.settings?.pinHash && !parentMode(g);
+  const shell = { on: true, locked, why: `${other}, not ${cur.email}: ${appOf(cur).label.replace(/ \(.*/, '')} stopped.` };
+  await chrome.storage.local.set({ shell });
+  await applySiteRules();
+  return { ok: true, shell };
 }
 
-// Where a profile's app starts: its own page, or YouTube (where KidTube draws its screens).
-const appStart = (account) => (appOf(account).page ? chrome.runtime.getURL(appOf(account).page) : homeUrl(lastHost));
+// The profiles in the data repo: <app>/<folder>/profile.json says whose folder it is. Read again after 10 minutes.
+async function repoProfiles(force = false) {
+  const { settings = {}, repoProfiles: cached } = await chrome.storage.local.get(['settings', 'repoProfiles']);
+  const repo = settings.repo || DEFAULT_REPO, token = settings.token || '';
+  if (!token) return { list: [], error: null };
+  if (!force && cached?.repo === repo && cached.at > Date.now() - 10 * 60000 && !cached.error) return cached;
+  const list = [];
+  let error = null;
+  try {
+    for (const app of Object.keys(APPS)) {
+      const r = await fetch(`https://api.github.com/repos/${repo}/contents/${app}`, { headers: ghHeaders(token, 'application/vnd.github+json'), cache: 'no-store' });
+      if (r.status === 404) continue;
+      if (!r.ok) throw new Error(await explainHttp(r.status, { repo, base: `${app}/` }, token, ''));
+      for (const d of (await r.json()).filter((x) => x.type === 'dir')) {
+        const f = await getRepoFile({ repo, base: `${app}/${d.name}/` }, token, 'profile.json').catch(() => null);
+        if (f?.json?.email) list.push({ app, folder: d.name, email: String(f.json.email).toLowerCase() });
+      }
+    }
+  } catch (e) { error = e.message; }
+  const out = { repo, at: Date.now(), list, error };
+  await chrome.storage.local.set({ repoProfiles: out });
+  return out;
+}
 
-// Profiles → Sign in, or the time ran out: KidTube steps aside on YouTube again until it shows the profile's email.
-async function startSignIn() {
-  const { account } = await chrome.storage.local.get('account');
-  if (!account?.email) return { ok: false, error: 'This profile has no email to sign in.' };
-  await chrome.storage.local.set({ profileHold: { key: account.key, since: Date.now(), until: Date.now() + HOLD_MS } });
-  chrome.alarms.create('profileHold', { when: Date.now() + HOLD_MS + 1000 });
+// What the header shows: who YouTube has, the GitHub connection, and this email's apps (here or in the repo).
+async function headerView(force) {
+  const g = await chrome.storage.local.get(['shell', 'account', 'accounts', 'ytAccount', 'settings']);
+  const sh = await shellOf(g);
+  const settings = g.settings ?? {};
+  const email = g.ytAccount?.email ?? null;
+  const github = { connected: !!settings.token, repo: settings.repo || DEFAULT_REPO };
+  const out = { ok: true, shell: sh, email, seen: !!g.ytAccount, signedIn: !!g.ytAccount?.loggedIn, github, apps: [], error: null,
+    switchAccount: chooserUrl(null, lastHost), signOut: `https://${lastHost}/logout` };
+  if (!email || !github.connected) return out;
+  const remote = await repoProfiles(force);
+  out.error = remote.error;
+  const accounts = g.accounts ?? {};
+  out.apps = Object.values(APPS).map((a) => {
+    const here = accounts[keyFor(a.id, email)];
+    const there = remote.list.find((p) => p.app === a.id && p.email === email);
+    return { id: a.id, label: a.label.replace(/ \(.*/, ''), has: !!(here || there), folder: here?.folder ?? there?.folder ?? null, parentScreens: !a.page };
+  });
+  return out;
+}
+
+// The header's Open (mode 'kid' or 'parent') and Create (always parent mode: the parent sets the new app up first).
+// The profile is the signed-in email in that app; its folder in the repo is found, or given now.
+async function openApp(msg, tabId, host) {
+  const g = await chrome.storage.local.get(['shell', 'ytAccount', 'accounts']);
+  if (!shellOpen(await shellOf(g))) return { ok: false, error: 'Unlock with the PIN first.' };
+  const email = g.ytAccount?.email;
+  if (!email) return { ok: false, error: 'Sign in to YouTube first.' };
+  const app = APPS[msg.app];
+  if (!app) return { ok: false, error: 'Unknown app.' };
+  const key = keyFor(app.id, email);
+  const there = (await repoProfiles()).list.find((p) => p.app === app.id && p.email === email);
+  if (!msg.create && !g.accounts?.[key] && !there) return { ok: false, error: `No ${app.label} for ${email} yet: create it.` };
+  const r = await useProfile({ email, datasyncId: g.ytAccount.datasyncId }, { app: app.id, key, folder: there?.folder });
+  const parent = msg.create || msg.mode === 'parent';
+  await withState((s) => { Object.assign(s.settings, { mode: parent ? 'parent' : 'kid', parentUntil: 0 }); });
+  await chrome.storage.local.set({ shell: { on: false, locked: false } });
+  await applySiteRules();
+  if (msg.create && !r.switched) sync();   // (a switch syncs anyway) writes profile.json: the repo and the server's helper know it
+  const url = app.page ? chrome.runtime.getURL(app.page) : parent ? chrome.runtime.getURL(PARENT_PAGE) : homeUrl(host);
+  if (tabId != null) await chrome.tabs.update(tabId, { url });
+  return { ok: true, url };
+}
+
+// Back to the header: from the parent screens or the apps page (after the PIN).
+async function leaveApp() {
+  await chrome.storage.local.set({ shell: { on: true, locked: false } });
   await applySiteRules();
   return { ok: true, open: homeUrl(lastHost) };
-}
-async function endSignIn() {
-  await chrome.storage.local.remove('profileHold');
-  await applySiteRules();
-  return { ok: true };
-}
-
-// The YouTube page while a profile waits for its sign-in (content.js shows it at the bottom, over plain YouTube).
-async function signInView() {
-  const { account, profileHold, ytAccount } = await chrome.storage.local.get(['account', 'profileHold', 'ytAccount']);
-  const h = holdOf(account, profileHold);
-  if (!h) return null;
-  const fresh = ytAccount && ytAccount.at > (h.since ?? 0);
-  return { email: account.email, app: appOf(account).label.replace(/ \(.*/, ''), chooser: chooserUrl(account.email, lastHost),
-    youtubeHas: fresh ? ytAccount.email ?? (ytAccount.loggedIn ? 'an account without an email shown' : null) : undefined, minutesLeft: Math.ceil((h.until - Date.now()) / 60000) };
-}
-
-async function removeProfile(key) {
-  return serial(async () => {
-    const { account, accounts = {} } = await chrome.storage.local.get(['account', 'accounts']);
-    if (!accounts[key] || account?.key === key) return { ok: false, error: 'Switch to another profile first.' };
-    delete accounts[key];
-    await chrome.storage.local.set({ accounts });
-    await chrome.storage.local.remove(`acct:${key}`);
-    return { ok: true };
-  });
 }
 
 // For the screens (no lock: safe inside withState): "kidtube/johnnypitt.ind/", or null before the first sync.
@@ -346,7 +361,7 @@ async function viewState(s, tabId) {
     rules: { allowSkip: parent || !!config.allowSkip },
     parent,
     parentMode: parentMode(s),
-    signIn: await signInView(),
+    shell: await shellOf(),
   };
 }
 
@@ -386,10 +401,10 @@ async function guard(s, tabId, href) {
   lastHost = c.host || lastHost;
   // A profile whose app isn't KidTube: YouTube shows that app's page instead (the blank test app: a white page),
   // in parent mode too: KidTube's parent screens are not that app's screens.
-  const { account, profileHold } = await chrome.storage.local.get(['account', 'profileHold']);
-  // A profile waiting for YouTube to sign in to its email: plain YouTube, so its own Sign in works. YouTube
-  // naming that email (useAccount) or the time running out brings the app back.
-  if (holdOf(account, profileHold)) return null;
+  const g = await chrome.storage.local.get(['shell', 'account']);
+  // The apps header: plain YouTube, so the parent can sign in or switch the account (locked: content.js covers it).
+  if ((await shellOf(g)).on) return null;
+  const account = g.account;
   const app = appOf(account);
   if (app.page) return chrome.runtime.getURL(app.page);
   // Parent mode: YouTube's home is the parent's screens; everything else on YouTube is open.
@@ -669,44 +684,28 @@ async function handle(msg, sender) {
 
     case 'account': { // from the YouTube page: who is signed in
       const info = { ...(accountFromSwitcher(msg.switcher ?? '') ?? {}), datasyncId: msg.datasyncId };
-      const signedOut = !msg.loggedIn && !info.email;
-      await chrome.storage.local.set({ ytAccount: { email: info.email ?? null, loggedIn: !signedOut, at: Date.now() } });
-      if (signedOut) return { ok: false };  // signed out: stay with the last account
-      return useAccount(info);
+      return youtubeAccount(info, msg.loggedIn);
     }
-    case 'endSignIn': // the YouTube page's "Cancel" while signing in: KidTube (or the app) comes back at once
-      return endSignIn();
-    case 'startSignIn': // Profiles & apps: sign YouTube in to the current profile's email
+    case 'header': // the apps header on YouTube (content.js)
+      return headerView(!!msg.refresh);
+    case 'openApp': // the header: open or create this email's app (only while the header is unlocked)
+      return openApp(msg, tabId, host);
+    case 'openApps': // the header's Connect GitHub, the lock's Unlock, the blank page: the apps page (it asks for the PIN)
+      if (tabId != null) await chrome.tabs.update(tabId, { url: chrome.runtime.getURL(`apps/apps.html${msg.github ? '#github' : ''}`) });
+      return { ok: true };
+    case 'leaveApp': // the apps page (after the PIN) and the parent screens: back to the header
       if (!fromExtensionPage(sender)) return { ok: false };
-      return startSignIn();
-
-    // Parent mode → Profiles: another email, with its own lists, settings, notes and helper.
-    case 'profiles':
+      return leaveApp();
+    case 'apps': // the apps page: what runs now, and whether it may skip the PIN
       if (!fromExtensionPage(sender)) return { ok: false };
-      return profilesView();
-
-    case 'switchProfile': // a known profile (key) or a new one (email, app); then Google signs in that account
-    case 'addProfile': {
-      if (!fromExtensionPage(sender)) return { ok: false, error: 'Only from the parent screens or Settings.' };
-      await serial(migrateProfileKeys);
-      const { accounts = {} } = await chrome.storage.local.get('accounts');
-      if (msg.type === 'addProfile' && msg.app && !APPS[msg.app]) return { ok: false, error: 'Unknown app.' };
-      const email = msg.type === 'addProfile' ? String(msg.email ?? '').trim().toLowerCase() : accounts[msg.key]?.email ?? null;
-      const base = msg.type === 'addProfile' ? accountKey({ email }) : null;
-      const key = msg.type === 'addProfile' ? base && keyFor(msg.app ?? DEFAULT_APP, base) : msg.key;
-      if (!key || (msg.type === 'switchProfile' && !accounts[key])) return { ok: false, error: msg.type === 'addProfile' ? 'That doesn’t look like an email.' : 'Unknown profile.' };
-      const existed = !!accounts[key];
-      const r = await useAccount(email ? { email } : { datasyncId: baseOf(key).slice(3) }, { byParent: true, app: msg.app, key });
-      const now = await chrome.storage.local.get(['account', 'profileHold']);
-      // Next: YouTube, where KidTube steps aside until it is signed in to the profile's email (then the app takes
-      // over), or the app itself when there is nothing to sign in.
-      return { ...r, app: appOf(now.account).id, existed, signIn: !!holdOf(now.account, now.profileHold),
-        open: holdOf(now.account, now.profileHold) ? homeUrl(lastHost) : appStart(now.account) };
-    }
-
-    case 'removeProfile': // only this tablet's copy; the data repo keeps the folder
-      if (!fromExtensionPage(sender)) return { ok: false, error: 'Only from the parent screens or Settings.' };
-      return removeProfile(msg.key);
+      return withState(async (s) => {
+        const { account } = await chrome.storage.local.get('account');
+        const sh = await shellOf();
+        return { ok: true, shell: sh, parentMode: parentMode(s), running: sh.on ? null : { email: account?.email ?? null, app: appOf(account).label.replace(/ \(.*/, '') } };
+      });
+    case 'checkRepo': // the apps page saved the GitHub connection: can it read the repo, and which profiles are there?
+      if (!fromExtensionPage(sender)) return { ok: false };
+      return repoProfiles(true).then((r) => ({ ok: !r.error, error: r.error, profiles: r.list.length }));
 
     case 'setMode': // settings page or parent screens, after the PIN
       if (!['kid', 'parent'].includes(msg.mode)) return { ok: false, error: 'Unknown mode.' };
@@ -719,7 +718,7 @@ async function handle(msg, sender) {
 
     case 'openParent': // a YouTube home tab in parent mode becomes the parent's screens
       return withState(async (s) => {
-        if (!parentMode(s) || tabId == null) return { ok: false };
+        if (!parentMode(s) || tabId == null || (await shellOf()).on) return { ok: false };
         const app = appOf((await chrome.storage.local.get('account')).account);   // another app: its own page (as guard)
         await chrome.tabs.update(tabId, { url: chrome.runtime.getURL(app.page ?? PARENT_PAGE) });
         return { ok: true };
@@ -1163,7 +1162,8 @@ async function doSync() {
   const token = settings.token || '';
   const etags = data.etags ?? {};
   const status = { at: new Date().toISOString(), errors: [] };
-  if (appOf(account).sync === false) {   // an app with nothing in the data repo (the blank test app)
+  if (appOf(account).sync === false) {   // an app with nothing in the data repo but profile.json (the blank test app)
+    if (token && loc.base) await writeProfileFile(loc, token).catch((e) => status.errors.push(e.message));
     await applySiteRules();
     await withState((s) => { s.syncStatus = status; }, { account: acct });
     return status;
@@ -1564,13 +1564,13 @@ function toBase64(text) {
 }
 
 // Every top-level page outside allowedSiteDomains is blocked (PLAN.md C16).
-// While Google signs in a profile's account (profileHold), all of google.com stays open: the sign-in can pass
+// At the unlocked apps header, all of google.com stays open: a sign-in can pass
 // through www.google.com or gds.google.com ("make sure you can sign in"), and a blocked step is a dead page.
 const allowedDomains = (config, signingIn = false) =>
   [...new Set([...(config.allowedSiteDomains ?? []), 'youtube.com', 'andyvauliln.github.io', ...(signingIn ? ['google.com'] : [])])];
-const signingIn = (s) => s.profileHold?.until > Date.now();
+const signingIn = (s) => !!s.shell?.on && !s.shell.locked;
 async function applySiteRules() {
-  const s = await chrome.storage.local.get(['data', 'localConfig', 'profileHold']);
+  const s = await chrome.storage.local.get(['data', 'localConfig', 'shell']);
   const { config } = await effective({ data: s.data ?? {}, localConfig: s.localConfig });
   // Orion has no blocking rules (its build drops the permission): externalGuard does the job there.
   if (TARGET === 'orion') { dnrWorks = false; return; }
@@ -1597,7 +1597,7 @@ async function externalGuard(host) {
     dnrWorks ??= (await chrome.storage.local.get('dnrWorks')).dnrWorks ?? !!chrome.declarativeNetRequest?.updateDynamicRules;
     if (dnrWorks) return null;
   }
-  const s = await chrome.storage.local.get(['data', 'localConfig', 'profileHold']);
+  const s = await chrome.storage.local.get(['data', 'localConfig', 'shell']);
   const { config } = await effective({ data: s.data ?? {}, localConfig: s.localConfig });
   if (!config.blockOutboundLinks) return null;
   const allowed = allowedDomains(config, signingIn(s)).some((d) => host === d || host.endsWith(`.${d}`));
@@ -1657,6 +1657,8 @@ async function settingsBackup(sender, saved) {
 
 async function start() {
   chrome.alarms.create('poll', { periodInMinutes: POLL_MINUTES });
+  chrome.alarms.clear?.('profileHold');               // 0.9.4–0.9.7's sign-in wait, replaced by the apps header
+  await chrome.storage.local.remove('profileHold');
   await applySiteRules();
   sync();
 }
@@ -1668,11 +1670,4 @@ chrome.runtime.onInstalled.addListener(async ({ reason } = {}) => {
   if (reason === 'install' && !settings.token) chrome.tabs.create({ url: INSTALL_PAGE }).catch(() => {});
 });
 chrome.runtime.onStartup.addListener(start);
-chrome.alarms.onAlarm.addListener(async (a) => {
-  if (a.name === 'poll') sync();
-  else if (a.name === 'profileHold') {   // the sign-in time ran out: the app comes back (Profiles can start it again)
-    const { profileHold } = await chrome.storage.local.get('profileHold');
-    if (profileHold && !(profileHold.until > Date.now())) await chrome.storage.local.remove('profileHold');
-    applySiteRules();
-  }
-});
+chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'poll') sync(); });
