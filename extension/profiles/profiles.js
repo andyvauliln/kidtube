@@ -1,7 +1,7 @@
 // Profiles & apps: the one switcher above all apps (KidTube, the Blank test app, later others). Reached from
 // the 👤 in KidTube's parent screens, from Settings and from an app's own page. Parent mode or the PIN opens it.
-// A profile is one email in one app (the same email can be in several apps). A switch goes on at once: Google
-// signs in the profile's email, then YouTube, where KidTube or the app's own page takes over.
+// A profile is one email in one app (the same email can be in several apps). A switch goes on at once, then
+// YouTube opens with KidTube out of the way until it is signed in to the profile's email; then the app takes over.
 import { ask } from '../lib/ask.js';
 import { checkPin } from '../lib/pin.js';
 import { el, btn, toast } from '../parent/kit.js';
@@ -24,8 +24,8 @@ $('pinGo').addEventListener('click', async () => {
 });
 $('pin').addEventListener('keydown', (e) => e.key === 'Enter' && $('pinGo').click());
 
-// Where the profile's app is: YouTube (KidTube decides there what it shows), or the app's own page.
-const openApp = (r) => { location.href = r.chooser ?? r.open ?? 'https://m.youtube.com/'; };
+// Where the profile's app is: YouTube (KidTube decides there what it shows, or steps aside to sign in), or the app's own page.
+const openApp = (r) => { location.href = r.open ?? 'https://m.youtube.com/'; };
 
 async function show() {
   const p = await ask({ type: 'profiles' });
@@ -35,7 +35,7 @@ async function show() {
     out.textContent = '';
     const r = await ask(msg);
     if (!r?.ok) { out.textContent = r?.error ?? 'That didn’t work. Try again.'; return; }
-    if (r.chooser || r.open) {
+    if (r.open) {
       if (r.existed && msg.type === 'addProfile') { toast('That profile was already here: switching to it.'); await new Promise((ok) => setTimeout(ok, 1200)); }
       return openApp(r);
     }
@@ -51,12 +51,16 @@ async function show() {
       el('p', 'muted', `App: ${appLabel(pr.app)} · data folder ${pr.app}/${pr.folder ?? '(given on the first sync)'}${pr.lastSeen ? ` · last used ${new Date(pr.lastSeen).toLocaleDateString()}` : ''}`));
     const actions = el('div', 'actions');
     if (me) {
+      const has = p.youtubeHas === undefined ? 'YouTube hasn’t been opened yet.' : p.youtubeHas ? `YouTube now: ${p.youtubeHas}.` : 'YouTube is not signed in.';
       if (p.waitingFor === pr.key) {
         row.append(el('p', 'wait', `Waiting for YouTube to sign in to ${pr.email}.`),
-          el('p', 'muted', p.youtubeHas ? `YouTube still shows ${p.youtubeHas}. Sign in again and pick ${pr.email}; if Google doesn’t offer it, choose “Use another account”.` : 'Pick this email when Google asks. If YouTube still shows another account, sign in again.'));
-        if (p.signIn) actions.append(btn('Sign in to YouTube again', () => { location.href = p.signIn; }, 'primary'));
+          el('p', 'muted', `${has} On YouTube, KidTube steps aside until then: use YouTube’s own Sign in or account switch, or the “Sign in as …” button at the bottom. The app comes back by itself.`));
+        actions.append(btn('Open YouTube to sign in', () => openApp({ open: p.youtube }), 'primary'));
+      } else if (p.needsSignIn) {
+        row.append(el('p', 'wait', `${has} This profile is ${pr.email}.`));
+        actions.append(btn(`Sign in to YouTube as ${pr.email}`, () => go({ type: 'startSignIn' }, out), 'primary'));
       } else row.append(el('p', 'muted', 'Current profile.'));
-      actions.append(btn(`Open ${appLabel(pr.app)}`, () => openApp({ open: p.currentPage })));
+      actions.append(btn(`Open ${appLabel(pr.app).replace(/ \(.*/, '')}`, () => openApp({ open: p.currentPage })));
     } else {
       actions.append(btn('Switch to this profile', () => go({ type: 'switchProfile', key: pr.key }, out), 'primary'), btn('Remove from this tablet', async () => {
         if (!confirm(`Remove ${pr.email || pr.key} from this tablet? Its lists and settings here are deleted. Its folder in the data repo stays.`)) return;
@@ -80,7 +84,7 @@ async function show() {
   const actions = el('div', 'actions');
   actions.append(btn('Add and switch', () => go({ type: 'addProfile', email: email.value, app: app.value }, out), 'primary'));
   add.append(el('h3', '', 'Add a profile'),
-    el('p', 'muted', 'A new profile starts empty. The same email can have a profile in each app. After a switch Google signs in this email, so YouTube uses that account.'),
+    el('p', 'muted', 'A new profile starts empty. The same email can have a profile in each app. After a switch YouTube opens without KidTube until it is signed in to this email; then the app starts.'),
     label('Email (the Google account)', 'newEmail'), email, label('App', 'newApp'), app, actions, out);
   list.replaceChildren(...(rows.length ? rows : [el('p', 'muted', 'No profile yet: add one below, or open YouTube once signed in.')]), add);
 }

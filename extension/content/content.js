@@ -14,13 +14,15 @@
   let frames = {};             // our screens by name: extension iframes, or in-page panels (below)
 
   const style = document.createElement('style');
-  style.textContent = `
-    html.kidtube-on, html.kidtube-on body { overflow: hidden !important; overscroll-behavior: none !important; }
-    /* links and suggestions drawn inside the player */
+  // Links and suggestions drawn inside the player, and YouTube's bottom tabs: hidden, except while signing in.
+  const hidden = document.createElement('style');
+  hidden.textContent = `
     .ytp-ce-element, .ytp-endscreen-content, .ytp-pause-overlay, .ytp-chrome-top, .ytp-show-cards-title, .ytp-watermark,
     .ytp-youtube-button, .ytp-suggestion-set, .ytp-videowall-still, .ytp-cards-teaser, .ytp-cards-button, .ytp-autonav-endscreen,
     .ytp-title, .ytp-title-channel, .ytm-autonav-bar, .player-endscreen, .fullscreen-watch-next-entrypoint-wrapper,
-    .ytwPlayerMiniplayerHost, ytm-pivot-bar-renderer { display: none !important; }
+    .ytwPlayerMiniplayerHost, ytm-pivot-bar-renderer { display: none !important; }`;
+  style.textContent = `
+    html.kidtube-on, html.kidtube-on body { overflow: hidden !important; overscroll-behavior: none !important; }
     iframe.kidtube-frame { position: fixed !important; border: 0 !important; margin: 0 !important; padding: 0 !important;
       z-index: ${Z} !important; background: #fff; color-scheme: normal; display: block !important; }
     /* allowSkip off: the seek bar can't be dragged (the video element is also guarded below) */
@@ -28,7 +30,7 @@
     html.kidtube-noskip .YtmProgressBarHost, html.kidtube-noskip .ytp-scrubber-container, html.kidtube-noskip .player-controls-progress-bar,
     html.kidtube-noskip .ytp-doubletap-ui-legacy { pointer-events: none !important; }
   `;
-  (document.head || document.documentElement).appendChild(style);
+  (document.head || document.documentElement).append(style, hidden);
   document.documentElement.classList.add('kidtube-on');
 
   // Where our screens are drawn. Normally extension iframes (ui/*.html), which YouTube's CSS can't touch.
@@ -156,6 +158,12 @@
     .wait { color: #8a7f70; font-weight: 500; }
     .locked .grid .card { filter: grayscale(1); opacity: .45; pointer-events: none; }
     .badge { background: #1b5e20; color: #fff; display: grid; place-items: center; font-size: 14px; border-radius: 8px; }
+    .signin { left: 12px; right: 12px; bottom: 72px; max-width: 560px; margin: 0 auto; padding: 14px 16px; border-radius: 16px;
+      background: #fff; box-shadow: 0 4px 18px #0004; font-size: 16px; }
+    .signin p { font-size: 15px; margin: 6px 0 0; }
+    .signin .row { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+    .signin button { border: 0; border-radius: 12px; padding: 10px 16px; font: inherit; background: #ff7a3d; color: #fff; }
+    .signin button.ghost { background: #eee; color: #444; }
   `;
   let ui = null;
   function shadow() {
@@ -288,6 +296,37 @@
     place(frame('lock', 'ui/home.html?locked=1'), 0, 0, innerWidth, innerHeight);
   }
 
+  // A profile waiting for YouTube to sign in to its email (Profiles & apps → Switch): KidTube steps aside, so this
+  // is plain YouTube with its own Sign in, and a bar at the bottom says what to do. When YouTube names that email,
+  // the background ends the wait and the app comes back (recheck below).
+  let signIn = null, signInBox = null;
+  function showSignIn() {
+    Object.keys(frames).forEach(drop);
+    page = null;
+    document.documentElement.classList.remove('kidtube-on', 'kidtube-noskip');
+    hidden.remove();
+    if (!signInBox) {
+      signInBox = el('div', 'panel signin');
+      shadow().append(signInBox);
+    } else shadow();
+    const s = signIn;
+    const now = s.youtubeHas === undefined ? 'Checking which account YouTube has…'
+      : s.youtubeHas ? `YouTube now: ${s.youtubeHas}. Switch the account in YouTube, or tap Sign in.` : 'YouTube is not signed in. Tap Sign in, or use YouTube’s own Sign in.';
+    const key = JSON.stringify(s);
+    if (signInBox.dataset.key === key) return;
+    signInBox.dataset.key = key;
+    const row = el('div', 'row');
+    row.append(button('', `Sign in as ${s.email}`, () => { location.href = s.chooser; }),
+      button('ghost', 'Cancel', () => ask({ type: 'endSignIn' })));
+    signInBox.replaceChildren(el('div', '', `👤 ${s.app} is paused until YouTube is signed in to ${s.email}.`), el('p', '', now),
+      el('p', '', `${s.app} comes back by itself then (or in ${s.minutesLeft} min).`), row);
+  }
+  function hideSignIn() {
+    signInBox?.remove();
+    signInBox = null;
+    (document.head || document.documentElement).append(hidden);
+  }
+
   // allowSkip off: no jumping forward and no speed above 1x. Going back is fine.
   // parentMode: a parent opened this video from the parent page; no covers, no counting, skipping allowed.
   // parentOn: parent mode (settings): YouTube's home becomes the parent's screens and nothing is covered.
@@ -295,6 +334,13 @@
   async function loadRules() {
     const st = await ask({ type: 'state' });
     if (!st?.rules) return;
+    const wasSigningIn = !!signIn;
+    signIn = st.signIn ?? null;
+    if (signIn) return showSignIn();
+    if (wasSigningIn) {   // signed in (or given up): the app decides about this page again
+      hideSignIn();
+      ask({ type: 'recheck', url: location.href });
+    }
     allowSkip = st.rules.allowSkip;
     parentMode = !!st.parent;
     const was = parentOn;
@@ -325,6 +371,7 @@
   }
 
   function route() {
+    if (signIn) return;
     const u = new URL(location.href);
     const vid = u.pathname === '/watch' ? u.searchParams.get('v') : null;
     if (vid) {
@@ -343,7 +390,11 @@
   // Playback time: only while the video plays and the page is visible (PLAN.md §3.1).
   let played = 0, last = performance.now(), hooked = new WeakSet(), beat = 0;
   setInterval(async () => {
-    if (++beat % 30 === 0) loadRules();   // parent mode can time out without any storage change
+    if (++beat % (signIn ? 3 : 30) === 0) loadRules();   // parent mode can time out without any storage change
+    if (signIn) {   // ask YouTube again now and then: the sign-in can happen in another tab
+      if (beat % 6 === 0 && lastWho) reportAccount(...lastWho);
+      return;
+    }
     route();
     const now = performance.now(), dt = (now - last) / 1000;
     last = now;
@@ -379,7 +430,9 @@
     const loggedIn = text.match(/"LOGGED_IN":(true|false)/)?.[1];
     if (loggedIn) reportAccount(loggedIn === 'true', text.match(/"DATASYNC_ID":"([^"]*)"/)?.[1] ?? '');
   }, 4000);
+  let lastWho = null;
   async function reportAccount(loggedIn, datasyncId) {
+    lastWho = [loggedIn, datasyncId];
     let switcher = '';
     if (loggedIn) {
       try { switcher = (await (await fetch(`${location.origin}/getAccountSwitcherEndpoint`, { credentials: 'include' })).text()).slice(0, 400000); } catch {}
@@ -396,6 +449,7 @@
 
   // Last line before the service worker's URL guard: swallow taps on links we don't own.
   const swallow = (e) => {
+    if (signIn) return;
     const a = e.target.closest?.('a[href]');
     if (!a) return;
     e.preventDefault();
@@ -405,7 +459,7 @@
 
   addEventListener('resize', () => (page === 'watch' ? route() : page === 'home' && showHome()));
   chrome.storage.onChanged.addListener((ch) => {
-    if (ch.data || ch.localConfig || ch.parentPass || ch.settings || ch.account) loadRules();
+    if (ch.data || ch.localConfig || ch.parentPass || ch.settings || ch.account || ch.profileHold || ch.ytAccount) loadRules();
     if (ch.data || ch.watched || ch.today) for (const n of ['home', 'strip']) frames[n]?.refresh?.();
   });
   loadRules();
