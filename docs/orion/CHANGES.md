@@ -2,6 +2,15 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.9.8 (2026-10-07)
+
+- **The apps header.** When no app runs, YouTube is normal YouTube with a KidTube header on top. Sign in or switch the account there (YouTube's own buttons work too).
+- The header shows the signed-in account's apps. **▶ Open** an app, open KidTube's **parent** screens, or **+ Create** an app for this account. A new app always opens in parent mode first.
+- No GitHub connection yet: the header asks for it (**Connect GitHub**). With it, the header also finds the apps an account already has in the data repo.
+- **To leave an app**, tap 👤 · ⬆ Apps in the parent screens, ⬆ Apps header in Settings or on the Blank page. Outside parent mode this needs the PIN.
+- **If YouTube's account changes while an app runs** (another account, or signed out), the app stops and YouTube is locked: "Ask a grown-up". The PIN opens the header.
+- Profiles & apps (the list of profiles) is gone: the YouTube account decides which apps you see.
+
 ## 0.9.7 (2026-10-07)
 
 - **Switching to a profile now signs YouTube in first.** After a switch, YouTube opens as normal YouTube (KidTube steps aside) with a bar at the bottom: sign in with YouTube's own Sign in, or tap **Sign in as …**. As soon as YouTube has that email, the profile's app starts by itself (the kid list, or the Blank page).
