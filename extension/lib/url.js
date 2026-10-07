@@ -5,6 +5,9 @@ export function classifyUrl(href) {
   if (!/^https?:$/.test(u.protocol)) return { kind: 'internal' };
   if (!/(^|\.)youtube\.com$/.test(u.hostname)) return { kind: 'external', host: u.hostname };
   const host = u.hostname;
+  // Google's sign-in passes through accounts.youtube.com (SetSID) and YouTube's /signin handler: never sent
+  // "home" (accounts.youtube.com/ is a 404 page), and never a host to send him back to.
+  if (['accounts.youtube.com', 'consent.youtube.com'].includes(host) || /^\/(signin|ServiceLogin)$/.test(u.pathname)) return { kind: 'signin', host };
   if (u.pathname === '/' || u.pathname === '') return { kind: 'home', host };
   if (u.pathname === '/watch') {
     const videoId = u.searchParams.get('v');

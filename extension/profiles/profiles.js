@@ -1,6 +1,7 @@
 // Profiles & apps: the one switcher above all apps (KidTube, the Blank test app, later others). Reached from
 // the 👤 in KidTube's parent screens, from Settings and from an app's own page. Parent mode or the PIN opens it.
-// A switch goes on at once: to Google's sign-in for the profile's email (an app on YouTube), or to the app's page.
+// A profile is one email in one app (the same email can be in several apps). A switch goes on at once: Google
+// signs in the profile's email, then YouTube, where KidTube or the app's own page takes over.
 import { ask } from '../lib/ask.js';
 import { checkPin } from '../lib/pin.js';
 import { el, btn, toast } from '../parent/kit.js';
@@ -24,7 +25,7 @@ $('pinGo').addEventListener('click', async () => {
 $('pin').addEventListener('keydown', (e) => e.key === 'Enter' && $('pinGo').click());
 
 // Where the profile's app is: YouTube (KidTube decides there what it shows), or the app's own page.
-const openApp = (r) => { location.href = r.open ?? r.chooser ?? 'https://m.youtube.com/'; };
+const openApp = (r) => { location.href = r.chooser ?? r.open ?? 'https://m.youtube.com/'; };
 
 async function show() {
   const p = await ask({ type: 'profiles' });
@@ -34,7 +35,10 @@ async function show() {
     out.textContent = '';
     const r = await ask(msg);
     if (!r?.ok) { out.textContent = r?.error ?? 'That didn’t work. Try again.'; return; }
-    if (r.chooser || r.open) return openApp(r);
+    if (r.chooser || r.open) {
+      if (r.existed && msg.type === 'addProfile') { toast('That profile was already here: switching to it.'); await new Promise((ok) => setTimeout(ok, 1200)); }
+      return openApp(r);
+    }
     toast('Switched.');
     show();
   };
@@ -43,7 +47,7 @@ async function show() {
     const me = pr.key === p.current;
     const row = el('div', `box profile${me ? ' current' : ''}`);
     const out = el('p', 'err');
-    row.append(el('h3', '', `${me ? '✓ ' : ''}${pr.email || pr.name || pr.key}`),
+    row.append(el('h3', '', `${me ? '✓ ' : ''}${pr.email || pr.name || pr.key} · ${appLabel(pr.app).replace(/ \(.*/, '')}`),
       el('p', 'muted', `App: ${appLabel(pr.app)} · data folder ${pr.app}/${pr.folder ?? '(given on the first sync)'}${pr.lastSeen ? ` · last used ${new Date(pr.lastSeen).toLocaleDateString()}` : ''}`));
     const actions = el('div', 'actions');
     if (me) {
@@ -76,7 +80,7 @@ async function show() {
   const actions = el('div', 'actions');
   actions.append(btn('Add and switch', () => go({ type: 'addProfile', email: email.value, app: app.value }, out), 'primary'));
   add.append(el('h3', '', 'Add a profile'),
-    el('p', 'muted', 'A new profile starts empty. For an app on YouTube, Google then signs in this email, so YouTube uses that account.'),
+    el('p', 'muted', 'A new profile starts empty. The same email can have a profile in each app. After a switch Google signs in this email, so YouTube uses that account.'),
     label('Email (the Google account)', 'newEmail'), email, label('App', 'newApp'), app, actions, out);
   list.replaceChildren(...(rows.length ? rows : [el('p', 'muted', 'No profile yet: add one below, or open YouTube once signed in.')]), add);
 }

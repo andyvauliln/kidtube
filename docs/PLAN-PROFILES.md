@@ -74,6 +74,8 @@ New messages in `sw.js` (allowed only from extension pages, `fromExtensionPage`,
   - A report of the held account clears the hold.
   - When the hold has run out, it switches automatically, as it does today.
 
+**Since 0.9.6:** a profile is an email *in one app*, so the same email can have a KidTube profile and a Blank one. KidTube's key stays the email (what YouTube reports); another app's is `<app>:<email>` (older tablets' Blank profiles are renamed on the first look, `migrateProfileKeys`). Data folders are unique within an app. Every switch to a profile with an email goes through Google's sign-in, Blank too. Google's steps on YouTube's hosts (`accounts.youtube.com`, `consent.youtube.com`, `/signin`, `/ServiceLogin`) are never redirected: before, kid mode sent `accounts.youtube.com/accounts/SetSID` "home" to `accounts.youtube.com/`, a Google 404 page, so every sign-in broke there.
+
 **Since 0.9.5: Profiles & apps is its own page** (`extension/profiles/profiles.html`), above the apps, not part of KidTube. It opens from the 👤 in KidTube's parent header, from Settings and from an app's own page (the Blank page), with parent mode on or the PIN. A switch goes straight on: to Google's sign-in, or to the app's page. A profile whose app isn't KidTube gets its app's page on YouTube in parent mode too, and KidTube's parent page sends it to the switcher. What follows is the 0.9.0 design:
 
 The parent screen (`extension/parent/parent.js` + `parent.html`):

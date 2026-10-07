@@ -395,16 +395,31 @@ test('a profile with the blank test app: YouTube is a white page in kid and pare
   const first = fake.store.account.key;
   const r = await fromPage({ type: 'addProfile', email: 'blank@example.com', app: 'blank' });
   assert.equal(r.switched, true);
-  assert.equal(r.chooser, null, 'no Google sign-in for an app that is not on YouTube');
-  assert.equal(r.open, 'ext://ui/blank.html', 'the switcher goes straight to the app');
+  assert.ok(r.chooser.includes('Email=blank%40example.com'), 'Google signs in its email too (the parent asked for it for every app)');
+  assert.equal(r.open, 'ext://ui/blank.html');
+  assert.equal(fake.store.account.key, 'blank:blank@example.com', 'another app’s profile: "<app>:<email>"');
   assert.equal(fake.store.account.app, 'blank');
-  assert.equal(fake.store.profileHold, undefined);
+  assert.equal(fake.store.account.folder, 'blank');
+  assert.equal(fake.store.profileHold.key, 'blank:blank@example.com');
   await fromPage({ type: 'setMode', mode: 'kid' });
+  assert.equal(await navigate('https://m.youtube.com/signin?action_handle_signin=true&app=m'), 'https://m.youtube.com/signin?action_handle_signin=true&app=m');
+  assert.ok(fake.store.profileHold, 'still in Google’s sign-in');
   assert.equal(await navigate('https://m.youtube.com/'), 'ext://ui/blank.html');
-  assert.equal(await navigate(`https://m.youtube.com/watch?v=${ids[0]}`), 'ext://ui/blank.html');
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(fake.store.profileHold, undefined, 'back on YouTube: the sign-in is over');
+  fake.store.profileHold = { key: 'blank:blank@example.com', until: Date.now() + 60000 };   // again, for the account report below
+  // Google's sign-in steps on YouTube's hosts go through, even in kid mode on a Blank profile.
+  assert.equal(await navigate('https://accounts.youtube.com/accounts/SetSID?ssdc=1&sidt=x'), 'https://accounts.youtube.com/accounts/SetSID?ssdc=1&sidt=x');
+  assert.equal(await navigate('https://m.youtube.com/signin?action_handle_signin=true&app=m'), 'https://m.youtube.com/signin?action_handle_signin=true&app=m');
   const other = `)]}'\n${JSON.stringify({ header: { email: { simpleText: 'other@example.com' } }, items: [{ accountItem: { isSelected: true } }] })}`;
   assert.equal((await send({ type: 'account', loggedIn: true, datasyncId: 'BBB||', switcher: other })).held, true);
-  assert.equal(fake.store.account.key, 'blank@example.com');
+  assert.equal(fake.store.account.key, 'blank:blank@example.com');
+  assert.ok(fake.store.profileHold, 'not its email: still signing in');
+  const mine = `)]}'\n${JSON.stringify({ header: { email: { simpleText: 'blank@example.com' } }, items: [{ accountItem: { isSelected: true } }] })}`;
+  await send({ type: 'account', loggedIn: true, datasyncId: 'DDD||', switcher: mine });
+  assert.equal(fake.store.profileHold, undefined, 'Google signed in its email: the sign-in is over');
+  assert.equal(fake.store.account.key, 'blank:blank@example.com');
+  assert.equal(await navigate(`https://m.youtube.com/watch?v=${ids[0]}`), 'ext://ui/blank.html');
   const realFetch = globalThis.fetch;
   let calls = 0;
   globalThis.fetch = async (url, init) => { if (String(url).includes('api.github.com')) calls++; return realFetch(url, init); };
@@ -413,6 +428,35 @@ test('a profile with the blank test app: YouTube is a white page in kid and pare
   await fromPage({ type: 'setMode', mode: 'parent' });
   assert.equal(await navigate('https://m.youtube.com/'), 'ext://ui/blank.html', 'KidTube’s parent screens are not this app’s screens');
   assert.equal((await fromPage({ type: 'parentData' })).app, 'blank', 'the parent page sends it to the switcher');
+
+  // The same email in KidTube: a second profile, not the Blank one again.
+  const k = await fromPage({ type: 'addProfile', email: 'blank@example.com', app: 'kidtube' });
+  assert.equal(k.switched, true);
+  assert.equal(k.existed, false);
+  assert.equal(fake.store.account.key, 'blank@example.com');
+  assert.equal(fake.store.account.app, 'kidtube');
+  assert.equal(fake.store.account.folder, 'blank', 'folders are unique within an app: kidtube/blank and blank/blank');
+  assert.equal(k.open, null);
+  const keys = (await fromPage({ type: 'profiles' })).profiles.map((p) => p.key);
+  assert.ok(keys.includes('blank:blank@example.com') && keys.includes('blank@example.com'));
+  assert.equal((await fromPage({ type: 'switchProfile', key: 'blank:blank@example.com' })).app, 'blank');
+  await fromPage({ type: 'removeProfile', key: 'blank@example.com' });
   assert.equal((await fromPage({ type: 'switchProfile', key: first })).switched, true);
   assert.equal(fake.store.account.app, 'kidtube');
+  await fromPage({ type: 'removeProfile', key: 'blank:blank@example.com' });
+});
+
+test('a Blank profile from 0.9.2–0.9.5 (keyed by its email alone) gets its "blank:" key, so the email can be in KidTube too', async () => {
+  const first = fake.store.account.key;
+  const accounts = { ...fake.store.accounts, 'old@example.com': { email: 'old@example.com', app: 'blank', folder: 'old', datasyncId: null, name: null, lastSeen: '2026-10-07T00:00:00Z' } };
+  fake.store.accounts = accounts;
+  fake.store['acct:old@example.com'] = { settings: { queueSize: 7 } };
+  const list = await fromPage({ type: 'profiles' });
+  assert.ok(list.profiles.some((p) => p.key === 'blank:old@example.com'));
+  assert.ok(!list.profiles.some((p) => p.key === 'old@example.com'));
+  assert.deepEqual(fake.store['acct:blank:old@example.com'], { settings: { queueSize: 7 } }, 'its saved data moves with it');
+  assert.equal(fake.store['acct:old@example.com'], undefined);
+  assert.equal((await fromPage({ type: 'addProfile', email: 'old@example.com', app: 'kidtube' })).existed, false);
+  assert.equal((await fromPage({ type: 'switchProfile', key: first })).switched, true);
+  for (const k of ['old@example.com', 'blank:old@example.com']) await fromPage({ type: 'removeProfile', key: k });
 });
