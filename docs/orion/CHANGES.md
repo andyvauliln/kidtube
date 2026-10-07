@@ -2,6 +2,11 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.9.7 (2026-10-07)
+
+- **Switching to a profile now signs YouTube in first.** After a switch, YouTube opens as normal YouTube (KidTube steps aside) with a bar at the bottom: sign in with YouTube's own Sign in, or tap **Sign in as …**. As soon as YouTube has that email, the profile's app starts by itself (the kid list, or the Blank page).
+- **Cancel** in the bar brings the app back at once. If YouTube is not signed in to the profile, Profiles & apps shows **Sign in to YouTube as …**.
+
 ## 0.9.6 (2026-10-07)
 
 - **Google sign-in no longer ends on "The requested URL was not found on this server".** KidTube was stopping one of Google's sign-in steps on YouTube's own sites.
