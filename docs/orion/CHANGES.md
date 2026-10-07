@@ -2,6 +2,10 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.9.4 (2026-10-07)
+
+- **Blank test profile has a way out you can see:** instead of a faint ⚙️ in the corner, the white page now says "Blank test profile. To leave it: Settings → Profiles." and has a big **⚙️ Settings** button at the bottom.
+
 ## 0.9.3 (2026-10-06)
 
 - A new profile no longer shows "parent-config.json / queue.json is missing" as a problem. Settings says it is being set up, and the server makes its starter list and rules within a minute or two.
