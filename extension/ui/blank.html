@@ -4,12 +4,19 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>KidTube</title>
 <!-- The "Blank (test)" app (lib/apps.js): a profile with this app sees only this white page on YouTube.
-     The small gear opens Settings (PIN), where Profiles switches back. -->
+     The Settings button (PIN) leads to Profiles, which switches back. 0.9.2 had only a faint corner gear,
+     which the parent couldn't find on the tablet: the page looked broken with no way out. -->
 <style>
-  html, body { margin: 0; height: 100%; background: #fff; }
-  a { position: fixed; right: 10px; bottom: 10px; font-size: 18px; text-decoration: none; opacity: .25; }
+  html, body { margin: 0; height: 100%; background: #fff; color: #888; font: 16px system-ui, sans-serif; }
+  body { display: flex; align-items: flex-end; justify-content: center; }
+  div { margin: 0 16px max(32px, env(safe-area-inset-bottom)); text-align: center; }
+  p { margin: 0 0 12px; }
+  a { display: inline-block; padding: 12px 22px; border: 1px solid #ccc; border-radius: 12px; color: #444; text-decoration: none; font-size: 18px; }
 </style>
 <body>
-  <a href="../options/options.html" title="Settings">⚙️</a>
+  <div>
+    <p>Blank test profile. To leave it: Settings → Profiles.</p>
+    <a href="../options/options.html">⚙️ Settings</a>
+  </div>
 </body>
 </html>
