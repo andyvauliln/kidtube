@@ -2,6 +2,12 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.9.6 (2026-10-07)
+
+- **Google sign-in no longer ends on "The requested URL was not found on this server".** KidTube was stopping one of Google's sign-in steps on YouTube's own sites.
+- **The same email can have a profile in each app.** Your email can be in Blank and in KidTube; adding it in KidTube no longer takes you back to the Blank one. The list shows the app next to each email.
+- **Every switch asks Google to sign in that email**, Blank profiles too.
+
 ## 0.9.5 (2026-10-07)
 
 - **Profiles & apps is its own page**, no longer a tab inside KidTube. Open it from the 👤 email at the top of the parent screens, from Settings, or from the Blank page. It needs parent mode or the PIN.
