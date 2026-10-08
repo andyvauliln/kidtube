@@ -13,6 +13,7 @@ import { join, resolve } from 'node:path';
 import { parseArgs } from 'node:util';
 import { pathToFileURL } from 'node:url';
 import { zipDir } from './crx.mjs';
+import { cmpVersion } from '../extension/lib/version.js';
 
 const ROOT = resolve(import.meta.dirname, '..');
 const git = (...args) => execFileSync('git', args, { cwd: ROOT, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
@@ -35,12 +36,6 @@ export function orionManifest(manifest) {
   // content.js reads this to draw its screens in the page: Orion shows extension iframes blank.
   m.version_name = `${m.version} Orion`;
   return m;
-}
-
-function cmpVersion(a, b) {
-  const pa = a.split('.').map(Number), pb = b.split('.').map(Number);
-  for (let i = 0; i < 3; i++) if ((pa[i] ?? 0) !== (pb[i] ?? 0)) return (pa[i] ?? 0) - (pb[i] ?? 0);
-  return 0;
 }
 
 const readJson = (p) => (existsSync(p) ? JSON.parse(readFileSync(p, 'utf8')) : null);

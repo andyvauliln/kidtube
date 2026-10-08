@@ -1,3 +1,6 @@
+// Now as "2026-10-08T12:34:56Z" (no milliseconds), the form every file in the data repo uses.
+export const nowIso = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+
 // Local time in the config's time zone ("local" = the tablet's own zone).
 const DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 

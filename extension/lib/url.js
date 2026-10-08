@@ -1,3 +1,8 @@
+// A YouTube video id: 11 characters of [A-Za-z0-9_-].
+export const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+export const isVideoId = (id) => VIDEO_ID.test(id ?? '');
+export const thumbUrl = (videoId) => `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
+
 // Classifies a URL the tab is about to show.
 export function classifyUrl(href) {
   let u;
@@ -11,7 +16,7 @@ export function classifyUrl(href) {
   if (u.pathname === '/' || u.pathname === '') return { kind: 'home', host };
   if (u.pathname === '/watch') {
     const videoId = u.searchParams.get('v');
-    return /^[A-Za-z0-9_-]{11}$/.test(videoId ?? '') ? { kind: 'watch', host, videoId } : { kind: 'other', host };
+    return isVideoId(videoId) ? { kind: 'watch', host, videoId } : { kind: 'other', host };
   }
   if (u.pathname.startsWith('/shorts/')) return { kind: 'shorts', host };
   if (u.pathname.startsWith('/results') || u.pathname.startsWith('/search')) return { kind: 'search', host };
