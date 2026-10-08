@@ -1332,6 +1332,23 @@ async function doSync() {
       if (!r.notModified && Array.isArray(r.json?.runs)) { update.runs = r.json.runs.slice(-10); etags['runs.json'] = r.etag; }
     } catch {}
   }
+  // keys.json (<app>/keys.json, beside the profile folders): listening keys the parent put in the private data repo,
+  // for every tablet and profile of the app. Kept apart from the keys typed in Settings, which win (ui/voice.js).
+  if (token) {
+    try {
+      const { repoKeys } = await chrome.storage.local.get('repoKeys');
+      const headers = ghHeaders(token);
+      if (repoKeys && etags['keys.json']) headers['If-None-Match'] = etags['keys.json'];
+      const r = await fetch(contentsUrl({ ...loc, base: loc.base.replace(/[^/]+\/$/, '') }, 'keys.json'), { headers, cache: 'no-store' });
+      if (r.status === 404) { if (repoKeys) await chrome.storage.local.remove('repoKeys'); }
+      else if (r.ok) {
+        const j = await r.json();
+        const str = (v) => (typeof v === 'string' ? v.trim() : '');
+        etags['keys.json'] = r.headers.get('etag');
+        await chrome.storage.local.set({ repoKeys: { gemini: str(j?.geminiKey), openrouter: str(j?.openrouterKey) } });
+      }
+    } catch {}
+  }
   if (token) { try { await pullContext(loc, token, etags); } catch (e) { status.errors.push('Context documents: ' + String(e.message ?? e)); } }
   const done = await withState((s) => {
     Object.assign(s.data, update, { etags });

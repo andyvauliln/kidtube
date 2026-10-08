@@ -164,6 +164,28 @@ test('a new profile without its files yet: a note, not a problem', async () => {
   assert.match(r.notes[0], /^New profile: kidtube\/kid\/ has no parent-config\.json or queue\.json yet/);
 });
 
+test('listening keys from the data repo: kidtube/keys.json, beside the profile folders; gone when the file is gone', async () => {
+  await chrome.storage.local.set({ settings: { ...fake.store.settings, token: 'github_pat_ok' } });
+  const realFetch = globalThis.fetch;
+  let file = { schemaVersion: 1, geminiKey: ' AIza-from-repo ' };
+  globalThis.fetch = async (url, opts) => {
+    if (String(url).endsWith('/contents/kidtube/kid/keys.json')) throw new Error('inside the profile folder');
+    if (String(url).endsWith('/contents/kidtube/keys.json')) return file ? { ok: true, status: 200, json: async () => file, headers: { get: () => '"e1"' } } : { ok: false, status: 404, headers: { get: () => null } };
+    return realFetch(url, opts);
+  };
+  await send({ type: 'sync' });
+  assert.deepEqual(fake.store.repoKeys, { gemini: 'AIza-from-repo', openrouter: '' });
+  const { listenKeys } = await import('../extension/ui/voice.js');
+  assert.equal((await listenKeys()).gemini, 'AIza-from-repo');
+  await chrome.storage.local.set({ geminiKey: 'AIza-typed' });
+  assert.equal((await listenKeys()).gemini, 'AIza-typed', 'a key typed in Settings wins');
+  await chrome.storage.local.remove('geminiKey');
+  file = null;
+  await send({ type: 'sync' });
+  globalThis.fetch = realFetch;
+  assert.equal(fake.store.repoKeys, undefined);
+});
+
 test('Quetta asks for a newer release itself, and reloads YouTube after the update', async () => {
   const realFetch = globalThis.fetch;
   globalThis.fetch = async (url) => (String(url).endsWith('/latest.json')

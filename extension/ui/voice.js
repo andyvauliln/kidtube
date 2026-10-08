@@ -150,11 +150,12 @@ const TRANSCRIBE = 'You are a speech-to-text transcriber. Write down exactly the
 const NOTHING = /^\(?none\)?\.?$/i;
 const REFUSAL = /\b(can['’]?t|cannot|unable to) (hear|process|access|transcribe)\b|^(sure|sorry)\b.*\b(provide|audio)\b|\bprovide (the|an|more)\b.*\b(audio|recording|details)\b/i;
 
-// Both keys stay on this tablet (chrome.storage.local), never in the rules or on GitHub.
+// The keys typed in Settings (this tablet only, never in the rules), else the ones from the private data repo's
+// <app>/keys.json (repoKeys, see sync in sw.js).
 export async function listenKeys() {
   try {
-    const { geminiKey = '', voiceKey = '' } = await chrome.storage.local.get(['geminiKey', 'voiceKey']);
-    return { gemini: geminiKey.trim(), openrouter: voiceKey.trim() };
+    const { geminiKey = '', voiceKey = '', repoKeys = {} } = await chrome.storage.local.get(['geminiKey', 'voiceKey', 'repoKeys']);
+    return { gemini: geminiKey.trim() || repoKeys.gemini || '', openrouter: voiceKey.trim() || repoKeys.openrouter || '' };
   } catch { return { gemini: '', openrouter: '' }; }
 }
 

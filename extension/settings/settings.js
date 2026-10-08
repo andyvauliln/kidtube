@@ -97,7 +97,7 @@ const MARKUP = `
       <option value="device">The tablet’s own speech recognition</option>
     </select>
     <div id="cloudListen" hidden>
-      <p class="hint">His answer is recorded and sent to the first model that works: the free Gemini models, then the paid OpenRouter ones. A model that hits its limit rests a minute and the next one answers. If none work, the tablet’s own recognition is used. Both keys stay on this tablet only.</p>
+      <p class="hint">His answer is recorded and sent to the first model that works: the free Gemini models, then the paid OpenRouter ones. A model that hits its limit rests a minute and the next one answers. If none work, the tablet’s own recognition is used. A key typed here stays on this tablet only. An empty field uses the key in the data repo’s kidtube/keys.json, if there is one.</p>
       <label for="geminiKey">Gemini API key (free tier, from aistudio.google.com)</label>
       <input id="geminiKey" type="password" autocomplete="off" placeholder="AIza…">
       <label for="freeModels">Free Gemini models, tried first, in order (one per line)</label>
@@ -266,7 +266,13 @@ export function mountSettings(root) {
     $('freeModels').value = (p.voice?.listen?.freeModels ?? FREE_LISTEN_MODELS).join('\n');
     $('listenModels').value = (p.voice?.listen?.models ?? PAID_LISTEN_MODELS).join('\n');
     $('cloudListen').hidden = $('listenProvider').value !== 'cloud';
-    chrome.storage.local.get(['voiceKey', 'geminiKey']).then(({ voiceKey, geminiKey }) => { $('voiceKey').value = voiceKey ?? ''; $('geminiKey').value = geminiKey ?? ''; });
+    chrome.storage.local.get(['voiceKey', 'geminiKey', 'repoKeys']).then(({ voiceKey, geminiKey, repoKeys = {} }) => {
+      $('voiceKey').value = voiceKey ?? '';
+      $('geminiKey').value = geminiKey ?? '';
+      // An empty field uses the key from the data repo (kidtube/keys.json).
+      if (repoKeys.gemini) $('geminiKey').placeholder = 'Empty: the key from the data repo is used';
+      if (repoKeys.openrouter) $('voiceKey').placeholder = 'Empty: the key from the data repo is used';
+    });
     voiceLang = p.voice?.lang || 'en-US';
     $('rulesOut').textContent = pending ? 'Some rules are saved on this tablet only and will go to GitHub on the next sync.' : '';
   }
@@ -353,14 +359,15 @@ export function mountSettings(root) {
     $('cloudListen').hidden = !cloud;
     if (cloud) askCloudAccess();
   });
-  // The keys are stored on this tablet only: never in the rules, never on GitHub.
+  // A typed key is stored on this tablet only: never in the rules, never on GitHub.
   const saveKeys = () => chrome.storage.local.set({ voiceKey: $('voiceKey').value.trim(), geminiKey: $('geminiKey').value.trim() });
   $('voiceKey').addEventListener('change', saveKeys);
   $('geminiKey').addEventListener('change', saveKeys);
   $('tryCloud').addEventListener('click', async () => {
     askCloudAccess();
     await saveKeys();
-    const keys = { gemini: $('geminiKey').value.trim(), openrouter: $('voiceKey').value.trim() };
+    const { repoKeys = {} } = await chrome.storage.local.get('repoKeys');
+    const keys = { gemini: $('geminiKey').value.trim() || repoKeys.gemini || '', openrouter: $('voiceKey').value.trim() || repoKeys.openrouter || '' };
     if (!keys.gemini && !keys.openrouter) { $('cloudOut').textContent = 'Enter a Gemini key, an OpenRouter key, or both.'; return; }
     $('cloudOut').textContent = 'Listening… say a word now.';
     const audio = await recordAnswer({ seconds: 4 });
