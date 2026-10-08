@@ -176,6 +176,8 @@ test('Quetta asks for a newer release itself, and reloads YouTube after the upda
   assert.equal(v.updating, 'update_available');
   await send({ type: 'version' });
   assert.equal(asked, 1, 'at most one ask every 5 minutes');
+  assert.deepEqual(await send({ type: 'updateApp' }), { ok: true, status: 'update_available' });
+  assert.equal(asked, 2, 'the toolbar button asks at once');
 
   const reloaded = [];
   fake.tabs.query = async () => [{ id: 3 }, { id: 4 }];

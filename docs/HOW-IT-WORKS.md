@@ -63,7 +63,7 @@ You can steer from two places: the tablet and a chat with Claude. All of them en
 | --- | --- |
 | **Update now** | Pulls the newest list, rules and app version right away (otherwise every 15 min) |
 | Change **Rules** (hours, minutes, must-watch order, talking friend, questions) | Works on the tablet at once and is saved to `parent-config.json`, so the helper sees it |
-| **Ask the AI** (Settings, and the note box on every tab) | Saved as a `wish` event, held until ↻ Update. The next run keeps it in its history of your messages (`memory.json`, `helper.wishes`) and acts on it. |
+| **Ask the AI** (Settings, and the note box on every tab) | Saved as a `wish` event, held until ↻ Update data. The next run keeps it in its history of your messages (`memory.json`, `helper.wishes`) and acts on it. |
 | 👍 / 👎 / comment on a watched video | Saved as a `parentNote`. The helper uses it for *What the helper noticed* and future picks. |
 | Tap a watched video's picture | You watch it yourself with skipping allowed. It doesn't count for him. |
 | **Reset today** | Gives back today's minutes and undoes "no more videos today" |
@@ -262,7 +262,7 @@ The code is public (`andyvauliln/kidtube`). Everything about him is private (`an
 
 | What | Where |
 | --- | --- |
-| Extension code, helper code, prompts, schemas | `kidtube` repo. The extension is published on GitHub Pages and updates itself: on Quetta, KidTube reads `latest.json` every 15 min (and when a parent screen opens), asks the browser for a newer version (`requestUpdateCheck`, at most every 5 min), restarts when it is downloaded and reloads the open YouTube tabs. Orion's .zip is installed by hand. |
+| Extension code, helper code, prompts, schemas | `kidtube` repo. The extension is published on GitHub Pages and updates itself: on Quetta, KidTube reads `latest.json` every 15 min (and when a parent screen opens), asks the browser for a newer version (`requestUpdateCheck`, at most every 5 min; the parent toolbar's **⬆ Update app to …** asks at once), restarts when it is downloaded and reloads the open YouTube tabs. Orion's .zip is installed by hand. |
 | Today's list, rules, questions | `kidtube-data`: `queue.json`, `parent-config.json` |
 | What he did | `kidtube-data/activity/<day>.json` |
 | Transcripts | `kidtube-data/transcripts/<video id>.json` |

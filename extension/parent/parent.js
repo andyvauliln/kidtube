@@ -20,12 +20,14 @@ const dayLabel = (date) => {
   return diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
 };
 
-// --- the app version: installed, and the newer one when there is one ------------------------------
-// Quetta installs it by itself (the browser downloads it, KidTube restarts); Orion needs the .zip by hand.
+// --- the app version: installed, and ⬆ Update app when there is a newer one ---------------------------
+// Quetta: the button asks the browser for it now (KidTube also asks by itself every 15 min), the browser
+// downloads it and KidTube restarts. Orion: the .zip from the install page, installed by hand.
 const UPDATING = {
-  update_available: 'installing, KidTube restarts in a moment',
-  throttled: 'KidTube installs it within a few minutes',
-  no_update: 'the browser does not see it yet, it tries again soon',
+  update_available: 'Installing… KidTube restarts in a moment',
+  throttled: 'The browser asks to wait: it installs within a few minutes',
+  no_update: 'The browser does not see it yet: try again in a minute',
+  error: 'The browser could not check: try again in a minute',
 };
 let versionTimer = null;
 async function showVersion() {
@@ -35,14 +37,22 @@ async function showVersion() {
   box.replaceChildren(document.createTextNode(`v${v.installed}`));
   box.title = v.latest ? `Newest: ${v.latest}` : 'Could not check for a newer version';
   clearTimeout(versionTimer);
+  document.querySelector('.toolbar')?.classList.toggle('wrap', !!v.newer);
   if (!v.newer) return;
   if (v.target !== 'orion') {
-    box.append(el('span', 'upd', `⬆ ${v.latest}: ${UPDATING[v.updating] ?? UPDATING.throttled}`));
+    const b = btn(`⬆ Update app to ${v.latest}`, async () => {
+      b.disabled = true;
+      const r = await ask({ type: 'updateApp' });
+      toast(UPDATING[r?.status] ?? UPDATING.error);
+      if (r?.status !== 'update_available') b.disabled = false;
+    }, 'small');
+    b.title = v.updating === 'update_available' ? UPDATING.update_available : 'Get the new version now';
+    box.append(b);
     versionTimer = setTimeout(showVersion, 60_000);
     return;
   }
   if (v.download) {
-    const a = el('a', '', `⬆ ${v.latest} — Download`);
+    const a = el('a', '', `⬆ Update app to ${v.latest} (download)`);
     // The install page, not the .zip itself: opening it refreshes the copy of your connection (content/backup.js).
     a.href = v.installPage || v.download;
     a.target = '_blank';
@@ -65,7 +75,7 @@ async function showRun(fresh = false) {
   const state = el('span', `state ${working ? 'working' : r.state}`, r.state === 'none' ? '' : `${RUN_TEXT[r.state] ?? r.state}${when && !working ? ` ${when}` : ''}`);
   state.title = r.message ?? '';
   if (r.message) state.addEventListener('click', () => toast(r.message));   // what the AI did, in its words
-  const b = btn(working ? '↻ …' : `↻ Update${r.held ? ` (${r.held})` : ''}`, async () => { b.disabled = true; if (!(await runNow())) b.disabled = false; }, 'small');
+  const b = btn(working ? '↻ …' : `↻ Update data${r.held ? ` (${r.held})` : ''}`, async () => { b.disabled = true; if (!(await runNow())) b.disabled = false; }, 'small');
   b.disabled = working;
   b.title = r.held ? `Send your ${r.held} note${r.held === 1 ? '' : 's'} to the AI now` : 'Run the helper now with what he watched';
   box.replaceChildren(state, b);
@@ -458,7 +468,7 @@ async function renderContext() {
     value: contextDrafts[doc_] ?? '', onInput: (v) => { contextDrafts[doc_] = v; },
     save: async (text) => { const r = await ask({ type: 'contextNote', doc: doc_, text }); if (r?.ok) setTimeout(renderContext, 300); return r?.ok; },
   });
-  notes.append(el('p', 'muted', 'Add as many notes as you like (type or 🎤 dictate). The helper works them into this document on its next run; “Add & ↻ Update” runs it now with all your notes from every tab.'), ...input.nodes);
+  notes.append(el('p', 'muted', 'Add as many notes as you like (type or 🎤 dictate). The helper works them into this document on its next run; “Add & ↻ Update data” runs it now with all your notes from every tab.'), ...input.nodes);
   view.replaceChildren(chips, notes, body);
 }
 

@@ -723,7 +723,7 @@ async function handle(msg, sender) {
         if (typeof msg.liked === 'boolean') ev.liked = msg.liked;
         if (msg.comment) ev.comment = String(msg.comment).trim().slice(0, 2000);
         if (ev.liked === undefined && !ev.comment) return { ok: false };
-        if (ev.comment) ev.held = true;   // a note waits on the tablet until ↻ Update
+        if (ev.comment) ev.held = true;   // a note waits on the tablet until ↻ Update data
         s.outbox.push(ev);
         s.notes ??= {};
         if (ev.comment) addNote(((s.notes.videos ??= {})[msg.videoId] ??= []), ev);
@@ -890,6 +890,8 @@ async function handle(msg, sender) {
       return checkUpdate();
     case 'version':
       return appVersion();
+    case 'updateApp':   // the toolbar's ⬆ Update app (Quetta): ask the browser now, not in 5 min
+      return updateApp();
 
     case 'status':
       return withState(async (s) => {
@@ -1365,7 +1367,7 @@ async function pullPlan(loc, token, acct) {
 
 // Parent mode → Update. Sends what is waiting (notes, what he watched), then writes requests/run.json;
 // the server checks every minute and runs the helper (agent/poll.sh), at most a few times a day.
-// Notes for the AI wait on the tablet (held) until the parent taps ↻ Update; then they all go together,
+// Notes for the AI wait on the tablet (held) until the parent taps ↻ Update data; then they all go together,
 // and the server's notes agent (agent/notes.sh) reads them within a minute.
 async function releaseNotes() {
   await withState((s) => { for (const e of s.outbox) delete e.held; });
@@ -1396,7 +1398,7 @@ async function requestRun() {
 }
 
 // What parent mode shows about the latest run asked for: waiting for the server, running, done, failed.
-// held: notes on this tablet that ↻ Update hasn't sent yet.
+// held: notes on this tablet that ↻ Update data hasn't sent yet.
 function runView(s) {
   const req = s.data.runRequest ?? null;
   const st = s.data.runStatus ?? null;
@@ -1464,7 +1466,7 @@ async function uploadLocalConfig() {
 // Writes queued events into activity/YYYY-MM-DD.json, de-duplicated by eventId (PLAN.md §3.3).
 async function flushOutbox(loc, token) {
   const all = (await chrome.storage.local.get('outbox')).outbox ?? [];
-  const outbox = all.filter((e) => !e.held);   // notes wait for ↻ Update
+  const outbox = all.filter((e) => !e.held);   // notes wait for ↻ Update data
   const { settings = {}, data = {}, localConfig } = await chrome.storage.local.get(['settings', 'data', 'localConfig']);
   if (!outbox.length) return;
   if (!token) throw new Error('no token; events kept on the tablet');
@@ -1695,6 +1697,12 @@ async function autoUpdate(latest) {
   if (Date.now() - updateAsked < UPDATE_ASK_MS) return updateStatus;
   updateAsked = Date.now();
   return (updateStatus = await askUpdate());
+}
+
+async function updateApp() {
+  if (TARGET === 'orion') return { ok: false, error: 'Orion installs a new version from the .zip' };
+  updateAsked = Date.now();
+  return { ok: true, status: (updateStatus = await askUpdate()) };
 }
 
 async function checkUpdate() {

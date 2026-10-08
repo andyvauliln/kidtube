@@ -58,7 +58,7 @@ export async function runNow() {
 
 // --- writing a note for the helper ------------------------------------------------------------------
 let dictating = null;   // the one recording in progress: { stop }
-// After ⏹ the words go to addNote(text) at once: the note joins the list (and waits for ↻ Update).
+// After ⏹ the words go to addNote(text) at once: the note joins the list (and waits for ↻ Update data).
 // Pauses don't end a note: it records until ⏹, so a long note stays one note.
 const LONG_NOTE_MINUTES = 15;
 function micButton(ta, addNote) {
@@ -123,15 +123,15 @@ function micButton(ta, addNote) {
   return b;
 }
 
-// textarea + 🎤 + "Add note" + "Add & ↻ Update". save(text) → true when saved.
-// Notes stay on this tablet until ↻ Update sends them all; the AI on the server then reads them within a minute.
+// textarea + 🎤 + "Add note" + "Add & ↻ Update data". save(text) → true when saved.
+// Notes stay on this tablet until ↻ Update data sends them all; the AI on the server then reads them within a minute.
 export function noteInput({ placeholder, value = '', onInput, save, saveLabel = 'Add note', failText = 'Could not save it. Is parent mode still on?' }) {
   const ta = el('textarea');
   ta.maxLength = 2000;
   ta.placeholder = placeholder;
   ta.value = value;
   if (onInput) ta.addEventListener('input', () => onInput(ta.value));
-  const added = () => { toast('Added. Tap ↻ Update to send your notes.'); hooks.afterRun(); };
+  const added = () => { toast('Added. Tap ↻ Update data to send your notes.'); hooks.afterRun(); };
   const go = async (andRun) => {
     if (dictating) dictating.stop();
     const text = ta.value.trim();
@@ -143,7 +143,7 @@ export function noteInput({ placeholder, value = '', onInput, save, saveLabel = 
   };
   const dictated = async (text) => { if (!(await save(text))) { toast(failText); return false; } added(); return true; };
   const row = el('div', 'noterow');
-  const update = btn('Add & ↻ Update', () => go(true));
+  const update = btn('Add & ↻ Update data', () => go(true));
   update.title = 'Add this note, then send all your notes to the AI now';
   row.append(micButton(ta, dictated), btn(saveLabel, () => go(false), 'primary'), update);
   return { ta, row, nodes: [ta, row] };

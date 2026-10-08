@@ -13,12 +13,14 @@ header { position: sticky; top: 0; z-index: 5; background: var(--card); border-b
   .toolbar { flex-wrap: wrap; padding: 0 8px; }
   .tools { width: 100%; justify-content: flex-end; order: -1; padding: 8px 4px 0; }
 }
+/* .wrap: ⬆ Update app makes the tools too wide for one row with the tabs. */
+.toolbar.wrap { flex-wrap: wrap; padding: 0 8px; }
+.toolbar.wrap .tools { width: 100%; justify-content: flex-end; order: -1; padding: 8px 4px 0; }
 h1 { font-size: 19px; margin: 0; }
 h2 { font-size: 17px; margin: 0 0 8px; }
 h3 { font-size: 15px; margin: 0 0 6px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
 .ver { font-size: 13px; color: var(--muted); white-space: nowrap; }
-.ver a, .ver .upd { margin-left: 6px; font-weight: 600; }
-.ver .upd { color: var(--ink); white-space: normal; }
+.ver a, .ver button { margin-left: 6px; font-weight: 600; }
 .run { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--muted); white-space: nowrap; }
 .run .state { max-width: 40vw; overflow: hidden; text-overflow: ellipsis; }
 .run .state.working { color: var(--accent); font-weight: 600; }
