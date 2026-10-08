@@ -29,8 +29,10 @@ function world() {
   sh(`git init -q --bare -b main ${p('data.git')} && git init -q --bare -b main ${p('code.git')}`);
   sh(`git clone -q ${p('data.git')} ${p('data')} 2>/dev/null; cd ${p('data')} && mkdir -p activity && echo '{}' > memory.json && git add -A && git commit -qm init && git push -q origin HEAD:main && git remote set-head origin main`);
   sh(`git clone -q ${p('code.git')} ${p('root')} 2>/dev/null`);
-  mkdirSync(p('root', 'agent'));
-  for (const f of ['poll.sh', 'notes.mjs', 'config.json', 'NOTES.md']) copyFileSync(join('agent', f), p('root', 'agent', f));
+  mkdirSync(p('root', 'agent', 'lib'), { recursive: true });
+  for (const f of ['poll.sh', 'notes.mjs', 'NOTES.md', 'lib/profile.mjs', 'lib/data.mjs']) copyFileSync(join('agent', f), p('root', 'agent', f));
+  // The old layout: one child at the root of the data repo, no profiles.
+  writeFileSync(p('root', 'agent', 'config.json'), JSON.stringify({ ...JSON.parse(readFileSync('agent/config.json', 'utf8')), profiles: [] }));
   // The helper: commits a new list the way the real one does.
   writeFileSync(p('root', 'agent', 'daily.sh'), `#!/usr/bin/env bash\necho ran >> "${p('helper-ran')}"\ncd "${p('data')}" && git pull -q --rebase origin main && echo '{}' > queue.json && git add -A && git commit -qm "helper: 2026-10-06: list" && git push -q origin HEAD:main\n`);
   chmodSync(p('root', 'agent', 'daily.sh'), 0o755);
