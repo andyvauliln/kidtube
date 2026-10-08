@@ -230,9 +230,10 @@ export function listenRoutes({ keys = {}, freeModels, models } = {}) {
 
 // Sends the recording along the routes. Returns [text] | [] (nothing said) | null (all failed: use the device).
 // The first route starts at once; if it hasn't answered after `staggerMs` (or fails), the next one starts too,
-// and the first good answer wins. onUsed({ via, model, free, ms }) says which one it was.
+// and the first good answer wins. onUsed({ via, model, free, ms }) says which one it was; onFail(route, why) says why
+// one failed (an HTTP status, 'refused', 'timeout' or 'network').
 // instruction: what the recording is (default: a small child answering). `key` alone (older callers) is the OpenRouter key.
-export async function transcribeAnswer(audio, { keys, key, freeModels, models, lang = 'en-US', instruction = '', maxTokens = 60, staggerMs = 2500, onUsed } = {}) {
+export async function transcribeAnswer(audio, { keys, key, freeModels, models, lang = 'en-US', instruction = '', maxTokens = 60, staggerMs = 2500, onUsed, onFail } = {}) {
   if (!audio) return null;
   if (!audio.length) return [];
   keys ??= key ? { openrouter: key } : await listenKeys();
@@ -276,6 +277,7 @@ export async function transcribeAnswer(audio, { keys, key, freeModels, models, l
         clearTimeout(limit);
         running.delete(i);
         if (done) return;
+        onFail?.(r, e.status === 0 ? 'refused' : e.status ?? (e.name === 'AbortError' ? 'timeout' : 'network'));
         if (e.status !== 0) rest(r, restFor(e.status, e.retryAfter));
         start();
       });

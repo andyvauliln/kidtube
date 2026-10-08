@@ -120,6 +120,13 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
       parts.push(el('p', 'recline', `● Recording ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} · pauses are fine · tap ⏹ to stop${cloud ? ` (it stops by itself at ${CLOUD_NOTE_MINUTES}:00)` : ''}`));
     } else if (writing) parts.push(el('p', 'recline', 'Writing it down…'));
     if (notice) parts.push(el('p', 'muted', notice));
+    if (retry && !busy) {
+      const again = el('div', 'ncacts');
+      again.append(
+        btn('Delete recording', async () => { retry = null; notice = ''; await draw(); }, 'small'),
+        btn('Try again', () => writeDown(retry.audio, retry.at), 'small primary'));
+      parts.push(again);
+    }
     if (notes.length) {
       const ul = el('ul', 'notes nlist');
       for (const n of notes) {
@@ -154,12 +161,38 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
     card.replaceChildren(...parts);
   }
 
+  // Why a model could not write a recording down, in the card.
+  const WHY = { 400: 'refused the request', 401: 'refused the key', 403: 'refused the key', 404: 'model not found', 429: 'limit reached',
+    500: 'error', 503: 'busy', refused: 'did not hear it', timeout: 'too slow', network: 'no connection' };
+  let retry = null;          // a recording that could not be written down: { audio, at }, kept for Try again
+
+  async function writeDown(audio, at) {
+    const keys = await listenKeys();
+    retry = null;
+    notice = '';
+    writing = true;
+    await draw();
+    const fails = [];
+    const heard = await transcribeAnswer(audio, { keys, lang: navigator.language || 'en-US', maxTokens: 6000, freeModels: NOTE_LISTEN_MODELS,
+      instruction: 'A parent dictates a note about their child\'s videos and learning, or about the app. Use punctuation.',
+      onFail: (r, why) => fails.push(`${r.model}: ${WHY[why] ?? why}`) });
+    writing = false;
+    if (heard?.length) { await save(heard[0], at); return; }
+    if (heard) notice = 'Heard nothing. Try again closer to the tablet.';
+    else {
+      retry = { audio, at };
+      notice = `The recording could not be written down (${fails.join('; ') || 'no key'}). It is kept: tap Try again in a minute.`;
+    }
+    await draw();
+  }
+
   async function record() {
     const lang = navigator.language || 'en-US';
     const at = where();      // the screen where the note started, even if you move on while it records
     const keys = await listenKeys();
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     notice = '';
+    retry = null;
     if (!keys.gemini && !keys.openrouter && !SR) {
       card.classList.add('open');
       notice = 'Dictation isn’t available here: type the note, or use the 🎤 on the keyboard.';
@@ -178,20 +211,16 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
       await draw();
       const audio = await recordAnswer({ seconds: CLOUD_NOTE_MINUTES * 60, stopSignal: ctl.signal, silenceStop: false });
       rec = null;
-      stopClock();
-      writing = true;
-      await draw();
-      const heard = audio ? await transcribeAnswer(audio, { keys, lang, maxTokens: 6000, freeModels: NOTE_LISTEN_MODELS,
-        instruction: 'A parent dictates a note about their child\'s videos and learning, or about the app. Use punctuation.' }) : null;
-      writing = false;
-      if (heard?.length) { await save(heard[0], at); return; }
-      notice = heard ? 'Heard nothing. Try again closer to the tablet.' : 'Gemini and OpenRouter could not write it down. Check the keys (Settings → Talking friend), or try again in a minute.';
-      await draw();
-      return;
+      if (audio) { stopClock(); await writeDown(audio, at); return; }
+      // null: the browser didn't let KidTube record. Its own recognition may still work.
+      cloud = false;
+      if (!SR) { stopClock(); notice = 'The browser doesn’t let KidTube use the microphone. Allow it (Android Settings → Apps → the browser → Permissions → Microphone), or type the note.'; await draw(); return; }
+      started = Date.now();
+      notice = 'The browser doesn’t let KidTube record the microphone, so its own speech recognition writes this note (less accurate). To fix it, allow the microphone for the browser (Android Settings → Apps → the browser → Permissions).';
+    } else {
+      notice = 'The browser’s speech recognition writes this note. For much better text, add a free Gemini key: Settings → Talking friend → Gemini API key.';
     }
-    // No Gemini or OpenRouter key: the browser's own recognition. Android ends it after a pause, so it starts
-    // again and the words join the same note.
-    notice = 'The browser’s speech recognition writes this note. For much better text, add a free Gemini key: Settings → Talking friend → Gemini API key.';
+    // The browser's own recognition. Android ends it after a pause, so it starts again and the words join the same note.
     const r = new SR();
     r.lang = lang;
     r.continuous = true;
@@ -200,7 +229,7 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
     const until = Date.now() + LONG_NOTE_MINUTES * 60000;
     rec = { stop: () => { stopped = true; try { r.stop(); } catch {} } };
     r.onresult = (e) => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) said = `${said} ${e.results[i][0].transcript}`.trim(); };
-    r.onerror = (e) => { if (e.error !== 'no-speech' && e.error !== 'aborted') { failed = true; notice = 'Dictation stopped. Type the note, or use the 🎤 on the keyboard.'; } };
+    r.onerror = (e) => { if (e.error !== 'no-speech' && e.error !== 'aborted') { failed = true; notice = `Dictation stopped (${e.error}). Type the note, or use the 🎤 on the keyboard.`; } };
     r.onend = async () => {
       if (!stopped && !failed && Date.now() < until) { try { r.start(); return; } catch {} }
       rec = null;

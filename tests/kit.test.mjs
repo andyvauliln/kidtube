@@ -21,10 +21,11 @@ class FakeEl {
 }
 globalThis.document = { createElement: (t) => new FakeEl(t), createElementNS: (_, t) => new FakeEl(t), createTextNode: (t) => t, body: new FakeEl('body') };
 const sent = [];
+const local = {};   // chrome.storage.local
 const answers = {};   // type → (msg) => the background's answer
 globalThis.chrome = {
   runtime: { sendMessage: (msg, cb) => { sent.push(msg); cb(answers[msg.type]?.(msg) ?? { ok: true }); }, lastError: null },
-  storage: { local: { get: async () => ({}) }, onChanged: { addListener() {}, removeListener() {} } },
+  storage: { local: { get: async (keys) => Object.fromEntries([keys].flat().filter((k) => k in local).map((k) => [k, local[k]])) }, onChanged: { addListener() {}, removeListener() {} } },
 };
 
 // The device's speech recognition the Android way: each phrase ends it, and the page has to start it again.
@@ -130,4 +131,20 @@ test('the apps header sits above the page’s sticky toolbar, so its menus show;
   globalThis.KidTubeHeader.mount(yt, { dark: false });
   assert.equal(yt.style.position, 'fixed');
   assert.equal(yt.style.zIndex, '2147483646');
+});
+
+test('a key, but the browser won’t let KidTube record: its own recognition writes the note, and the card says why', async () => {
+  answers.heldNotes = () => ({ ok: true, notes: [] });
+  local.repoKeys = { gemini: 'AQ.test' };   // node has no microphone: recordAnswer gives null
+  sent.length = 0;
+  screen = { list: 'history' };
+  fab.click();
+  await tick();
+  assert.equal(fab.textContent, '⏹');
+  assert.match(text(card), /doesn’t let KidTube record the microphone/);
+  rec.phrase('fewer cartoons');
+  fab.click();
+  await tick();
+  assert.deepEqual(sent.filter((m) => m.type === 'wish').map((m) => [m.list, m.text]), [['history', 'fewer cartoons']]);
+  delete local.repoKeys;
 });

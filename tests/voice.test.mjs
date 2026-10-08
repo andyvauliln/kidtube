@@ -147,3 +147,10 @@ test('notes: transcribe over its limit (3 a minute) → the next free model, and
   assert.ok(store.listenCooldown['gemini:gemini-3.5-transcribe'] > Date.now() + 30000);
   assert.ok(!FREE_LISTEN_MODELS.includes('gemini-3.5-transcribe'));          // the quiz answers don't use it
 });
+
+test('onFail says why each model failed', async () => {
+  answer = (route) => (route === FREE1 ? { status: 429 } : route === FREE2 ? { status: 503 } : { status: 401 });
+  const why = [];
+  assert.equal(await transcribeAnswer(audio, { keys, ...fast, onFail: (r, w) => why.push(`${r.model}:${w}`) }), null);
+  assert.deepEqual(why.sort(), [...FREE_LISTEN_MODELS.map((m, i) => `${m}:${[429, 503][i]}`), ...PAID_LISTEN_MODELS.map((m) => `${m}:401`)].sort());
+});
