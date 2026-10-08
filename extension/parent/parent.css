@@ -1,10 +1,18 @@
-:root { --bg: #f6f6f6; --card: #fff; --ink: #1d1d1f; --muted: #6b6b6b; --line: #e2e2e2; --accent: #ff7a3d; --bad: #c62828; --ok: #2e7d32;
-  --star: #7b4cc2; --chip: #f0f0f0; }
+:root { --bg: #f9f9f9; --card: #fff; --ink: #0f0f0f; --muted: #606060; --line: #e5e5e5; --accent: #ff7a3d; --bad: #c5221f; --ok: #1e8e3e;
+  --star: #7b4cc2; --chip: #f2f2f2; --primary: #0f0f0f; --on-primary: #fff; }
 * { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 system-ui, -apple-system, sans-serif; }
-header { position: sticky; top: 0; z-index: 5; background: var(--bg); border-bottom: 1px solid var(--line); }
-.top { display: flex; align-items: center; gap: 8px; padding: 10px 16px; max-width: 900px; margin: 0 auto; flex-wrap: wrap; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 Roboto, system-ui, -apple-system, "Segoe UI", sans-serif; }
+/* The apps header (ui/header.js) scrolls away; the app's own toolbar (tabs, run status, Parent | Kid) stays. */
+header { position: sticky; top: 0; z-index: 5; background: var(--card); border-bottom: 1px solid var(--line); }
+.toolbar { display: flex; align-items: center; gap: 8px 12px; max-width: 1200px; margin: 0 auto; padding: 0 12px 0 8px; }
+.toolbar .tabs { flex: 1 1 auto; min-width: 0; }
+.tools { display: flex; align-items: center; gap: 12px; flex: none; padding: 6px 0; }
+/* Narrower than tabs + tools (an iPad either way): the tools get their own row, so every tab stays in sight. */
+@media (max-width: 1040px) {
+  .toolbar { flex-wrap: wrap; padding: 0 8px; }
+  .tools { width: 100%; justify-content: flex-end; order: -1; padding: 8px 4px 0; }
+}
 h1 { font-size: 19px; margin: 0; }
 h2 { font-size: 17px; margin: 0 0 8px; }
 h3 { font-size: 15px; margin: 0 0 6px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .03em; }
@@ -14,19 +22,18 @@ h3 { font-size: 15px; margin: 0 0 6px; color: var(--muted); font-weight: 600; te
 .run .state { max-width: 40vw; overflow: hidden; text-overflow: ellipsis; }
 .run .state.working { color: var(--accent); font-weight: 600; }
 .run .state.failed { color: #c0392b; }
-.who { font-size: 13px; color: var(--muted); background: var(--chip); border-radius: 12px; padding: 2px 10px; max-width: 60vw; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-a.who { text-decoration: none; cursor: pointer; }
-.box.profile h3 { margin: 0 0 4px; text-transform: none; letter-spacing: 0; font-size: 16px; color: var(--ink, inherit); }
-.box input[type=email], .box select { display: block; width: 100%; max-width: 420px; box-sizing: border-box; font-size: 16px; padding: 8px; margin: 4px 0 10px; }
 .grow { flex: 1; }
-.icon { text-decoration: none; font-size: 22px; padding: 4px; }
-.tabs { display: flex; gap: 4px; padding: 0 16px; max-width: 900px; margin: 0 auto; overflow-x: auto; }
-.tabs a { padding: 10px 14px; text-decoration: none; color: var(--muted); font-weight: 600; border-bottom: 3px solid transparent; white-space: nowrap; }
-.tabs a.on { color: var(--ink); border-color: var(--accent); }
+.tabs { display: flex; gap: 2px; overflow-x: auto; scrollbar-width: none; }
+.tabs::-webkit-scrollbar { display: none; }
+.tabs a { padding: 14px 12px 12px; text-decoration: none; color: var(--muted); font-weight: 500; border-bottom: 2px solid transparent; white-space: nowrap; }
+.tabs a:hover { color: var(--ink); }
+.tabs a.on { color: var(--ink); border-color: var(--ink); }
 .tabs b { font-weight: 500; font-size: 13px; background: var(--chip); border-radius: 10px; padding: 1px 7px; margin-left: 2px; }
 main { max-width: 900px; margin: 0 auto; padding: 12px 16px 80px; }
-button { font: inherit; padding: 8px 14px; border-radius: 8px; border: 1px solid var(--line); background: #fff; color: var(--ink); cursor: pointer; }
-button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+button { font: inherit; padding: 8px 16px; border-radius: 18px; border: 1px solid var(--line); background: var(--card); color: var(--ink); cursor: pointer; }
+button:not(:disabled):hover { background: var(--chip); }
+button.primary { background: var(--primary); border-color: var(--primary); color: var(--on-primary); font-weight: 500; }
+button.primary:not(:disabled):hover { background: var(--primary); opacity: .85; }
 button.ghost { background: transparent; }
 button.on { background: #efe6fb; border-color: var(--star); color: var(--star); font-weight: 600; }
 button.ok { background: #e8f5e9; border-color: var(--ok); color: var(--ok); font-weight: 600; }
@@ -126,7 +133,7 @@ button.small { padding: 2px 8px; font-size: 13px; }
 @media (prefers-reduced-motion: reduce) { #view.from-right, #view.from-left { animation: none; } }
 
 @media (prefers-color-scheme: dark) {
-  :root { --bg: #151515; --card: #202020; --ink: #eee; --muted: #a0a0a0; --line: #333; --chip: #2c2c2c; }
+  :root { --bg: #0f0f0f; --card: #1a1a1a; --ink: #f1f1f1; --muted: #aaa; --line: #303030; --chip: #272727; --primary: #f1f1f1; --on-primary: #0f0f0f; }
   button, input, textarea { background: #262626; }
   .why { color: #ccc; }
   .chip.star, button.on { background: #2e2340; }

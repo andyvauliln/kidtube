@@ -7,7 +7,7 @@ const wait = document.getElementById('wait');
 let shown = '';
 
 home.addEventListener('click', () => ask({ type: 'goHome' }));
-document.getElementById('gear').addEventListener('click', () => ask({ type: 'openSettings' }));
+document.getElementById('parent').addEventListener('click', () => ask({ type: 'parentGate' }));
 
 async function draw() {
   const st = await ask({ type: 'state' });

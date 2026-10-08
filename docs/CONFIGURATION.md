@@ -9,7 +9,7 @@ How the pieces work together is in [HOW-IT-WORKS.md](HOW-IT-WORKS.md).
 
 ### 1.1 Rules from GitHub — `kidtube-data/parent-config.json`
 
-Changed in parent mode → Settings (or the options page); the helper also writes the quiz and voice parts. Schema: `schemas/parent-config.schema.json`.
+Changed in parent mode → Settings (the extension's options page leads there after the PIN); the helper also writes the quiz and voice parts. Schema: `schemas/parent-config.schema.json`.
 
 
 | Setting                                               | Now                                | Meaning                                                                                      |
@@ -42,7 +42,7 @@ Changed in parent mode → Settings (or the options page); the helper also write
 
 ### 1.2a Profiles (0.9.0)
 
-A profile = one YouTube (Google) account email, with one app (`kidtube` for now). Its files are in its own folder of the data repo, `<app>/<folder>/`, where the folder is the email's name part (`johnnypitt.ind@gmail.com` → `kidtube/johnnypitt.ind/`), given once and never changed. Parent mode → tap the account at the top → **Profiles**: switch to a known one, add an email (starts empty), or remove one from the tablet. After a switch, Google's account chooser opens so YouTube signs in to the same account; for 15 minutes YouTube's report of the old account is ignored. On its first sync a profile writes `profile.json` into its folder. Profiles is a tab in parent mode and a section in Settings (the options page, after the PIN). App registry: `extension/lib/apps.js` (tablet), `apps` in `agent/config.json` (server). Apps: `kidtube`, and `blank` (a test app: YouTube shows a white page in kid mode, nothing syncs, YouTube's signed-in account doesn't switch it; the ⚙️ in the corner opens Settings).
+A profile = one YouTube (Google) account email, with one app (`kidtube` for now). Its files are in its own folder of the data repo, `<app>/<folder>/`, where the folder is the email's name part (`johnnypitt.ind@gmail.com` → `kidtube/johnnypitt.ind/`), given once and never changed. Since 0.9.8 the YouTube account picks the profiles: the apps header lists that email's apps (see docs/PLAN-PROFILES.md). On its first sync a profile writes `profile.json` into its folder; the server then adds the default `parent-config.json` and an empty `queue.json`. App registry: `extension/lib/apps.js` (tablet), `apps` in `agent/config.json` (server). Apps: `kidtube`, and `blank` (a test app: YouTube shows a white page, nothing syncs but `profile.json`; its Parent | Kid switch is top right).
 
 ### 1.3 Files the tablet reads from kidtube-data (in the profile's folder)
 

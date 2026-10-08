@@ -57,18 +57,18 @@ A parent can skip any friend screen with the 🔒 button and the PIN.
 
 You can steer from two places: the tablet and a chat with Claude. All of them end up in the data repo, and the helper reads them on its next run.
 
-**On the tablet** (⚙️ button, then the PIN):
+**On the tablet** (parent mode: 🔒 Parent at the top right of his screens, then the PIN):
 
 | What you do | What happens |
 | --- | --- |
 | **Update now** | Pulls the newest list, rules and app version right away (otherwise every 15 min) |
 | Change **Rules** (hours, minutes, must-watch order, talking friend, questions) | Works on the tablet at once and is saved to `parent-config.json`, so the helper sees it |
-| **Message to the helper** | Saved as a `wish` event. The next run keeps it in its history of your messages (`memory.json`, `helper.wishes`) and acts on it. |
+| **Ask the AI** (Settings, and the note box on every tab) | Saved as a `wish` event, held until ↻ Update. The next run keeps it in its history of your messages (`memory.json`, `helper.wishes`) and acts on it. |
 | 👍 / 👎 / comment on a watched video | Saved as a `parentNote`. The helper uses it for *What the helper noticed* and future picks. |
 | Tap a watched video's picture | You watch it yourself with skipping allowed. It doesn't count for him. |
 | **Reset today** | Gives back today's minutes and undoes "no more videos today" |
 
-**Parent mode** (since 0.7.0). In the settings (⚙️ + PIN) → **Mode**, choose *Parent mode*, or press **Open parent screens**. While it is on, YouTube's home opens your screens instead of his list, any YouTube video plays, nothing is blocked and nothing counts for him. It turns itself off after *N minutes* (60 by default; 0 = never), or press **Kid mode**.
+**Parent mode** (since 0.7.0). On his screens, tap **🔒 Parent** (top right) and enter the PIN. While it is on, YouTube's home opens your screens instead of his list, any YouTube video plays, nothing is blocked and nothing counts for him, and the apps header is on top. It stays on until you tap **Kid** in the **Parent | Kid** switch (top right of your screens).
 
 | Tab | What you see | What you can do |
 | --- | --- | --- |
@@ -76,7 +76,7 @@ You can steer from two places: the tablet and a chat with Claude. All of them en
 | **Planned** | The helper's next picks in its order, then its other ideas | ⭐ on/off, **Approve**, **→ Today**, **Remove** (never shown), notes for the AI (video or list) |
 | **History** | What he watched, by day: minutes, how it ended, his answers | 👍 / 👎, notes for the AI (video or the whole history) |
 | **Prompt** | How the helper works: when it runs, its diary, *What I noticed*, its study plan, each step of its prompt, the settings and models it uses, the tablet rules it reads, what it reads and writes, the whole prompt | **Your changes to the prompt**: standing instructions it follows every run (they win over its steps, not over its safety rules); remove one any time |
-| **Settings** | The settings page (mode, rules, talking friend, connection) without a second PIN | everything the settings page does |
+| **Settings** | Ask the AI, Update, Status, the rules, the talking friend, the PIN | change them; the account, GitHub and the settings file are in the apps header |
 
 Swipe left or right to move between the tabs; on a video's page, swipe right to go back.
 
@@ -86,7 +86,7 @@ Tap a video for its page: why it's on the list, what he learns, the summary, the
 
 Every change works on the tablet at once and is saved as a `plan` event in `activity/<day>.json` (notes as `parentNote`, list notes as `wish` with `list`). The other devices pick it up on their next sync. The helper applies them on its next run, ahead of its own choices.
 
-**Profiles (one per YouTube account).** KidTube reads which YouTube account is signed in (its email, from YouTube's own account switcher). Every rule, list, history and note belongs to that account's profile, and so do its files on GitHub (`kidtube-data/kidtube/<email name>/`) and its helper runs: another child is another profile and starts fresh. In parent mode, tap the account at the top → **Profiles** to switch to another email or add one; Google's account chooser then opens so YouTube uses the same account. Signing out keeps the last profile. The PIN, parent mode and the GitHub connection belong to the tablet, the same for every profile.
+**Profiles (one per YouTube account).** KidTube reads which YouTube account is signed in (its email, from YouTube's own account switcher). Every rule, list, history and note belongs to that account's profile, and so do its files on GitHub (`kidtube-data/kidtube/<email name>/`) and its helper runs: another child is another profile and starts fresh. The apps header (on top of YouTube when no app runs, and in parent mode) shows the account with **Switch** (Google's account chooser), its apps as round tiles, and **Add app**; the account menu has the GitHub connection, the settings file (save / load) and Sign out. A new app starts empty. The PIN, parent mode and the GitHub connection belong to the tablet, the same for every profile.
 
 **In a chat with Claude** in this repo: say what you want, for example "one Russian fairy tale a day", "harder questions" or "run it now". Claude edits the code or the prompts, or runs the helper by hand.
 

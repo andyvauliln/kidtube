@@ -13,8 +13,9 @@ html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); 
 .big { font-size: 64px; line-height: 1; }
 h1 { font-size: 28px; margin: 16px 0 8px; }
 p { margin: 4px 0; color: var(--muted); font-weight: 500; font-size: 18px; }
-.gear { position: fixed; right: 12px; bottom: 12px; width: 44px; height: 44px; border: 0; border-radius: 50%; background: #ffffffcc;
-  font-size: 22px; opacity: .55; box-shadow: 0 2px 6px #0002; z-index: 10; }
+.parentbtn { position: fixed; right: 12px; top: 12px; height: 36px; padding: 0 14px; border: 0; border-radius: 18px; background: #ffffffe0;
+  color: #6b6257; font: 600 14px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; box-shadow: 0 1px 4px #0002; z-index: 10; cursor: pointer; }
+body.kidhome .grid { padding-top: 60px; }   /* room for 🔒 Parent */
 /* must-watch videos (⭐) and the ones waiting for them */
 .card { position: relative; }
 .card .star { position: absolute; top: 6px; left: 6px; font-size: 30px; filter: drop-shadow(0 2px 2px #0005); }

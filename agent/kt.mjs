@@ -420,7 +420,8 @@ function seedProfile() {
   const copy = (from, to) => { if (!existsSync(join(dataDir, to)) && existsSync(from)) { mkdirSync(dirname(join(dataDir, to)), { recursive: true }); writeFileSync(join(dataDir, to), readFileSync(from)); added.push(to); } };
   copy(join(tpl, 'parent-config.json'), 'parent-config.json');
   copy(join(tpl, 'memory.json'), 'memory.json');
-  copy(join(ROOT, 'extension/default-queue.json'), 'queue.json');
+  // No starter list: a new app starts empty (the tablet shows none either) and the helper fills it on its run.
+  if (!existsSync(join(dataDir, 'queue.json'))) { writeJson(join(dataDir, 'queue.json'), { schemaVersion: 1, updatedAt: iso(), videos: [] }); added.push('queue.json'); }
   for (const d of CONTEXT_DOCS) copy(join(tpl, 'context', `${d}.md`), `context/${d}.md`);
   if (added.length) log(`new profile: added ${added.join(', ')}`);
   return added;

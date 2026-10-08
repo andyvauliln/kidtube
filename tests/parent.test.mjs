@@ -505,3 +505,80 @@ test('a Blank profile from 0.9.2–0.9.5 (keyed by its email alone) gets its "bl
   assert.equal(fake.store.account.key, first);
   await fromPage({ type: 'setMode', mode: 'parent' });
 });
+
+test('the header in parent mode: tiles open apps, Add app starts with no list; GitHub and the settings file only where the header shows', async () => {
+  const first = fake.store.account.key;   // KidTube runs in parent mode (the test before)
+  await youtubeHas(first, 'AAA||');
+  const before = { ...fake.store.settings };
+  fake.store.settings = { ...fake.store.settings, token: 't1', repo: 'me/data' };
+  await withRepo([], async () => {
+    const h = await send({ type: 'header' });
+    assert.deepEqual([h.open, h.mode, h.running], [true, 'parent', 'kidtube'], 'parent mode: the header shows and can act');
+    assert.deepEqual(h.apps.filter((a) => a.active).map((a) => a.id), ['kidtube'], 'the running app is marked');
+    assert.ok(h.apps.every((a) => a.color && a.glyph), 'each tile has its look');
+    const r = await send({ type: 'openApp', app: 'kidtube' });
+    assert.deepEqual([r.ok, r.url, r.navigated], [true, 'ext://parent/parent.html', true], 'a tile opens its app in parent mode');
+  });
+  assert.equal(fake.store.shell.on, false);
+
+  // Google stays open where the header shows (its Switch), even with other sites blocked.
+  fake.store.localConfig = { blockOutboundLinks: true, allowedSiteDomains: ['wikipedia.org'] };
+  await fromPage({ type: 'setMode', mode: 'parent' });
+  assert.ok(fake.rules[0].condition.excludedRequestDomains.includes('google.com'), 'parent mode: Google’s sign-in is open');
+
+  // Kid mode: no header, so nothing of it works.
+  await fromPage({ type: 'setMode', mode: 'kid' });
+  assert.ok(!fake.rules[0].condition.excludedRequestDomains.includes('google.com'), 'kid mode: Google is blocked again');
+  delete fake.store.localConfig;
+  assert.equal((await send({ type: 'header' })).open, false);
+  await withRepo([], async () => assert.equal((await send({ type: 'openApp', app: 'kidtube' })).ok, false));
+  assert.equal((await send({ type: 'connectGitHub', repo: 'me/other', token: 'x' })).ok, false);
+  assert.equal((await send({ type: 'exportSettings' })).ok, false);
+  assert.equal((await send({ type: 'importSettings', file: { kidtubeSettings: 1, token: 'evil' } })).ok, false);
+  assert.equal(fake.store.settings.token, 't1');
+  await fromPage({ type: 'setMode', mode: 'parent' });
+
+  // The GitHub connection: checked before it is kept; a refused token keeps the old one.
+  assert.match((await send({ type: 'connectGitHub', repo: 'not a repo', token: 'x' })).error, /owner\/name/);
+  const real = globalThis.fetch;
+  globalThis.fetch = async (url) => (String(url).includes('api.github.com') ? { ok: false, status: 401, json: async () => ({}), headers: { get: () => null } } : real(url));
+  try {
+    assert.match((await send({ type: 'connectGitHub', repo: 'me/other', token: 'bad' })).error, /token is wrong/);
+  } finally { globalThis.fetch = real; }
+  assert.deepEqual([fake.store.settings.repo, fake.store.settings.token], ['me/data', 't1'], 'the old connection stays');
+  await withRepo([{ app: 'kidtube', folder: 'zed', email: 'zed@example.com' }], async () => {
+    const r = await send({ type: 'connectGitHub', repo: 'https://github.com/me/new.git', token: ' t2 ' });
+    assert.deepEqual([r.ok, r.repo, r.profiles], [true, 'me/new', 1]);
+  });
+  assert.deepEqual([fake.store.settings.repo, fake.store.settings.token], ['me/new', 't2']);
+
+  // The settings file: the connection, the PIN and the listening keys, and back.
+  fake.store.geminiKey = 'AIza-1';
+  const file = (await send({ type: 'exportSettings' })).file;
+  assert.deepEqual([file.kidtubeSettings, file.repo, file.token, file.pinHash, file.geminiKey], [1, 'me/new', 't2', fake.store.settings.pinHash, 'AIza-1']);
+  fake.store.settings = { ...fake.store.settings, token: '', repo: '' };
+  assert.equal((await send({ type: 'importSettings', file: { hello: 1 } })).ok, false);
+  assert.equal((await send({ type: 'importSettings', file })).ok, true);
+  assert.deepEqual([fake.store.settings.repo, fake.store.settings.token], ['me/new', 't2']);
+
+  // Add app for a new account: no starter list; the helper fills it.
+  await youtubeHas('fresh@example.com', 'FRESH||');
+  assert.deepEqual([fake.store.shell.on, fake.store.shell.locked], [true, false], 'parent mode: the header stays open');
+  await withRepo([], async () => {
+    const h = await send({ type: 'header' });
+    assert.deepEqual([h.running, h.apps.filter((a) => a.has).length], [null, 0]);
+    assert.equal((await send({ type: 'openApp', app: 'kidtube' })).ok, false, 'not there yet: Add app');
+    assert.equal((await send({ type: 'openApp', app: 'kidtube', create: true })).url, 'ext://parent/parent.html');
+  });
+  assert.equal(fake.store.account.key, 'fresh@example.com');
+  assert.deepEqual(fake.store.data.queue.videos, [], 'a new app has no list, not the built-in starter list');
+  assert.equal((await send({ type: 'state' })).videos.length, 0);
+
+  await fromPage({ type: 'leaveApp' });
+  await youtubeHas(first, 'AAA||');
+  await withRepo([], () => send({ type: 'openApp', app: 'kidtube' }));
+  assert.equal(fake.store.account.key, first);
+  assert.ok(fake.store.data.queue.videos.length > 0, 'the old account keeps its list');
+  fake.store.settings = { ...fake.store.settings, token: before.token ?? '', repo: before.repo ?? '' };
+  delete fake.store.geminiKey;
+});

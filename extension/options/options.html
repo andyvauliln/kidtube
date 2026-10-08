@@ -2,29 +2,9 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KidTube parent</title>
-<link rel="stylesheet" href="../parent/parent.css">
-<link rel="stylesheet" href="../settings/settings.css">
-<style>
-  main { max-width: 680px; padding-top: 16px; }
-  h1 { margin-bottom: 4px; }
-  #gate { margin-top: 12px; }
-</style>
+<title>KidTube settings</title>
+<!-- The extension's options: Settings live in the parent screens; the PIN page opens them (options.js). -->
 <body>
-<main>
-  <h1>KidTube · parent</h1>
-  <p class="muted"><a href="../ui/check.html" target="_blank">Check this browser</a> (if a KidTube screen stays blank)</p>
-
-  <section id="gate" class="box">
-    <h2 id="gateTitle">Enter PIN</h2>
-    <input id="pin" class="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8">
-    <input id="pin2" class="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="repeat" hidden>
-    <button class="primary" id="pinGo">OK</button>
-    <p class="err" id="pinErr"></p>
-  </section>
-
-  <div id="app" hidden></div>
-</main>
 <script type="module" src="options.js"></script>
 </body>
 </html>

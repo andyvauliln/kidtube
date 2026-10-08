@@ -48,7 +48,7 @@ function withState(fn, { account } = {}) {
     s.settings ??= {}; s.data ??= {}; s.watched ??= {}; s.outbox ??= []; s.syncStatus ??= {}; s.seen ??= {};
     const before = Object.fromEntries(KEYS.map((k) => [k, JSON.stringify(s[k] ?? null)]));
     const result = await fn(s);
-    // Only write what changed: the options page writes settings on its own.
+    // Only write what changed: the PIN page and the header's GitHub connection write settings on their own.
     const changed = KEYS.filter((k) => JSON.stringify(s[k] ?? null) !== before[k]);
     if (changed.length) await chrome.storage.local.set(Object.fromEntries(changed.map((k) => [k, s[k] ?? null])));
     return result;
@@ -70,6 +70,13 @@ async function shellOf(g) {
   return shell ?? { on: !account, locked: false };
 }
 const shellOpen = (sh) => sh.on && !sh.locked;
+// The header can act (open an app, connect GitHub, the settings file): at the unlocked header, or in parent mode.
+// In kid mode it isn't shown, and a locked header waits for the PIN.
+async function headerOpen(g) {
+  g ??= await chrome.storage.local.get(['shell', 'account', 'settings']);
+  const sh = await shellOf(g);
+  return sh.on ? !sh.locked : parentMode(g);
+}
 const currentAccount = async () => (await chrome.storage.local.get('account')).account?.key ?? null;
 
 // A profile is an email with one app, so one email can have a profile in each app. KidTube's key is the email
@@ -188,14 +195,18 @@ async function repoProfiles(force = false) {
   return out;
 }
 
-// What the header shows: who YouTube has, the GitHub connection, and this email's apps (here or in the repo).
+// What the header shows: who YouTube has, the GitHub connection, and this email's apps (here or in the repo),
+// the running one marked active.
+const shortLabel = (a) => a.label.replace(/ \(.*/, '');
 async function headerView(force) {
   const g = await chrome.storage.local.get(['shell', 'account', 'accounts', 'ytAccount', 'settings']);
   const sh = await shellOf(g);
   const settings = g.settings ?? {};
   const email = g.ytAccount?.email ?? null;
   const github = { connected: !!settings.token, repo: settings.repo || DEFAULT_REPO };
-  const out = { ok: true, shell: sh, email, seen: !!g.ytAccount, signedIn: !!g.ytAccount?.loggedIn, github, apps: [], error: null,
+  const running = !sh.on && g.account && (!email || g.account.email === email) ? appOf(g.account).id : null;
+  const out = { ok: true, shell: sh, open: await headerOpen(g), mode: parentMode(g) ? 'parent' : 'kid', running,
+    email, seen: !!g.ytAccount, signedIn: !!g.ytAccount?.loggedIn, github, apps: [], error: null,
     switchAccount: chooserUrl(null, lastHost), signOut: `https://${lastHost}/logout` };
   if (!email || !github.connected) return out;
   const remote = await repoProfiles(force);
@@ -204,35 +215,84 @@ async function headerView(force) {
   out.apps = Object.values(APPS).map((a) => {
     const here = accounts[keyFor(a.id, email)];
     const there = remote.list.find((p) => p.app === a.id && p.email === email);
-    return { id: a.id, label: a.label.replace(/ \(.*/, ''), has: !!(here || there), folder: here?.folder ?? there?.folder ?? null, parentScreens: !a.page };
+    return { id: a.id, label: shortLabel(a), color: a.color, glyph: a.glyph, about: a.about,
+      has: !!(here || there), active: a.id === running, folder: here?.folder ?? there?.folder ?? null, parentScreens: !a.page };
   });
   return out;
 }
 
-// The header's Open (mode 'kid' or 'parent') and Create (always parent mode: the parent sets the new app up first).
+// A new app starts with no list at all (not the built-in starter list): the helper fills it.
+const emptyQueue = () => ({ schemaVersion: 1, updatedAt: new Date().toISOString().replace(/\.\d+Z$/, 'Z'), videos: [] });
+
+// The header's app tiles (mode: 'parent' unless asked, so the parent sees the app first) and Add app (create).
 // The profile is the signed-in email in that app; its folder in the repo is found, or given now.
 async function openApp(msg, tabId, host) {
-  const g = await chrome.storage.local.get(['shell', 'ytAccount', 'accounts']);
-  if (!shellOpen(await shellOf(g))) return { ok: false, error: 'Unlock with the PIN first.' };
+  const g = await chrome.storage.local.get(['shell', 'account', 'ytAccount', 'accounts', 'settings']);
+  if (!(await headerOpen(g))) return { ok: false, error: 'Unlock with the PIN first.' };
   const email = g.ytAccount?.email;
   if (!email) return { ok: false, error: 'Sign in to YouTube first.' };
   const app = APPS[msg.app];
   if (!app) return { ok: false, error: 'Unknown app.' };
   const key = keyFor(app.id, email);
   const there = (await repoProfiles()).list.find((p) => p.app === app.id && p.email === email);
-  if (!msg.create && !g.accounts?.[key] && !there) return { ok: false, error: `No ${app.label} for ${email} yet: create it.` };
+  const known = !!(g.accounts?.[key] || there);
+  if (!msg.create && !known) return { ok: false, error: `No ${shortLabel(app)} for ${email} yet: add it.` };
   const r = await useProfile({ email, datasyncId: g.ytAccount.datasyncId }, { app: app.id, key, folder: there?.folder });
-  const parent = msg.create || msg.mode === 'parent';
-  await withState((s) => { Object.assign(s.settings, { mode: parent ? 'parent' : 'kid', parentUntil: 0 }); });
+  const parent = msg.create || msg.mode !== 'kid';
+  await withState((s) => {
+    Object.assign(s.settings, { mode: parent ? 'parent' : 'kid', parentUntil: 0 });
+    if (msg.create && !known && app.sync !== false) s.data.queue ??= emptyQueue();
+  });
   await chrome.storage.local.set({ shell: { on: false, locked: false } });
   await applySiteRules();
   if (msg.create && !r.switched) sync();   // (a switch syncs anyway) writes profile.json: the repo and the server's helper know it
   const url = app.page ? chrome.runtime.getURL(app.page) : parent ? chrome.runtime.getURL(PARENT_PAGE) : homeUrl(host);
   if (tabId != null) await chrome.tabs.update(tabId, { url });
-  return { ok: true, url };
+  return { ok: true, url, navigated: tabId != null };
 }
 
-// Back to the header: from the parent screens or the apps page (after the PIN).
+// The header's GitHub connection: one repo and token for every account and app on this tablet.
+async function connectGitHub(msg) {
+  if (!(await headerOpen())) return { ok: false, error: 'Unlock with the PIN first.' };
+  const repo = String(msg.repo ?? '').trim().replace(/^https:\/\/github\.com\//, '').replace(/\.git$|\/$/g, '');
+  const token = String(msg.token ?? '').trim();
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repo)) return { ok: false, error: 'The repo is owner/name, for example andyvauliln/kidtube-data.' };
+  const { settings = {} } = await chrome.storage.local.get('settings');
+  if (!token && !settings.token) return { ok: false, error: 'Paste the GitHub token.' };
+  const before = { repo: settings.repo, token: settings.token };
+  await chrome.storage.local.set({ settings: { ...settings, repo, ...(token ? { token } : {}) } });
+  const r = await repoProfiles(true);
+  if (r.error) {   // keep what worked before
+    const now = (await chrome.storage.local.get('settings')).settings ?? {};
+    await chrome.storage.local.set({ settings: { ...now, repo: before.repo, token: before.token } });
+    await chrome.storage.local.remove('repoProfiles');
+    return { ok: false, error: r.error };
+  }
+  sync();
+  return { ok: true, repo, profiles: r.list.length };
+}
+
+// The settings file (the header's Save / Load): the GitHub connection and the PIN (BACKUP_KEYS), and the listening keys.
+// chrome.storage is erased when the extension is removed (Orion updates); this file brings them back.
+async function exportSettings() {
+  if (!(await headerOpen())) return { ok: false, error: 'Unlock with the PIN first.' };
+  const { settings = {}, voiceKey, geminiKey } = await chrome.storage.local.get(['settings', 'voiceKey', 'geminiKey']);
+  const keep = Object.fromEntries(BACKUP_KEYS.filter((k) => settings[k]).map((k) => [k, settings[k]]));
+  return { ok: true, file: { kidtubeSettings: 1, savedAt: new Date().toISOString(), ...keep, ...(voiceKey ? { voiceKey } : {}), ...(geminiKey ? { geminiKey } : {}) } };
+}
+async function importSettings(file) {
+  if (!(await headerOpen())) return { ok: false, error: 'Unlock with the PIN first.' };
+  if (file?.kidtubeSettings !== 1) return { ok: false, error: 'That file is not a KidTube settings file.' };
+  const { settings = {} } = await chrome.storage.local.get('settings');
+  const back = Object.fromEntries(BACKUP_KEYS.filter((k) => typeof file[k] === 'string' && file[k]).map((k) => [k, file[k]]));
+  const voice = Object.fromEntries(['voiceKey', 'geminiKey'].filter((k) => typeof file[k] === 'string' && file[k]).map((k) => [k, file[k]]));
+  await chrome.storage.local.set({ settings: { ...settings, ...back }, ...voice });
+  await chrome.storage.local.remove('repoProfiles');
+  const r = await sync();
+  return { ok: true, errors: r?.errors ?? [] };
+}
+
+// Back to the header: the PIN page, when YouTube was locked.
 async function leaveApp() {
   await chrome.storage.local.set({ shell: { on: true, locked: false } });
   await applySiteRules();
@@ -686,26 +746,34 @@ async function handle(msg, sender) {
       const info = { ...(accountFromSwitcher(msg.switcher ?? '') ?? {}), datasyncId: msg.datasyncId };
       return youtubeAccount(info, msg.loggedIn);
     }
-    case 'header': // the apps header on YouTube (content.js)
+    case 'header': // the apps header (ui/header.js) on YouTube and on an app's pages
       return headerView(!!msg.refresh);
-    case 'openApp': // the header: open or create this email's app (only while the header is unlocked)
+    case 'openApp': // the header: open or create this email's app (at the unlocked header, or in parent mode)
       return openApp(msg, tabId, host);
-    case 'openApps': // the header's Connect GitHub, the lock's Unlock, the blank page: the apps page (it asks for the PIN)
-      if (tabId != null) await chrome.tabs.update(tabId, { url: chrome.runtime.getURL(`apps/apps.html${msg.github ? '#github' : ''}`) });
+    case 'connectGitHub': // the header: the one GitHub connection of this tablet
+      return connectGitHub(msg);
+    case 'exportSettings': // the header's Save settings to a file
+      return exportSettings();
+    case 'importSettings': // the header's Load settings from a file
+      return importSettings(msg.file);
+    case 'openApps': // the lock's Unlock: the PIN page, then back to the header
+      if (tabId != null) await chrome.tabs.update(tabId, { url: chrome.runtime.getURL('apps/apps.html?for=unlock') });
       return { ok: true };
-    case 'leaveApp': // the apps page (after the PIN) and the parent screens: back to the header
+    case 'parentGate': // the kid's 🔒 Parent button, an app page's Parent switch: the PIN page, then parent mode
+      if (tabId != null) await chrome.tabs.update(tabId, { url: chrome.runtime.getURL('apps/apps.html?for=parent') });
+      else await chrome.tabs.create({ url: chrome.runtime.getURL('apps/apps.html?for=parent') });
+      return { ok: true };
+    case 'leaveApp': // the PIN page (a locked header): back to the header
       if (!fromExtensionPage(sender)) return { ok: false };
       return leaveApp();
-    case 'apps': // the apps page: what runs now, and whether it may skip the PIN
+    case 'apps': // the PIN page: what runs now, whether it may skip the PIN, and where YouTube is
       if (!fromExtensionPage(sender)) return { ok: false };
       return withState(async (s) => {
         const { account } = await chrome.storage.local.get('account');
         const sh = await shellOf();
-        return { ok: true, shell: sh, parentMode: parentMode(s), running: sh.on ? null : { email: account?.email ?? null, app: appOf(account).label.replace(/ \(.*/, '') } };
+        return { ok: true, shell: sh, parentMode: parentMode(s), home: homeUrl(lastHost),
+          running: sh.on ? null : { email: account?.email ?? null, app: shortLabel(appOf(account)) } };
       });
-    case 'checkRepo': // the apps page saved the GitHub connection: can it read the repo, and which profiles are there?
-      if (!fromExtensionPage(sender)) return { ok: false };
-      return repoProfiles(true).then((r) => ({ ok: !r.error, error: r.error, profiles: r.list.length }));
 
     case 'setMode': // settings page or parent screens, after the PIN
       if (!['kid', 'parent'].includes(msg.mode)) return { ok: false, error: 'Unknown mode.' };
@@ -714,7 +782,7 @@ async function handle(msg, sender) {
       return withState((s) => {
         Object.assign(s.settings, { mode: msg.mode, parentUntil: 0 });
         return { ok: true, until: 0, parentMode: parentMode(s) };
-      });
+      }).then(async (r) => { await applySiteRules(); return r; });
 
     case 'openParent': // a YouTube home tab in parent mode becomes the parent's screens
       return withState(async (s) => {
@@ -741,6 +809,7 @@ async function handle(msg, sender) {
     case 'kidHome': // parent screens → kid mode: back to his list
       if (!fromExtensionPage(sender)) return { ok: false };
       await withState((s) => { Object.assign(s.settings, { mode: 'kid', parentUntil: 0 }); });
+      await applySiteRules();
       if (tabId != null) await chrome.tabs.update(tabId, { url: homeUrl(lastHost) });
       return { ok: true };
 
@@ -756,7 +825,7 @@ async function handle(msg, sender) {
       if (!fromExtensionPage(sender)) return { ok: false };
       return withState((s) => helperData(s));
 
-    case 'promptNote': // add a standing instruction for the helper, or remove one (Prompt tab, or Settings after its PIN)
+    case 'promptNote': // add a standing instruction for the helper, or remove one (the Prompt tab)
       if (!fromExtensionPage(sender)) return { ok: false };
       return withState((s) => {
         const text = String(msg.text ?? '').trim().slice(0, 2000);
@@ -809,10 +878,6 @@ async function handle(msg, sender) {
 
     case 'resetToday':
       return withState((s) => { s.today = null; });
-
-    case 'openSettings': // the gear on the kid's screens; the page itself asks for the PIN
-      try { await chrome.runtime.openOptionsPage(); } catch { await chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') }); }
-      return { ok: true };
 
     case 'settingsBackup': // content/backup.js on the install page: take the copy back, or refresh it
       return settingsBackup(sender, msg.saved);
@@ -1191,7 +1256,7 @@ async function doSync() {
     }
   }
   // A new profile: the server makes its starter files within a minute or two (agent/poll.sh → kt.mjs init-profile).
-  if (missing.length) status.notes = [`New profile: ${loc.base} has no ${missing.join(' or ')} yet. The server sets it up within a minute or two; until then the built-in starter list is used.`];
+  if (missing.length) status.notes = [`New profile: ${loc.base} has no ${missing.join(' or ')} yet. The server sets it up within a minute or two.`];
   // memory.json: the helper's notes on every video (parent mode: planned videos, summaries, questions).
   let memory = null;
   if (token) {
@@ -1308,7 +1373,7 @@ async function releaseNotes() {
 
 async function requestRun() {
   const { settings = {} } = await chrome.storage.local.get('settings');
-  if (!settings.token) return { ok: false, error: 'Needs the GitHub token (Settings → Connection).' };
+  if (!settings.token) return { ok: false, error: 'Needs the GitHub token (the header’s account menu → GitHub connection).' };
   const loc = await dataLocation(settings);
   if (!loc.base) return { ok: false, error: 'No profile yet: open YouTube once, signed in.' };
   await releaseNotes();
@@ -1564,13 +1629,13 @@ function toBase64(text) {
 }
 
 // Every top-level page outside allowedSiteDomains is blocked (PLAN.md C16).
-// At the unlocked apps header, all of google.com stays open: a sign-in can pass
-// through www.google.com or gds.google.com ("make sure you can sign in"), and a blocked step is a dead page.
+// Where the header shows (the unlocked apps header, parent mode), all of google.com stays open: its Switch and Sign in
+// can pass through www.google.com or gds.google.com ("make sure you can sign in"), and a blocked step is a dead page.
 const allowedDomains = (config, signingIn = false) =>
   [...new Set([...(config.allowedSiteDomains ?? []), 'youtube.com', 'andyvauliln.github.io', ...(signingIn ? ['google.com'] : [])])];
-const signingIn = (s) => !!s.shell?.on && !s.shell.locked;
+const signingIn = (s) => (s.shell?.on ? !s.shell.locked : parentMode(s));
 async function applySiteRules() {
-  const s = await chrome.storage.local.get(['data', 'localConfig', 'shell']);
+  const s = await chrome.storage.local.get(['data', 'localConfig', 'shell', 'settings']);
   const { config } = await effective({ data: s.data ?? {}, localConfig: s.localConfig });
   // Orion has no blocking rules (its build drops the permission): externalGuard does the job there.
   if (TARGET === 'orion') { dnrWorks = false; return; }
@@ -1597,7 +1662,7 @@ async function externalGuard(host) {
     dnrWorks ??= (await chrome.storage.local.get('dnrWorks')).dnrWorks ?? !!chrome.declarativeNetRequest?.updateDynamicRules;
     if (dnrWorks) return null;
   }
-  const s = await chrome.storage.local.get(['data', 'localConfig', 'shell']);
+  const s = await chrome.storage.local.get(['data', 'localConfig', 'shell', 'settings']);
   const { config } = await effective({ data: s.data ?? {}, localConfig: s.localConfig });
   if (!config.blockOutboundLinks) return null;
   const allowed = allowedDomains(config, signingIn(s)).some((d) => host === d || host.endsWith(`.${d}`));

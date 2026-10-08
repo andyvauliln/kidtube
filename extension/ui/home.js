@@ -40,13 +40,13 @@ async function draw() {
   root.replaceChildren(grid);
 }
 
-// Parent settings: a small gear in the corner. The settings page asks for the PIN.
-const gear = document.createElement('button');
-gear.className = 'gear';
-gear.textContent = '⚙️';
-gear.title = 'Parent settings';
-gear.addEventListener('click', () => ask({ type: 'openSettings' }));
-document.body.append(gear);
+// The grown-up's way out of kid mode, top right: the PIN page, then parent mode.
+const parentBtn = document.createElement('button');
+parentBtn.className = 'parentbtn';
+parentBtn.textContent = '🔒 Parent';
+parentBtn.title = 'Parent mode (PIN)';
+parentBtn.addEventListener('click', () => ask({ type: 'parentGate' }));
+if (!forceLock) { document.body.append(parentBtn); document.body.classList.add('kidhome'); }
 
 draw();
 setInterval(draw, 30000);

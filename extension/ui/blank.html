@@ -2,20 +2,21 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KidTube</title>
-<!-- The "Blank (test)" app (lib/apps.js): a profile with this app sees only this white page on YouTube,
-     in parent mode too. The button leads to the apps page (PIN) and back to the apps header. -->
+<title>KidTube · Blank</title>
+<!-- The "Blank (test)" app (lib/apps.js): a profile with this app sees only this white page on YouTube.
+     Parent mode adds the apps header on top; the Parent | Kid switch sits top right (blank.js). -->
 <style>
-  html, body { margin: 0; height: 100%; background: #fff; color: #888; font: 16px system-ui, sans-serif; }
-  body { display: flex; align-items: flex-end; justify-content: center; }
-  div { margin: 0 16px max(32px, env(safe-area-inset-bottom)); text-align: center; }
-  p { margin: 0 0 12px; }
-  a { display: inline-block; padding: 12px 22px; border: 1px solid #ccc; border-radius: 12px; color: #444; text-decoration: none; font-size: 18px; }
+  html, body { margin: 0; min-height: 100%; background: #fff; color: #909090; font: 16px Roboto, system-ui, -apple-system, sans-serif; }
+  body { display: flex; flex-direction: column; min-height: 100vh; }
+  .top { display: flex; justify-content: flex-end; padding: 12px 16px; }
+  .page { flex: 1; display: grid; place-items: center; text-align: center; padding: 24px; }
+  @media (prefers-color-scheme: dark) { html, body { background: #0f0f0f; color: #777; } }
 </style>
 <body>
-  <div>
-    <p>Blank test app. To leave it: the apps header (PIN).</p>
-    <a href="../apps/apps.html">⬆ Apps header</a>
-  </div>
+  <div id="appHeader"></div>
+  <div class="top" id="mode"></div>
+  <div class="page"><p>Blank test app.</p></div>
+  <script src="header.js"></script>
+  <script type="module" src="blank.js"></script>
 </body>
 </html>

@@ -1,45 +1,16 @@
-// The settings view: mode, update, status, rules, the talking friend, your notes for the helper (AI),
-// the connection and the PIN. Shown in the parent screens (Settings tab) and on the options page (after its PIN).
+// The settings view (the parent screens' Settings tab): a note for the AI, update, status, rules, the talking friend
+// and the PIN. Everything else has one place only: the account, the GitHub connection and the settings file are in
+// the apps header, Parent | Kid in the toolbar, the helper's prompt in the Prompt tab.
 import { hashPin } from '../lib/pin.js';
 import { say, listen, recordAnswer, transcribeAnswer, FREE_LISTEN_MODELS, PAID_LISTEN_MODELS } from '../ui/voice.js';
 import { ask as send } from '../lib/ask.js';
-import { el as make, noteInput, noteBox, promptNotesBox } from '../parent/kit.js';
+import { el as make, noteBox } from '../parent/kit.js';
 
 const MARKUP = `
   <section class="ainote">
-    <h2>Settings</h2>
-    <p class="muted">Ask the AI for any change: to the app, the rules or how the helper plans. Your notes wait here; ↻ Update sends them, and the AI on the server starts on them within a minute (a change to the app comes as a new version).</p>
+    <h2>Ask the AI</h2>
+    <p class="muted">For any change: to the app, the rules or how the helper plans. Your notes wait here; ↻ Update sends them, and the AI on the server starts on them within a minute (a change to the app comes as a new version).</p>
     <div id="aiNote"></div>
-  </section>
-
-  <section id="profilesSection">
-    <h2>Apps and accounts</h2>
-    <p class="muted" id="profileNow"></p>
-    <p class="muted">Each YouTube account has its own apps; each app its own lists, rules, notes and helper. Another account or app: go back to the apps header on YouTube, sign in there and open or create the app.</p>
-    <a class="button" href="../apps/apps.html">⬆ Apps header</a>
-  </section>
-
-  <section>
-    <h2>Mode</h2>
-    <p class="muted" id="account"></p>
-    <label class="check rules-like"><input type="radio" name="mode" value="kid"> <span><b>Kid mode</b>: his list, with all the rules</span></label>
-    <label class="check rules-like"><input type="radio" name="mode" value="parent"> <span><b>Parent mode</b>: YouTube opens your screens (Today, Planned, History, Prompt, Settings); nothing is blocked or counted</span></label>
-    <p class="hint">Parent mode stays on until you switch back to kid mode (the “Kid mode” button at the top of your screens). Until then the tablet is open for him too.</p>
-    <button class="primary" id="saveMode">Save mode</button>
-    <button id="openParent">Open parent screens</button>
-    <p id="modeOut" class="muted"></p>
-  </section>
-
-  <section>
-    <h2>Your changes to the helper’s prompt</h2>
-    <div id="promptNotes"><p class="muted">Loading…</p></div>
-  </section>
-
-  <section>
-    <h2>Message to the helper</h2>
-    <p class="muted">The daily helper reads this on its next run (every night) and keeps it in mind until a newer message says otherwise. For example: “This week: plus and minus up to 10”, “Today something about friendship”, “At least 3 videos in Russian”.</p>
-    <div id="wishBox"></div>
-    <div id="wishes"></div>
   </section>
 
   <section>
@@ -153,30 +124,9 @@ const MARKUP = `
     <p id="rulesOut" class="muted"></p>
   </section>
 
-  <section id="watched">
-    <h2>What he watched</h2>
-    <p class="muted">History by day, today’s list and the planned videos are in the parent screens: <b>Open parent screens</b> above, or switch to parent mode.</p>
-  </section>
-
-  <section>
-    <h2>Connection</h2>
-    <label for="repo">Data repo (owner/name)</label>
-    <input id="repo" placeholder="andyvauliln/kidtube-data">
-    <label for="token">GitHub token (fine-grained, this repo only, Contents: read and write)</label>
-    <input id="token" type="password" autocomplete="off" placeholder="github_pat_…">
-    <button class="primary" id="save">Save</button>
-    <span id="saveOut" class="muted"></span>
-    <p class="muted">One repo and token for every profile on this tablet; each profile has its own folder in it.</p>
-    <p class="muted">Reinstalling KidTube (a new version on Orion) erases these settings. KidTube keeps a copy on its install page and takes it back by itself after a reinstall (it opens that page). If that fails, use a file: save it once; after a reinstall, set a PIN and load the file.
-      The file holds your GitHub token: keep it on this device only.</p>
-    <button id="backup">Save settings to a file</button>
-    <label class="filebtn"><input id="restore" type="file" accept=".json,application/json" hidden><span>Load settings from a file</span></label>
-    <span id="backupOut" class="muted"></span>
-  </section>
-
   <section>
     <h2>PIN</h2>
-    <p class="muted">The same PIN for every YouTube account on this tablet.</p>
+    <p class="muted">The same PIN for every account and app on this tablet. The apps header’s account menu saves it to a file, with the GitHub connection.</p>
     <button id="changePin">Change PIN</button>
     <div id="pinForm" hidden>
       <label for="newPin">New PIN (4–8 digits)</label>
@@ -198,50 +148,13 @@ async function patchSettings(patch) {
 }
 const el = (tag, text, cls) => make(tag, cls, text);
 
-// inParent: inside the parent screens (no "Open parent screens", no pointer to them).
-// onMode(mode): called after the mode is saved, so the page can follow it.
-export function mountSettings(root, { inParent = false, onMode = () => {} } = {}) {
+export function mountSettings(root) {
   root.classList.add('settings');
   root.innerHTML = MARKUP;
   const $ = (id) => root.querySelector(`#${id}`);
-  $('openParent').hidden = inParent;
-  chrome.storage.local.get('account').then(({ account }) => {
-    $('profileNow').textContent = account ? `Now: ${account.email || account.key} · app ${account.app ?? 'kidtube'}` : 'No profile yet.';
-  });
-  $('watched').hidden = inParent;
   let voiceLang = 'en-US';
 
-  // --- mode and account ------------------------------------------------------------------------
-
-  async function renderMode() {
-    const { settings: s = {}, account } = await chrome.storage.local.get(['settings', 'account']);
-    const on = s.mode === 'parent' && (!s.parentUntil || s.parentUntil > Date.now());
-    for (const r of root.querySelectorAll('input[name=mode]')) r.checked = r.value === (on ? 'parent' : 'kid');
-    $('account').textContent = account
-      ? `Profile: ${account.email || account.name || account.key}. Every setting here, the lists and the history belong to this profile; another account or app has its own (⬆ Apps header). The PIN and the GitHub connection are the same for all.`
-      : 'No YouTube account seen yet: open YouTube once. Settings are kept per profile (YouTube account).';
-    $('modeOut').textContent = on && s.parentUntil ? `Parent mode is on until ${new Date(s.parentUntil).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.` : '';
-  }
-
-  async function saveMode() {
-    const mode = root.querySelector('input[name=mode]:checked')?.value ?? 'kid';
-    const r = await send({ type: 'setMode', mode });
-    if (!r?.ok) { $('modeOut').textContent = `Could not change the mode: ${r?.error ?? 'KidTube’s background did not answer'}`; return null; }
-    await renderMode();
-    return mode;
-  }
-  $('saveMode').addEventListener('click', async () => {
-    const mode = await saveMode();
-    if (!mode) return;
-    if (!inParent) $('modeOut').textContent = mode === 'parent' ? `${$('modeOut').textContent} Open YouTube to see your screens.` : 'Kid mode: YouTube shows his list.';
-    onMode(mode);
-  });
-  $('openParent').addEventListener('click', async () => {
-    root.querySelector('input[name=mode][value=parent]').checked = true;
-    if (await saveMode()) location.href = '../parent/parent.html';
-  });
-
-  // --- update, status, connection --------------------------------------------------------------
+  // --- update, status --------------------------------------------------------------
 
   async function renderStatus() {
     const st = await send({ type: 'status' });
@@ -282,48 +195,6 @@ export function mountSettings(root, { inParent = false, onMode = () => {} } = {}
     }
   });
 
-  $('save').addEventListener('click', async () => {
-    await patchSettings({ repo: $('repo').value.trim(), token: $('token').value.trim() });
-    $('saveOut').textContent = 'Saved. Syncing…';
-    const r = await send({ type: 'sync' });
-    $('saveOut').textContent = r?.errors?.length ? `Saved, but: ${r.errors.join('; ')}` : 'Saved and synced ✓';
-    renderStatus();
-    renderHelperNotes();
-  });
-
-  // Backup of the connection and PIN: chrome.storage is erased when the extension is removed (Orion updates).
-  const BACKUP_KEYS = ['repo', 'token', 'pinSalt', 'pinHash'];
-  $('backup').addEventListener('click', async () => {
-    const s = await getSettings();
-    const keep = Object.fromEntries(BACKUP_KEYS.filter((k) => s[k]).map((k) => [k, s[k]]));
-    const { voiceKey, geminiKey } = await chrome.storage.local.get(['voiceKey', 'geminiKey']);
-    Object.assign(keep, voiceKey ? { voiceKey } : {}, geminiKey ? { geminiKey } : {});   // the listening keys, also only on this tablet
-    const blob = new Blob([JSON.stringify({ kidtubeSettings: 1, savedAt: new Date().toISOString(), ...keep }, null, 2)], { type: 'application/json' });
-    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'kidtube-settings.json' });
-    document.body.append(a); a.click(); a.remove();
-    $('backupOut').textContent = 'Saved as kidtube-settings.json (Downloads / Files).';
-  });
-  $('restore').addEventListener('change', async (e) => {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    try {
-      const j = JSON.parse(await f.text());
-      if (j.kidtubeSettings !== 1) throw new Error('not a KidTube settings file');
-      await patchSettings(Object.fromEntries(BACKUP_KEYS.filter((k) => typeof j[k] === 'string').map((k) => [k, j[k]])));
-      const voice = Object.fromEntries(['voiceKey', 'geminiKey'].filter((k) => typeof j[k] === 'string' && j[k]).map((k) => [k, j[k]]));
-      if (Object.keys(voice).length) { await chrome.storage.local.set(voice); $('voiceKey').value = voice.voiceKey ?? $('voiceKey').value; $('geminiKey').value = voice.geminiKey ?? $('geminiKey').value; }
-      const s = await getSettings();
-      $('repo').value = s.repo ?? ''; $('token').value = s.token ?? '';
-      $('backupOut').textContent = 'Loaded. Syncing…';
-      const r = await send({ type: 'sync' });
-      $('backupOut').textContent = r?.errors?.length ? `Loaded, but: ${r.errors.join('; ')}` : 'Loaded and synced ✓ (the PIN is the one from the file)';
-      renderStatus();
-    } catch (err) {
-      $('backupOut').textContent = `Could not load it: ${err.message}`;
-    }
-    e.target.value = '';
-  });
-
   $('resetToday').addEventListener('click', async () => { await send({ type: 'resetToday' }); renderStatus(); });
 
   // The old PIN stays until the new one is saved.
@@ -345,30 +216,10 @@ export function mountSettings(root, { inParent = false, onMode = () => {} } = {}
     $('pinOut').textContent = 'New PIN saved ✓';
   });
 
-  // --- your notes for the helper (AI): standing changes to its prompt, and a message ----------------
-
-  async function renderHelperNotes() {
-    const h = await send({ type: 'helperData' });
-    if (!root.isConnected) return;
-    if (!h?.ok) { $('promptNotes').replaceChildren(el('p', 'Could not load your changes to the prompt.', 'err')); return; }
-    $('promptNotes').replaceChildren(...promptNotesBox(h.notes, renderHelperNotes));
-    if (h.messages?.length) {
-      const ul = el('ul', null, 'notes');
-      ul.append(...h.messages.slice(0, 5).map((m) => el('li', `${m.at.slice(0, 10)}: ${m.aboutList ? `(${m.aboutList}) ` : ''}${m.text}`)));
-      $('wishes').replaceChildren(el('h3', 'Messages it keeps in mind'), ul);
-    } else $('wishes').replaceChildren();
-  }
   // The note for the AI at the top, like on every tab (list "settings": anything about the app and the rules).
   send({ type: 'parentData' }).then((d) => {
     if (root.isConnected) $('aiNote').replaceChildren(noteBox({ list: 'settings' }, d?.lists?.settings ?? [], 'Note for the AI about the app and settings'));
   });
-
-  const wish = noteInput({
-    placeholder: 'What should he watch or learn?', saveLabel: 'Send to the helper',
-    failText: 'Could not send it. Check the connection (GitHub) below and try again.',
-    save: async (text) => (await send({ type: 'wish', text }))?.ok,
-  });
-  $('wishBox').replaceChildren(...wish.nodes);
 
   // --- Rules (parent-config.json) -------------------------------------------------------------
 
@@ -561,6 +412,5 @@ export function mountSettings(root, { inParent = false, onMode = () => {} } = {}
   });
 
   // --- first draw ---------------------------------------------------------------------------------
-  getSettings().then((s) => { $('repo').value = s.repo ?? ''; $('token').value = s.token ?? ''; });
-  return Promise.all([renderStatus(), renderRules(), renderMode(), renderHelperNotes()]);
+  return Promise.all([renderStatus(), renderRules()]);
 }

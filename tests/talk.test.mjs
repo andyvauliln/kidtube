@@ -124,9 +124,9 @@ test('parent watch: any video in its own tab, skipping allowed, no counting, end
   assert.equal(fake.store.parentPass, null);
 });
 
-test('the gear opens the parent settings page', async () => {
-  await send({ type: 'openSettings' });
-  assert.equal(fake.nav.created.at(-1), 'ext://options/options.html');
+test('the kid’s 🔒 Parent opens the PIN page in his tab', async () => {
+  await send({ type: 'parentGate' });
+  assert.equal(fake.nav.updates.at(-1), 'ext://apps/apps.html?for=parent');
 });
 
 test('must-watch videos first: the others are greyed and can’t be opened until ⭐ ones are watched', async () => {

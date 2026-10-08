@@ -128,7 +128,7 @@
     route();
   }
 
-  // --- in-page screens: the same screens as ui/home.html, strip.html, cover.html, badge.html --------------
+  // --- in-page screens: the same screens as ui/home.html, strip.html, cover.html ------------------------------
   // In a closed shadow root, so YouTube's CSS can't reach them. Each panel is attached once and redrawn only
   // when what it shows changes, so a list keeps its scroll position.
   const PAGE_CSS = `
@@ -153,26 +153,19 @@
     h1 { font-size: 28px; margin: 16px 0 8px; }
     p { margin: 4px 0; color: #8a7f70; font-weight: 500; font-size: 18px; }
     a { color: #6c63ff; font-size: 20px; display: inline-block; margin-top: 16px; }
-    .gear { position: fixed; right: 12px; bottom: 12px; width: 48px; height: 48px; border: 0; border-radius: 50%; background: #ffffffdd;
-      font-size: 24px; box-shadow: 0 2px 6px #0003; }
+    .parentbtn { position: fixed; right: 12px; top: 12px; height: 36px; padding: 0 14px; border: 0; border-radius: 18px; background: #ffffffe0;
+      color: #6b6257; font: 600 14px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; box-shadow: 0 1px 4px #0002; z-index: 1; }
+    .home .grid { padding-top: 60px; }
     .bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px 0; }
-    .bar .gear { position: static; margin-left: auto; flex: none; }
+    .bar .parentbtn { position: static; margin-left: auto; flex: none; }
     .homebtn { border: 0; border-radius: 14px; background: #ff7a3d; color: #fff; font: inherit; font-size: 18px; padding: 10px 18px; flex: none; }
     .homebtn:disabled { background: #d9d2c7; }
     .wait { color: #8a7f70; font-weight: 500; }
     .locked .grid .card { filter: grayscale(1); opacity: .45; pointer-events: none; }
-    .badge { background: #1b5e20; color: #fff; display: grid; place-items: center; font-size: 14px; border-radius: 8px; }
-    .header { top: 0; left: 0; right: 0; background: #fff; color: #222; border-bottom: 1px solid #ddd; padding: 8px 12px;
-      font: 500 15px/1.35 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; user-select: text; -webkit-user-select: text; }
-    .header .line { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .header .line + .line { margin-top: 6px; }
-    .header b { font-weight: 700; }
-    .header .who { flex: 1 1 auto; min-width: 0; color: #444; }
-    .header button, .header select { border: 1px solid #ccc; border-radius: 10px; padding: 6px 12px; font: inherit; background: #fff; color: #222; }
-    .header button.go { background: #ff7a3d; border-color: #ff7a3d; color: #fff; font-weight: 600; }
-    .header .err { color: #b3261e; }
-    .lockcover { inset: 0; background: #efeaff; display: grid; place-items: center; text-align: center; padding: 24px; }
-    .lockcover button { margin-top: 20px; border: 0; border-radius: 14px; padding: 12px 20px; font: inherit; background: #6c63ff; color: #fff; }
+    .lockcover { inset: 0; background: #f4f2fb; display: grid; place-items: center; text-align: center; padding: 24px; }
+    .lockcard { background: #fff; border-radius: 24px; padding: 36px 28px 28px; max-width: 440px; box-shadow: 0 12px 40px #0000001a; }
+    .lockcard p { font-size: 16px; }
+    .lockcover button { margin-top: 24px; height: 48px; border: 0; border-radius: 24px; padding: 0 28px; font: inherit; background: #0f0f0f; color: #fff; }
   `;
   let ui = null;
   function shadow() {
@@ -201,11 +194,6 @@
       if (src === 'ui/home.html') fillHome(p);
       else if (src === 'ui/home.html?locked=1') fillLock(p);
       else if (src === 'ui/strip.html') fillStrip(p);
-      else if (src === 'ui/badge.html') {
-        p.classList.add('badge');
-        p.textContent = 'Parent view ▸ KidTube';
-        p.addEventListener('click', () => ask({ type: 'openParent' }));
-      }
     } else shadow();
     return p;
   }
@@ -214,6 +202,9 @@
     const t = setInterval(p.refresh, ms);
     p.stop = () => clearInterval(t);
   }
+
+  // The grown-up's way out of kid mode: the PIN page, then parent mode (as ui/home.js and ui/strip.html).
+  const parentButton = () => Object.assign(button('parentbtn', '🔒 Parent', () => ask({ type: 'parentGate' })), { title: 'Parent mode (PIN)' });
 
   function cards(videos, small) {
     const grid = el('div', 'grid');
@@ -255,7 +246,7 @@
   function fillHome(p) {
     p.classList.add('home');
     const body = el('div');
-    p.append(body, button('gear', '⚙️', () => ask({ type: 'openSettings' })));
+    p.append(body, parentButton());
     let shown = null;
     p.refresh = async () => {
       const st = await ask({ type: 'state' });
@@ -282,7 +273,7 @@
     const home = button('homebtn', '🏠 Home', () => ask({ type: 'goHome' }));
     const wait = el('span', 'wait');
     const bar = el('div', 'bar');
-    bar.append(home, wait, button('gear', '⚙️', () => ask({ type: 'openSettings' })));
+    bar.append(home, wait, parentButton());
     const body = el('div');
     p.append(bar, body);
     let shown = null;
@@ -305,10 +296,32 @@
     place(frame('lock', 'ui/home.html?locked=1'), 0, 0, innerWidth, innerHeight);
   }
 
-  // The apps header: no app runs (state.shell.on), so this is plain YouTube, where the parent signs in or switches
-  // the account, with KidTube's header on top: who is signed in, the GitHub connection, and that email's apps.
+  // The apps header (ui/header.js) sits above YouTube where no app runs (state.shell.on: plain YouTube, where the
+  // parent signs in or switches the account) and in parent mode. Kid mode has no header.
   // Locked (an app stopped because YouTube's account changed): YouTube is covered until a grown-up's PIN.
-  let shell = null, headerBox = null, lockBox = null, headerKey = '', headerBusy = false;
+  let shell = null, lockBox = null, headerHost = null, header = null, headerSize = null;
+  const isDark = () => document.documentElement.hasAttribute('dark') || document.documentElement.hasAttribute('darker-dark-theme');
+  function showHeader() {
+    if (!headerHost) {
+      headerHost = document.createElement('div');
+      headerHost.id = 'kidtube-header';
+      headerHost.style.cssText = `position:fixed!important;top:0!important;left:0!important;right:0!important;z-index:${Z}!important;display:block!important;margin:0!important`;
+      header = globalThis.KidTubeHeader.mount(headerHost, { dark: isDark() });
+      headerSize = new ResizeObserver(() => document.documentElement.style.setProperty('--kidtube-h', `${headerHost?.offsetHeight ?? 0}px`));
+      headerSize.observe(headerHost);
+    }
+    if (!headerHost.isConnected) document.documentElement.appendChild(headerHost);
+    document.documentElement.classList.add('kidtube-shell');
+  }
+  function hideHeader() {
+    if (!headerHost) return;
+    header.destroy(); headerSize.disconnect(); headerHost.remove();
+    header = headerHost = headerSize = null;
+    document.documentElement.classList.remove('kidtube-shell');
+    document.documentElement.style.removeProperty('--kidtube-h');
+  }
+  new MutationObserver(() => header?.setDark(isDark())).observe(document.documentElement, { attributes: true, attributeFilter: ['dark', 'darker-dark-theme'] });
+
   function plainYouTube() {
     Object.keys(frames).forEach(drop);
     page = null;
@@ -318,87 +331,25 @@
   function showShell() {
     plainYouTube();
     if (shell.locked) {
-      headerBox?.remove(); headerBox = null;
-      document.documentElement.classList.remove('kidtube-shell');
+      hideHeader();
       if (!lockBox) {
         lockBox = el('div', 'panel lockcover');
         shadow().append(lockBox);
       } else shadow();
-      const inner = el('div');
+      const inner = el('div', 'lockcard');
       inner.append(el('div', 'big', '🔒'), el('h1', '', 'Ask a grown-up'), el('p', '', shell.why || 'KidTube is locked.'),
-        button('', 'Grown-up: unlock', () => ask({ type: 'openApps' })));
+        button('', 'Unlock with the PIN', () => ask({ type: 'openApps' })));
       lockBox.replaceChildren(inner);
       silenceVideos();
       return;
     }
     lockBox?.remove(); lockBox = null;
-    if (!headerBox) {
-      headerBox = el('div', 'panel header');
-      shadow().append(headerBox);
-      headerKey = '';
-      new ResizeObserver(() => document.documentElement.style.setProperty('--kidtube-h', `${headerBox?.offsetHeight ?? 0}px`)).observe(headerBox);
-    } else shadow();
-    document.documentElement.classList.add('kidtube-shell');
-    refreshHeader();
+    showHeader();
   }
   function hideShell() {
-    headerBox?.remove(); lockBox?.remove();
-    headerBox = lockBox = null;
-    document.documentElement.classList.remove('kidtube-shell');
-    document.documentElement.style.removeProperty('--kidtube-h');
+    lockBox?.remove(); lockBox = null;
+    hideHeader();
     (document.head || document.documentElement).append(hidden);
-  }
-  async function refreshHeader(again = false) {
-    if (!headerBox || headerBusy) return;
-    headerBusy = true;
-    try {
-      const h = await ask({ type: 'header', refresh: again });
-      if (h?.ok && headerBox) drawHeader(h);
-    } finally { headerBusy = false; }
-  }
-  function drawHeader(h, note = '') {
-    const key = JSON.stringify([h, note]);
-    if (key === headerKey) return;
-    headerKey = key;
-    const msg = el('span', 'err', note);
-    const run = async (m) => {
-      msg.textContent = '';
-      const r = await ask(m);
-      if (!r?.ok) drawHeader(h, r?.error ?? 'That didn’t work. Try again.');
-    };
-    const top = el('div', 'line');
-    const who = el('span', 'who');
-    top.append(el('b', '', 'KidTube'), who);
-    const lines = [top];
-    if (!h.signedIn) {
-      who.textContent = h.seen ? 'Sign in to YouTube to use your apps.' : 'Checking the YouTube account…';
-      if (h.seen) top.append(button('go', 'Sign in', () => { location.href = h.switchAccount; }));
-    } else {
-      who.textContent = h.email ? `Signed in as ${h.email}` : 'Signed in, but YouTube doesn’t show the email yet…';
-      top.append(button('', 'Switch account', () => { location.href = h.switchAccount; }), button('', 'Sign out', () => { location.href = h.signOut; }));
-      const apps = el('div', 'line');
-      if (!h.github.connected) {
-        apps.append(el('span', '', 'Connect GitHub (where every app keeps its data) to see this account’s apps.'),
-          button('go', 'Connect GitHub', () => ask({ type: 'openApps', github: true })));
-      } else if (h.email) {
-        const mine = h.apps.filter((a) => a.has), rest = h.apps.filter((a) => !a.has);
-        apps.append(el('span', '', mine.length ? 'Apps:' : 'No app for this account yet.'));
-        for (const a of mine) {
-          apps.append(button('go', `▶ ${a.label}`, () => run({ type: 'openApp', app: a.id, mode: 'kid' })));
-          if (a.parentScreens) apps.append(button('', `${a.label}: parent`, () => run({ type: 'openApp', app: a.id, mode: 'parent' })));
-        }
-        if (rest.length) {
-          const pick = el('select');
-          for (const a of rest) { const o = el('option', '', a.label); o.value = a.id; pick.append(o); }
-          apps.append(pick, button('', '+ Create', () => run({ type: 'openApp', app: pick.value, create: true })));
-        }
-        if (h.error) msg.textContent = h.error;
-      }
-      lines.push(apps);
-    }
-    const last = el('div', 'line');
-    last.append(msg);
-    headerBox.replaceChildren(...lines, last);
   }
 
   // allowSkip off: no jumping forward and no speed above 1x. Going back is fine.
@@ -426,10 +377,12 @@
     if (page === 'watch') route();
   }
 
+  // A parent watching (parent mode, or a video opened from the parent screens): nothing covered, nothing counted.
+  // Parent mode also has the header.
   function showParentView() {
     [...COVERS, 'strip', 'lock', 'home'].forEach(drop);
     document.documentElement.classList.remove('kidtube-on');
-    place(frame('badge', 'ui/badge.html'), 8, 8, 230, 40);
+    if (parentOn) showHeader(); else hideHeader();
   }
   function guardSkipping(v) {
     v.addEventListener('timeupdate', () => {
@@ -452,10 +405,10 @@
       if (page !== 'watch' || vid !== videoId) { page = 'watch'; videoId = vid; drop('home'); drop('lock'); played = 0; maxReached = 0; loadRules(); }
       if (parentMode) return showParentView();
       document.documentElement.classList.add('kidtube-on');
-      drop('badge');
+      hideHeader();
       layoutWatch();
     } else {
-      if (page !== 'home') { page = 'home'; videoId = null; parentMode = false; document.documentElement.classList.add('kidtube-on'); drop('badge'); if (parentOn) ask({ type: 'openParent' }); }
+      if (page !== 'home') { page = 'home'; videoId = null; parentMode = false; document.documentElement.classList.add('kidtube-on'); hideHeader(); if (parentOn) ask({ type: 'openParent' }); }
       showHome();
       silenceVideos();
     }
@@ -534,7 +487,6 @@
   addEventListener('resize', () => (page === 'watch' ? route() : page === 'home' && showHome()));
   chrome.storage.onChanged.addListener((ch) => {
     if (ch.data || ch.localConfig || ch.parentPass || ch.settings || ch.account || ch.shell) loadRules();
-    if (shell && (ch.ytAccount || ch.settings || ch.accounts || ch.repoProfiles)) refreshHeader();
     if (ch.data || ch.watched || ch.today) for (const n of ['home', 'strip']) frames[n]?.refresh?.();
   });
   loadRules();

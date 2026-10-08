@@ -168,7 +168,7 @@ export function noteBox(target, past = [], label = 'Note for the AI', buttonInto
   return wrap;
 }
 
-// The standing instructions for the helper (Prompt tab and Settings): the list with Remove, and the input.
+// The standing instructions for the helper (the Prompt tab): the list with Remove, and the input.
 // onChange() redraws the page after one is added or removed.
 let promptDraft = '';
 export function promptNotesBox(notes, onChange) {

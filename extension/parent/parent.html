@@ -6,37 +6,30 @@
 <link rel="stylesheet" href="parent.css">
 <link rel="stylesheet" href="../settings/settings.css">
 <body>
+  <div id="appHeader"></div>
   <header>
-    <div class="top">
-      <h1>KidTube · parent</h1>
-      <a id="who" class="who" href="../apps/apps.html" title="Back to the apps header on YouTube: another account or app"></a>
-      <span class="grow"></span>
-      <span id="ver" class="ver"></span>
-      <span id="run" class="run" hidden></span>
-      <button id="kid" class="ghost">Kid mode</button>
-      <a id="settings" class="icon" href="#settings" title="Settings">⚙️</a>
+    <div class="toolbar">
+      <nav class="tabs" id="tabs">
+        <a href="#today" data-tab="today">Today <b id="nToday"></b></a>
+        <a href="#planned" data-tab="planned">Planned <b id="nPlanned"></b></a>
+        <a href="#history" data-tab="history">History</a>
+        <a href="#context" data-tab="context">Context</a>
+        <a href="#prompt" data-tab="prompt">Prompt</a>
+        <a href="#settings" data-tab="settings">Settings</a>
+      </nav>
+      <div class="tools">
+        <span id="run" class="run" hidden></span>
+        <span id="ver" class="ver"></span>
+        <span id="mode"></span>
+      </div>
     </div>
-    <nav class="tabs" id="tabs" hidden>
-      <a href="#today" data-tab="today">Today <b id="nToday"></b></a>
-      <a href="#planned" data-tab="planned">Planned <b id="nPlanned"></b></a>
-      <a href="#history" data-tab="history">History</a>
-      <a href="#context" data-tab="context">Context</a>
-      <a href="#prompt" data-tab="prompt">Prompt</a>
-      <a href="#settings" data-tab="settings">Settings</a>
-    </nav>
   </header>
 
   <main>
-    <section id="gate" class="box" hidden>
-      <h2>Parent mode is off</h2>
-      <p class="muted" id="gateText">Enter the PIN to turn it on.</p>
-      <input id="pin" class="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8">
-      <button class="primary" id="pinGo">Turn on parent mode</button>
-      <p class="err" id="pinErr"></p>
-    </section>
     <div id="view"></div>
   </main>
   <script src="boot.js"></script>
+  <script src="../ui/header.js"></script>
   <script type="module" src="parent.js"></script>
 </body>
 </html>

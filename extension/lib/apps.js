@@ -5,6 +5,8 @@ export const APPS = {
   kidtube: {
     id: 'kidtube',
     label: 'KidTube (YouTube)',
+    // The apps header: the tile's color and glyph (play, square), and one line in "Add an app".
+    color: '#ff3b30', glyph: 'play', about: 'His own video list on YouTube, with time limits and a talking friend.',
     sites: ['youtube.com'],
     // Context documents (parent mode → Context): context/<id>.md, written by the helper. Same list as agent/config.json apps.kidtube.contextDocs.
     contextDocs: ['kid', 'strategy', 'math', 'letters', 'world'],
@@ -14,6 +16,7 @@ export const APPS = {
   blank: {
     id: 'blank',
     label: 'Blank (test: a white page)',
+    color: '#8e8e93', glyph: 'square', about: 'A test app: YouTube shows a white page.',
     sites: [],
     page: 'ui/blank.html',
     sync: false,

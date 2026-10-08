@@ -1,7 +1,7 @@
 // Parent mode: today's list, the planned videos and what he watched, each video's details and its quiz.
 // Changes go to the background (sw.js → planChange), which applies them on this tablet at once and logs them for the helper.
 import { ask } from '../lib/ask.js';
-import { checkPin } from '../lib/pin.js';
+import { APPS } from '../lib/apps.js';
 import { say, listen, recordedUrl } from '../ui/voice.js';
 import { el, btn, toast, runNow, noteInput, noteBox, promptNotesBox, hooks } from './kit.js';
 import { mountSettings } from '../settings/settings.js';
@@ -67,67 +67,23 @@ async function showRun(fresh = false) {
 hooks.afterUndo = () => refresh();
 hooks.afterRun = () => showRun();
 
-// --- loading and the PIN ---------------------------------------------------------------------------
+// --- the apps header (ui/header.js), the Parent | Kid switch, loading ----------------------------------
+globalThis.KidTubeHeader.mount($('appHeader'));
+$('mode').replaceChildren(globalThis.KidTubeHeader.modeSwitch('parent'));
+
 async function refresh() {
   const r = await ask({ type: 'parentData' });
   if (!r || r.ok === false) { view.replaceChildren(el('p', 'err', 'KidTube’s background did not answer. Close this page and open it again.')); return; }
   data = r;
-  // These are KidTube's screens: a profile with another app goes to the apps page.
-  if (r.app && r.app !== 'kidtube') { location.replace('../apps/apps.html'); return; }
-  $('who').textContent = `👤 ${r.account?.email || r.account?.name || 'no account'} · ⬆ Apps`;
-  if (!r.parentMode) return showGate();
-  $('gate').hidden = true;
-  $('tabs').hidden = false;
-  $('settings').href = '#settings';
+  // These are KidTube's screens: a profile with another app goes to that app's page.
+  if (r.app && r.app !== 'kidtube') { location.replace(chrome.runtime.getURL(APPS[r.app]?.page ?? 'apps/apps.html')); return; }
+  // Parent mode is off (switched off in another tab, or an old link): the PIN page turns it on.
+  if (!r.parentMode) { location.replace('../apps/apps.html?for=parent'); return; }
   if ($('run').hidden) { $('run').hidden = false; showRun(); }
   $('nToday').textContent = r.today.filter((v) => !v.watchedAt).length;
   $('nPlanned').textContent = r.planned.length;
   render();
 }
-
-async function showGate() {
-  $('tabs').hidden = true;
-  $('run').hidden = true;
-  view.replaceChildren();
-  $('gate').hidden = false;
-  $('settings').href = '../options/options.html';   // parent mode is off: the settings page asks for the PIN itself
-  const { settings = {} } = await chrome.storage.local.get('settings');
-  if (!settings.pinHash) {
-    $('gateText').textContent = 'Set a parent PIN in the settings (⚙️) first.';
-    $('pin').hidden = $('pinGo').hidden = true;
-  }
-  $('pin').focus();
-}
-// Says what happened at every step: on the tablet there is no console to see why it stayed off.
-$('pinGo').addEventListener('click', async () => {
-  const go = $('pinGo'), out = $('pinErr');
-  if (go.disabled) return;
-  go.disabled = true;
-  out.className = 'muted';
-  out.textContent = 'Checking the PIN…';
-  try {
-    const r = await checkPin($('pin').value.trim());
-    $('pin').value = '';
-    out.className = 'err';
-    if (!r.ok) { out.textContent = r.error; return; }
-    out.className = 'muted';
-    out.textContent = 'PIN is right. Turning on…';
-    const res = await ask({ type: 'setMode', mode: 'parent' });
-    out.className = 'err';
-    if (!res) { out.textContent = 'PIN is right, but KidTube’s background did not answer. Close this page and open it again.'; return; }
-    if (!res.ok) { out.textContent = `PIN is right, but it could not turn on: ${res.error ?? 'refused'}`; return; }
-    await refresh();
-    if (data?.parentMode) { out.textContent = ''; return; }
-    out.textContent = `PIN is right and it was turned on, but it reads as off again (mode: ${data?.mode ?? '?'}, until: ${data?.parentUntil ? new Date(data.parentUntil).toLocaleString() : 'no limit'}, now: ${new Date().toLocaleString()}, account: ${data?.account?.key ?? 'none'}). Please send a screenshot.`;
-  } catch (e) {
-    out.className = 'err';
-    out.textContent = `Could not turn on: ${e?.message ?? e}`;
-  } finally {
-    go.disabled = false;
-  }
-});
-$('pin').addEventListener('keydown', (e) => e.key === 'Enter' && $('pinGo').click());
-$('kid').addEventListener('click', () => ask({ type: 'kidHome' }));
 
 // --- routing: #today, #planned, #history, #prompt, #settings, #v=<videoId> ----------------
 const TABS = ['today', 'planned', 'history', 'context', 'prompt', 'settings'];
@@ -283,7 +239,7 @@ function row(v, where) {
 
 function syncLine() {
   const bits = [];
-  if (!data.hasToken) bits.push('No GitHub token for this account yet: changes stay on this tablet (Settings → Connection).');
+  if (!data.hasToken) bits.push('No GitHub token for this account yet: changes stay on this tablet (the header’s account menu → GitHub connection).');
   else if (data.waiting) bits.push(`${data.waiting} change${data.waiting > 1 ? 's' : ''} waiting to upload.`);
   if (data.sync?.errors?.length) bits.push(`Sync problem: ${data.sync.errors[0]}`);
   else if (data.sync?.notes?.length) bits.push(data.sync.notes[0]);
@@ -368,7 +324,7 @@ async function renderPrompt() {
       ? `Claude Code (${run.model}) reads the prompt below and does the work with its toolkit${run.maxTurns ? `, in up to ${run.maxTurns} steps` : ''}.`
       : 'The fixed program (agent/run.mjs) does the work with OpenRouter text models.'}${run.fallbackToNode ? ' If Claude can’t run and nothing was saved that day, the backup program does the same steps with OpenRouter models.' : ''}`));
   } else {
-    howBody.push(el('p', 'muted', h.hasToken ? 'The helper hasn’t published its description yet. It does on its next run.' : 'Needs the GitHub token for this account (Settings → Connection).'));
+    howBody.push(el('p', 'muted', h.hasToken ? 'The helper hasn’t published its description yet. It does on its next run.' : 'Needs the GitHub token for this account (the header’s account menu → GitHub connection).'));
   }
   howBody.push(el('p', 'muted', h.lastRunAt ? `Last run: ${new Date(h.lastRunAt).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}. It had read the tablets up to ${h.processedThrough ? new Date(h.processedThrough).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—'}.` : 'No run seen yet.'));
   if (h.runs?.length) {
@@ -497,7 +453,7 @@ async function renderContext() {
 function renderSettings() {
   const box = el('div');
   view.replaceChildren(box);
-  mountSettings(box, { inParent: true, onMode: () => refresh() });
+  mountSettings(box);
 }
 
 // --- one video ---------------------------------------------------------------------------------------

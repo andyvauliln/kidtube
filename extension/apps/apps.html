@@ -2,49 +2,45 @@
 <html lang="en">
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KidTube apps</title>
-<link rel="stylesheet" href="../parent/parent.css">
-<link rel="stylesheet" href="../settings/settings.css">
+<title>KidTube · grown-up</title>
+<!-- The one PIN page (apps.js): parent mode (?for=parent), unlocking a locked YouTube (?for=unlock),
+     the first PIN before kid mode (?for=kid) and the extension's options (?for=settings). -->
 <style>
-  main { max-width: 680px; padding-top: 16px; }
-  h1 { margin-bottom: 4px; }
-  .box { margin-top: 12px; }
-  .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
-  .ok { color: #1b5e20; }
-  .foot { margin-top: 20px; }
+  :root { --bg: #f4f2fb; --card: #fff; --ink: #0f0f0f; --muted: #606060; --line: #e5e5e5; --bad: #c5221f; --blue: #065fd4; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body { background: var(--bg); color: var(--ink); font: 400 16px/1.45 Roboto, system-ui, -apple-system, "Segoe UI", sans-serif;
+    display: grid; place-items: center; min-height: 100vh; padding: 24px 16px; -webkit-tap-highlight-color: transparent; }
+  main { width: 100%; max-width: 400px; text-align: center; }
+  .card { background: var(--card); border-radius: 24px; padding: 32px 24px 24px; box-shadow: 0 12px 40px #0000001a; }
+  .lock { width: 56px; height: 56px; border-radius: 50%; margin: 0 auto 12px; display: grid; place-items: center; font-size: 26px; background: #f2f2f2; }
+  h1 { font-size: 22px; margin: 0 0 4px; font-weight: 600; }
+  p { margin: 0; color: var(--muted); font-size: 15px; }
+  form { margin-top: 20px; display: grid; gap: 10px; }
+  input { font: inherit; font-size: 28px; letter-spacing: 10px; text-align: center; height: 56px; border-radius: 12px; border: 1px solid var(--line);
+    width: 100%; background: #fff; color: var(--ink); }
+  input:focus { outline: 2px solid var(--blue); outline-offset: -1px; border-color: transparent; }
+  input::placeholder { letter-spacing: normal; font-size: 15px; color: #9a9a9a; }
+  button { font: inherit; font-weight: 500; height: 48px; border: 0; border-radius: 24px; background: var(--ink); color: #fff; cursor: pointer; margin-top: 6px; }
+  button:disabled { opacity: .5; }
+  .err { color: var(--bad); min-height: 1.4em; font-size: 14px; }
+  .foot { margin-top: 16px; font-size: 13px; }
+  .foot a { color: var(--muted); }
 </style>
 <body>
 <main>
-  <h1>KidTube apps</h1>
-  <p class="muted">The apps header on YouTube: sign in there, then open or create an app for that account. One PIN and one GitHub connection for every account and app on this tablet.</p>
-
-  <section id="gate" class="box" hidden>
-    <h2 id="gateTitle">Enter PIN</h2>
-    <input id="pin" class="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8">
-    <input id="pin2" class="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="repeat" hidden>
-    <button class="primary" id="pinGo">OK</button>
-    <p class="err" id="pinErr"></p>
-  </section>
-
-  <div id="main" hidden>
-    <section class="box">
-      <h2>Now</h2>
-      <p id="now" class="muted"></p>
-      <div class="actions"><button class="primary" id="leave">⬆ Show the apps header on YouTube</button></div>
-    </section>
-
-    <section class="box" id="github">
-      <h2>GitHub</h2>
-      <p class="muted">Every app keeps its data in one GitHub repo: a folder per account and app (for example <code>kidtube/ann/</code>). With the connection the header finds the apps an account already has.</p>
-      <label for="repo">Data repo (owner/name)</label>
-      <input id="repo" placeholder="andyvauliln/kidtube-data">
-      <label for="token">GitHub token (fine-grained, this repo only, Contents: read and write)</label>
-      <input id="token" type="password" autocomplete="off" placeholder="github_pat_…">
-      <div class="actions"><button class="primary" id="save">Save and check</button></div>
-      <p id="saveOut" class="muted"></p>
-    </section>
-    <p class="foot"><a href="../options/options.html">⚙️ Settings of the current app</a></p>
+  <div class="card">
+    <div class="lock" aria-hidden="true">🔒</div>
+    <h1 id="title">Parent mode</h1>
+    <p id="lead">Enter the parent PIN.</p>
+    <form id="form" hidden>
+      <input id="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8" aria-label="PIN">
+      <input id="pin2" type="password" inputmode="numeric" autocomplete="off" maxlength="8" placeholder="the same PIN again" aria-label="The same PIN again" hidden>
+      <button id="go" type="submit">Continue</button>
+      <p class="err" id="err" role="alert"></p>
+    </form>
   </div>
+  <p class="foot"><a href="../ui/check.html" target="_blank">Check this browser</a> (if a KidTube screen stays blank)</p>
 </main>
 <script src="../parent/boot.js"></script>
 <script type="module" src="apps.js"></script>
