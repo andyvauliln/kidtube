@@ -866,6 +866,13 @@ async function handle(msg, sender) {
         return { ok: true };
       }).then((r) => { if (r.ok) sync(); return r; });
 
+    case 'heldNotes': // the notes card: every note for the AI still on this tablet (Apply notes sends them)
+      if (!fromExtensionPage(sender)) return { ok: false };
+      return withState((s) => heldNotes(s));
+    case 'dropNote': // the notes card: ✕ on one note (id), or Clear all (all: true); only notes not sent yet
+      if (!fromExtensionPage(sender)) return { ok: false };
+      return withState((s) => dropHeld(s, msg.all ? null : String(msg.id ?? '')));
+
     case 'plan':
       if (!fromExtensionPage(sender)) return { ok: false };
       return withState((s) => planChange(s, msg)).then((r) => { if (r?.ok) sync(); return r; });
@@ -955,6 +962,33 @@ function dropDoneNotes(notes, doneIds) {
     if (!box) continue;
     for (const k of Object.keys(box)) { box[k] = keep(box[k]); if (!box[k].length) delete box[k]; }
   }
+}
+
+// The notes card (parent screens): the notes still waiting on this tablet, from every tab, oldest first.
+async function heldNotes(s) {
+  const { queue } = await effective(s);
+  const recs = records(await getMemory(), s.planLog, queue);
+  const titleOf = (id) => cardOf(id, queue.videos.find((v) => v.videoId === id) ?? {}, recs[id] ?? {}, s).title ?? '';
+  const notes = s.outbox.filter((e) => e.held && (e.comment || e.text)).map((e) => ({
+    id: e.eventId, at: e.at, type: e.type, text: e.comment ?? e.text,
+    ...(e.list ? { list: e.list } : {}), ...(e.doc ? { doc: e.doc } : {}),
+    ...(e.videoId ? { videoId: e.videoId, title: titleOf(e.videoId) } : {}),
+  }));
+  return { ok: true, notes };
+}
+
+// Deletes notes that were not sent yet (id, or all of them when id is null): from the outbox and the tabs' lists.
+function dropHeld(s, id) {
+  const gone = new Set(s.outbox.filter((e) => e.held && (id == null || e.eventId === id)).map((e) => e.eventId));
+  if (!gone.size) return { ok: false };
+  s.outbox = s.outbox.filter((e) => !gone.has(e.eventId));
+  const n = s.notes ?? {};
+  for (const box of [n.lists, n.videos]) {
+    for (const k of Object.keys(box ?? {})) { box[k] = box[k].filter((x) => !gone.has(x.id)); if (!box[k].length) delete box[k]; }
+  }
+  if (n.contextNotes) n.contextNotes = n.contextNotes.filter((x) => !gone.has(x.eventId));
+  if (n.promptOps) n.promptOps = n.promptOps.filter((x) => !gone.has(x.eventId));
+  return { ok: true, removed: gone.size };
 }
 
 const getMemory = async () => (await chrome.storage.local.get('memory')).memory ?? null;

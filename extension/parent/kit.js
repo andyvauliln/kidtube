@@ -1,5 +1,5 @@
 // Pieces shared by the parent screens and the settings view: elements, buttons, the toast,
-// and the note-for-the-AI control (type or dictate, then add it, or add it and run the helper now).
+// and the notes for the AI (one 🎤 button and one notes card).
 import { ask } from '../lib/ask.js';
 import { recordAnswer, transcribeAnswer, listenKeys } from '../ui/voice.js';
 
@@ -56,134 +56,171 @@ export async function runNow() {
   return true;
 }
 
-// --- writing a note for the helper ------------------------------------------------------------------
-let dictating = null;   // the one recording in progress: { stop }
-// After ⏹ the words go to addNote(text) at once: the note joins the list (and waits for ↻ Update data).
-// Pauses don't end a note: it records until ⏹, so a long note stays one note.
-const LONG_NOTE_MINUTES = 15;
-function micButton(ta, addNote) {
-  const lang = navigator.language || 'en-US';
-  // Not btn(): that one stays disabled until its work ends, and here the work is the recording, so ⏹ couldn't be tapped.
-  const b = el('button', 'small mic', '🎤');
-  b.addEventListener('click', async (e) => {
-    e.stopPropagation();
-    if (dictating) return dictating.stop();
-    if (b.textContent === '…') return;   // still writing the last one down
-    let said = '';
-    const add = (text) => { text = text.trim(); if (text) said = said ? `${said} ${text}` : text; };
-    const finish = async () => {
-      if (!said) return;
-      const text = said;
-      said = '';
-      if (!(await addNote(text))) { ta.value = (ta.value.trim() ? ta.value.trim() + ' ' : '') + text; ta.dispatchEvent(new Event('input')); }
-    };
-    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-    const keys = await listenKeys();
-    b.classList.add('on');
-    b.textContent = '⏹';
-    const done = () => { dictating = null; b.classList.remove('on'); b.textContent = '🎤'; };
-    if (keys.gemini || keys.openrouter) {
-      // Cloud: records until you tap ⏹ (at most 5 minutes), then writes it down (free Gemini first, then OpenRouter).
-      const ctl = new AbortController();
-      dictating = { stop: () => ctl.abort() };
-      toast('Speak your note, pauses are fine. Tap ⏹ when you’re done.');
-      const audio = await recordAnswer({ seconds: 300, stopSignal: ctl.signal, silenceStop: false });
-      b.textContent = '…';
-      const heard = audio ? await transcribeAnswer(audio, { keys, lang, maxTokens: 3000,
-        instruction: 'A parent dictates a note about their child\'s videos and learning. Use punctuation.' }) : null;
-      done();
-      if (heard?.length) { add(heard[0]); return finish(); }
-      if (heard === null && !SR) return toast('Could not write it down. Use the 🎤 on the iPad keyboard instead.');
-      if (heard) return toast('Heard nothing.');
+// --- notes for the AI: one 🎤 button (bottom right) and one notes card (top of the page) ---------------
+// The 🎤 records a note about what is on the screen (where()): a tab, a video, a context document or the prompt.
+// Pauses don't end it: it records until ⏹. Then the words join the card, which lists every note still on this
+// tablet, from every tab, with ✕ and Clear all. Apply notes sends them all to the AI (the same as ↻ Update data).
+// The words are written down by Gemini (free key) or OpenRouter (Settings → keys). Only without either key
+// the browser's own speech recognition writes them, and the card says so.
+const LONG_NOTE_MINUTES = 15;   // the browser's recognition
+const CLOUD_NOTE_MINUTES = 5;   // Gemini / OpenRouter: 5 min of 16 kHz WAV is ~13 MB sent, under Gemini's 20 MB
+const TYPE_LABEL = { today: 'Today', planned: 'Planned', history: 'History', settings: 'Settings' };
+
+// where(): { list } | { videoId } | { doc, docName } | { prompt: true } — what the screen shows now.
+// docNames: context document id → its name, for the card.
+export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
+  const fab = el('button', 'notefab', '🎤');
+  fab.title = 'Record a note for the AI about this screen';
+  fab.setAttribute('aria-label', fab.title);
+  document.body.append(fab);
+  let rec = null;            // the recording in progress: { stop }
+  let writing = false;       // the recording is being written down
+  let started = 0, clock = null, notice = '', cloud = false;
+  let notes = [];
+
+  const label = (n) => n.videoId ? `Video · ${n.title || n.videoId}` : n.doc ? `Context · ${docNames[n.doc] ?? n.doc}`
+    : n.type === 'prompt' ? 'Prompt' : TYPE_LABEL[n.list] ?? 'Message';
+  const save = async (text, at = where()) => {
+    const r = at.videoId ? await ask({ type: 'note', videoId: at.videoId, comment: text })
+      : at.doc ? await ask({ type: 'contextNote', doc: at.doc, text })
+      : at.prompt ? await ask({ type: 'promptNote', action: 'add', text })
+      : await ask({ type: 'wish', list: at.list ?? 'settings', text });
+    if (!r?.ok) { toast('Could not save the note. Is parent mode still on?'); return false; }
+    notice = '';
+    card.classList.remove('open');   // the card stays while notes wait
+    await draw();
+    onSaved();
+    hooks.afterRun();
+    return true;
+  };
+
+  const typed = el('textarea');
+  typed.maxLength = 2000;
+  typed.rows = 1;
+  typed.placeholder = 'Or type a note…';
+  const addTyped = btn('Add', async () => { const t = typed.value.trim(); if (t && (await save(t))) typed.value = ''; }, 'small');
+
+  async function draw() {
+    const r = await ask({ type: 'heldNotes' });
+    notes = r?.ok ? r.notes ?? [] : notes;
+    const busy = rec || writing;
+    card.hidden = !busy && !notes.length && !card.classList.contains('open');
+    fab.textContent = rec ? '⏹' : writing ? '…' : '🎤';
+    fab.classList.toggle('on', !!rec);
+    if (card.hidden) return;
+    const head = el('div', 'nchead');
+    head.append(el('h2', '', notes.length ? `Notes for the AI · ${notes.length}` : 'Notes for the AI'));
+    const close = el('button', 'ghost small nclose', '✕');
+    close.title = 'Hide (the notes stay)';
+    close.addEventListener('click', () => { card.classList.remove('open'); if (!notes.length && !busy) card.hidden = true; else draw(); });
+    if (!notes.length && !busy) head.append(close);
+    const parts = [head];
+    if (rec) {
+      const s = Math.round((Date.now() - started) / 1000);
+      parts.push(el('p', 'recline', `● Recording ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} · pauses are fine · tap ⏹ to stop${cloud ? ` (it stops by itself at ${CLOUD_NOTE_MINUTES}:00)` : ''}`));
+    } else if (writing) parts.push(el('p', 'recline', 'Writing it down…'));
+    if (notice) parts.push(el('p', 'muted', notice));
+    if (notes.length) {
+      const ul = el('ul', 'notes nlist');
+      for (const n of notes) {
+        const li = el('li');
+        const body = el('div');
+        body.append(el('span', 'nwhere', label(n)), el('span', '', n.text));
+        const x = btn('✕', async () => {
+          if ((await ask({ type: 'dropNote', id: n.id }))?.ok) { await draw(); hooks.afterRun(); } else toast('Already sent: it can’t be removed now.');
+        }, 'ghost small');
+        x.title = 'Remove this note';
+        li.append(body, x);
+        ul.append(li);
+      }
+      parts.push(ul);
     }
-    if (!SR) { done(); return toast('Dictation isn’t available here. Use the 🎤 on the iPad keyboard instead.'); }
-    // The device's own speech recognition: keeps listening until you tap ⏹. Android ends it after a pause:
-    // it starts again and the words join the same note.
+    const row = el('div', 'noterow');
+    row.append(typed, addTyped);
+    parts.push(row);
+    if (notes.length) {
+      const acts = el('div', 'ncacts');
+      acts.append(
+        btn('Clear all', async () => {
+          if (!confirm(`Delete all ${notes.length} notes? They were not sent.`)) return;
+          await ask({ type: 'dropNote', all: true });
+          card.classList.remove('open');
+          await draw();
+          hooks.afterRun();
+        }, 'small'),
+        btn(`Apply notes (${notes.length})`, async () => { if (rec) rec.stop(); if (await runNow()) await draw(); }, 'small primary'));
+      parts.push(acts);
+    }
+    card.replaceChildren(...parts);
+  }
+
+  async function record() {
+    const lang = navigator.language || 'en-US';
+    const at = where();      // the screen where the note started, even if you move on while it records
+    const keys = await listenKeys();
+    const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    notice = '';
+    if (!keys.gemini && !keys.openrouter && !SR) {
+      card.classList.add('open');
+      notice = 'Dictation isn’t available here: type the note, or use the 🎤 on the keyboard.';
+      await draw();
+      typed.focus();
+      return;
+    }
+    card.classList.add('open');
+    started = Date.now();
+    clock = setInterval(draw, 1000);
+    const stopClock = () => { clearInterval(clock); clock = null; };
+    cloud = !!(keys.gemini || keys.openrouter);
+    if (cloud) {
+      const ctl = new AbortController();
+      rec = { stop: () => ctl.abort() };
+      await draw();
+      const audio = await recordAnswer({ seconds: CLOUD_NOTE_MINUTES * 60, stopSignal: ctl.signal, silenceStop: false });
+      rec = null;
+      stopClock();
+      writing = true;
+      await draw();
+      const heard = audio ? await transcribeAnswer(audio, { keys, lang, maxTokens: 6000,
+        instruction: 'A parent dictates a note about their child\'s videos and learning, or about the app. Use punctuation.' }) : null;
+      writing = false;
+      if (heard?.length) { await save(heard[0], at); return; }
+      notice = heard ? 'Heard nothing. Try again closer to the tablet.' : 'Gemini and OpenRouter could not write it down. Check the keys (Settings → Talking friend), or try again in a minute.';
+      await draw();
+      return;
+    }
+    // No Gemini or OpenRouter key: the browser's own recognition. Android ends it after a pause, so it starts
+    // again and the words join the same note.
+    notice = 'The browser’s speech recognition writes this note. For much better text, add a free Gemini key: Settings → Talking friend → Gemini API key.';
     const r = new SR();
     r.lang = lang;
     r.continuous = true;
     r.interimResults = false;
-    let stopped = false, failed = false;
+    let said = '', stopped = false, failed = false;
     const until = Date.now() + LONG_NOTE_MINUTES * 60000;
-    dictating = { stop: () => { stopped = true; try { r.stop(); } catch {} } };
-    r.onresult = (e) => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) add(e.results[i][0].transcript); };
-    r.onerror = (e) => {
-      if (e.error === 'no-speech' || e.error === 'aborted') return;
-      failed = true;
-      toast('Dictation stopped. You can use the 🎤 on the iPad keyboard instead.');
-    };
-    r.onend = () => {
+    rec = { stop: () => { stopped = true; try { r.stop(); } catch {} } };
+    r.onresult = (e) => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) said = `${said} ${e.results[i][0].transcript}`.trim(); };
+    r.onerror = (e) => { if (e.error !== 'no-speech' && e.error !== 'aborted') { failed = true; notice = 'Dictation stopped. Type the note, or use the 🎤 on the keyboard.'; } };
+    r.onend = async () => {
       if (!stopped && !failed && Date.now() < until) { try { r.start(); return; } catch {} }
-      done(); finish();
+      rec = null;
+      stopClock();
+      if (said) await save(said, at); else await draw();
     };
-    toast('Speak your note, pauses are fine. Tap ⏹ when you’re done.');
-    try { r.start(); } catch { done(); toast('Dictation isn’t available here. Use the 🎤 on the iPad keyboard instead.'); }
+    try { r.start(); await draw(); } catch { rec = null; stopClock(); notice = 'Dictation isn’t available here: type the note.'; await draw(); }
+  }
+
+  fab.addEventListener('click', () => {
+    if (rec) return rec.stop();
+    if (writing) return;
+    record();
   });
-  b.title = 'Dictate the note';
-  return b;
+  draw();
+  return { refresh: draw };
 }
 
-// textarea + 🎤 + "Add note" + "Add & ↻ Update data". save(text) → true when saved.
-// Notes stay on this tablet until ↻ Update data sends them all; the AI on the server then reads them within a minute.
-export function noteInput({ placeholder, value = '', onInput, save, saveLabel = 'Add note', failText = 'Could not save it. Is parent mode still on?' }) {
-  const ta = el('textarea');
-  ta.maxLength = 2000;
-  ta.placeholder = placeholder;
-  ta.value = value;
-  if (onInput) ta.addEventListener('input', () => onInput(ta.value));
-  const added = () => { toast('Added. Tap ↻ Update data to send your notes.'); hooks.afterRun(); };
-  const go = async (andRun) => {
-    if (dictating) dictating.stop();
-    const text = ta.value.trim();
-    if (!text) return andRun ? runNow() : undefined;
-    if (!(await save(text))) return toast(failText);
-    ta.value = '';
-    onInput?.('');
-    if (andRun) await runNow(); else added();
-  };
-  const dictated = async (text) => { if (!(await save(text))) { toast(failText); return false; } added(); return true; };
-  const row = el('div', 'noterow');
-  const update = btn('Add & ↻ Update data', () => go(true));
-  update.title = 'Add this note, then send all your notes to the AI now';
-  row.append(micButton(ta, dictated), btn(saveLabel, () => go(false), 'primary'), update);
-  return { ta, row, nodes: [ta, row] };
-}
-
-// "📝 Note for the AI" at the top of a tab: a button that opens the note control, and the notes so far.
-// target: { list } (a whole tab) or { videoId }. buttonInto: put the button there instead (a video's actions).
-export function noteBox(target, past = [], label = 'Note for the AI', buttonInto = null) {
-  const wrap = el('div', 'notebox');
-  const list = el('ul', 'notes');
-  const show = (items) => list.replaceChildren(...items.map((n) => {
-    const li = el('li');
-    if (n.at) li.append(el('time', '', new Date(n.at).toLocaleDateString())); li.append(document.createTextNode(n.text));
-    return li;
-  }));
-  show(past);
-  const box = el('div');
-  box.hidden = true;
-  const examples = { history: 'He loved the animal videos, more like these', settings: 'Parent mode should open with the Planned tab', today: 'Too many videos about space, more numbers please', planned: 'Too many videos about space, more numbers please' };
-  const input = noteInput({
-    placeholder: target.list ? `For example: “${examples[target.list] ?? examples.today}”` : 'For example: “Good one, more like this” or “Too fast for him”',
-    save: async (text) => {
-      const r = target.list ? await ask({ type: 'wish', list: target.list, text }) : await ask({ type: 'note', videoId: target.videoId, comment: text });
-      if (!r?.ok) return false;
-      past = [...past, { at: new Date().toISOString(), text }];
-      show(past);
-      return true;
-    },
-  });
-  const ta = input.ta;
-  box.append(...input.nodes);
-  const open = btn(`📝 ${label}`, () => { box.hidden = !box.hidden; if (!box.hidden) ta.focus(); });
-  if (buttonInto) buttonInto.append(open); else wrap.append(open);
-  wrap.append(box, list);
-  return wrap;
-}
-
-// The standing instructions for the helper (the Prompt tab): the list with Remove, and the input.
+// The standing instructions for the helper (the Prompt tab): the list with Remove (added with the 🎤).
 // onChange() redraws the page after one is added or removed.
-let promptDraft = '';
 export function promptNotesBox(notes, onChange) {
   const list = el('ul', 'notes');
   for (const n of notes) {
@@ -198,13 +235,8 @@ export function promptNotesBox(notes, onChange) {
     }, 'small'));
     list.append(li);
   }
-  const input = noteInput({
-    placeholder: 'For example: “Every day one video about animals” · “Questions only in English” · “No videos longer than 8 minutes on school days”',
-    value: promptDraft, onInput: (v) => { promptDraft = v; }, saveLabel: 'Add to the prompt', failText: 'Could not save it. Try again.',
-    save: async (text) => { const r = await ask({ type: 'promptNote', action: 'add', text }); if (r?.ok) setTimeout(onChange, 300); return r?.ok; },
-  });
   return [
-    el('p', 'muted', 'Standing instructions the helper follows on every run, as part of its prompt. They win over its steps, but not over its safety rules. For one-off wishes send a message to the helper (Settings) or add a note to a video or a list.'),
-    notes.length ? list : el('p', 'muted', 'None yet.'), ...input.nodes,
+    el('p', 'muted', 'Standing instructions the helper follows on every run, as part of its prompt. They win over its steps, but not over its safety rules. To add one, tap 🎤 (bottom right) on this tab. A note on another tab is a one-off wish.'),
+    notes.length ? list : el('p', 'muted', 'None yet.'),
   ];
 }

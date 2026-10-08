@@ -351,6 +351,23 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
     assert.equal((await fromPage({ type: 'note', videoId: ids[1], liked: true })).ok, true);   // a 👍 is not a note: it goes at once
     assert.equal((await fromPage({ type: 'parentData' })).lists.settings.at(-1).text, 'Open parent mode on the Planned tab');
     assert.equal((await fromPage({ type: 'runStatus' })).held, 2);
+    // The notes card lists them with where they were made; ✕ deletes one, Clear all the rest.
+    const extra = await fromPage({ type: 'wish', list: 'today', text: 'scrap this' });
+    assert.equal(extra.ok, true);
+    let held = (await fromPage({ type: 'heldNotes' })).notes;
+    assert.deepEqual(held.map((n) => [n.type, n.list ?? n.videoId, n.text]),
+      [['wish', 'settings', 'Open parent mode on the Planned tab'], ['parentNote', ids[0], 'Too fast'], ['wish', 'today', 'scrap this']]);
+    assert.equal(typeof held[1].title, 'string');
+    assert.equal((await fromPage({ type: 'dropNote', id: held[2].id })).ok, true);
+    assert.ok(!(await fromPage({ type: 'parentData' })).lists.today?.some((n) => n.text === 'scrap this'), 'gone from the tab’s list too');
+    assert.equal((await send({ type: 'heldNotes' }, { tab: { id: 7, url: 'https://m.youtube.com/' } })).ok, false, 'only KidTube’s pages');
+    held = (await fromPage({ type: 'heldNotes' })).notes;
+    assert.equal(held.length, 2);
+    const keep = structuredClone(fake.store.outbox);
+    assert.equal((await fromPage({ type: 'dropNote', all: true })).removed, 2);
+    assert.equal(fake.store.outbox.filter((e) => e.held).length, 0);
+    assert.ok(fake.store.outbox.some((e) => e.liked === true), 'a 👍 waiting to upload is not a note: it stays');
+    fake.store.outbox = keep;   // back, for the rest of this test
     await fromPage({ type: 'sync' });   // an ordinary sync (after a video, on open) leaves the notes
     const sent = () => Object.entries(files).filter(([p]) => p.startsWith('activity/')).flatMap(([, f]) => f.json.events);
     assert.deepEqual(sent().map((e) => e.type), ['parentNote']);

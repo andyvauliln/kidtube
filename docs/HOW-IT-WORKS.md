@@ -63,7 +63,7 @@ You can steer from two places: the tablet and a chat with Claude. All of them en
 | --- | --- |
 | **Update now** | Pulls the newest list, rules and app version right away (otherwise every 15 min) |
 | Change **Rules** (hours, minutes, must-watch order, talking friend, questions) | Works on the tablet at once and is saved to `parent-config.json`, so the helper sees it |
-| **Ask the AI** (Settings, and the note box on every tab) | Saved as a `wish` event, held until ↻ Update data. The next run keeps it in its history of your messages (`memory.json`, `helper.wishes`) and acts on it. |
+| **🎤** (bottom right of every parent screen) and the **Notes for the AI** card | One button records a note about the screen it starts on: a tab's list (`wish` with `list`), a video (`parentNote`), a context document (`context`) or the Prompt tab (`prompt`). The card on top lists every note still on the tablet with ✕, **Clear all** and **Apply notes** (= ↻ Update data). Gemini or OpenRouter writes the words (5 min at most); only without their keys the browser's recognition does, and the card says so. A note is held until ↻ Update data / Apply notes. The next run keeps it in its history of your messages (`memory.json`, `helper.wishes`) and acts on it. |
 | 👍 / 👎 / comment on a watched video | Saved as a `parentNote`. The helper uses it for *What the helper noticed* and future picks. |
 | Tap a watched video's picture | You watch it yourself with skipping allowed. It doesn't count for him. |
 | **Reset today** | Gives back today's minutes and undoes "no more videos today" |
@@ -76,7 +76,7 @@ You can steer from two places: the tablet and a chat with Claude. All of them en
 | **Planned** | The helper's next picks in its order, then its other ideas | ⭐ on/off, **Approve**, **→ Today**, **Remove** (never shown), notes for the AI (video or list) |
 | **History** | What he watched, by day: minutes, how it ended, his answers | 👍 / 👎, notes for the AI (video or the whole history) |
 | **Prompt** | How the helper works: when it runs, its diary, *What I noticed*, its study plan, each step of its prompt, the settings and models it uses, the tablet rules it reads, what it reads and writes, the whole prompt | **Your changes to the prompt**: standing instructions it follows every run (they win over its steps, not over its safety rules); remove one any time |
-| **Settings** | Ask the AI, Update, Status, the rules, the talking friend, the PIN | change them; the account, GitHub and the settings file are in the apps header |
+| **Settings** | Update, Status, the rules, the talking friend, the PIN | change them; the account, GitHub and the settings file are in the apps header |
 
 Swipe left or right to move between the tabs; on a video's page, swipe right to go back.
 

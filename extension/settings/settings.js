@@ -4,15 +4,9 @@
 import { hashPin } from '../lib/pin.js';
 import { say, listen, recordAnswer, transcribeAnswer, FREE_LISTEN_MODELS, PAID_LISTEN_MODELS } from '../ui/voice.js';
 import { ask as send } from '../lib/ask.js';
-import { el as make, noteBox } from '../parent/kit.js';
+import { el as make } from '../parent/kit.js';
 
 const MARKUP = `
-  <section class="ainote">
-    <h2>Ask the AI</h2>
-    <p class="muted">For any change: to the app, the rules or how the helper plans. Your notes wait here; ↻ Update data sends them, and the AI on the server starts on them within a minute (a change to the app comes as a new version).</p>
-    <div id="aiNote"></div>
-  </section>
-
   <section>
     <h2>Update</h2>
     <p class="muted">Gets the newest video list, rules and app version.</p>
@@ -215,11 +209,6 @@ export function mountSettings(root) {
     $('pinForm').hidden = true;
     $('pinOut').className = 'ok';
     $('pinOut').textContent = 'New PIN saved ✓';
-  });
-
-  // The note for the AI at the top, like on every tab (list "settings": anything about the app and the rules).
-  send({ type: 'parentData' }).then((d) => {
-    if (root.isConnected) $('aiNote').replaceChildren(noteBox({ list: 'settings' }, d?.lists?.settings ?? [], 'Note for the AI about the app and settings'));
   });
 
   // --- Rules (parent-config.json) -------------------------------------------------------------

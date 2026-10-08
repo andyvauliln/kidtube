@@ -3,7 +3,7 @@
 import { ask } from '../lib/ask.js';
 import { APPS } from '../lib/apps.js';
 import { say, listen, recordedUrl } from '../ui/voice.js';
-import { el, btn, toast, runNow, noteInput, noteBox, promptNotesBox, hooks } from './kit.js';
+import { el, btn, toast, runNow, notesDock, promptNotesBox, hooks } from './kit.js';
 import { mountSettings } from '../settings/settings.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { renderMarkdown, promptSteps } from './markdown.js';
@@ -90,6 +90,7 @@ async function showRun(fresh = false) {
 
 hooks.afterUndo = () => refresh();
 hooks.afterRun = () => showRun();
+
 
 // --- the apps header (ui/header.js), the Parent | Kid switch, loading ----------------------------------
 globalThis.KidTubeHeader.mount($('appHeader'));
@@ -255,8 +256,7 @@ function row(v, where) {
   }
   for (const q of v.quiz ?? []) info.append(el('div', 'quizline', `${q.result === 'passed' ? '✅' : q.result === 'failed' ? '❌' : '⏭️'} ${q.prompt || q.quizId}${q.attempts > 1 ? ` (${q.attempts} tries)` : ''}`));
   if (where === 'planned' && v.why) info.append(el('div', 'why', v.why));
-  const acts = actionsFor(v, where);
-  info.append(acts, noteBox({ videoId: v.videoId }, [], 'Note for the AI', acts));
+  info.append(actionsFor(v, where));
   r.append(t, info);
   return r;
 }
@@ -279,7 +279,7 @@ function renderToday() {
   const head = el('div', 'box');
   head.append(el('h2', '', 'What he sees today'),
     el('p', 'muted', `${vs.length} video${vs.length === 1 ? '' : 's'} · ${vs.length - left} watched · ${vs.filter((v) => v.required).length} must-watch. Removing a video brings the next planned one in.`),
-    syncLine(), noteBox({ list: 'today' }, data.lists.today ?? [], 'Note for the AI about today’s list'));
+    syncLine());
   view.replaceChildren(head, ...(vs.length ? vs.map((v) => row(v, 'today')) : [el('p', 'muted', 'Nothing on today’s list.')]));
 }
 
@@ -288,14 +288,13 @@ function renderPlanned() {
   head.append(el('h2', '', 'Planned and ideas'),
     el('p', 'muted', data.hasMemory ? 'The helper’s next picks, in its order. Approve, make a must-watch, move to today or remove. The helper reads your changes on its next run.'
       : 'Planned videos show here once the tablet has the helper’s notes (memory.json; needs the GitHub token).'),
-    syncLine(), noteBox({ list: 'planned' }, data.lists.planned ?? [], 'Note for the AI about the plan'));
+    syncLine());
   view.replaceChildren(head, ...(data.planned.length ? data.planned.map((v) => row(v, 'planned')) : [el('p', 'muted', 'Nothing planned yet.')]));
 }
 
 function renderHistory() {
   const head = el('div', 'box');
-  head.append(el('h2', '', 'What he watched'), el('p', 'muted', 'By day. Tap a video to see its questions and how he answered.'),
-    noteBox({ list: 'history' }, data.lists.history ?? [], 'Note for the AI about his history'));
+  head.append(el('h2', '', 'What he watched'), el('p', 'muted', 'By day. Tap a video to see its questions and how he answered.'));
   const parts = [head];
   for (const d of data.history) {
     const h = el('div', 'day');
@@ -441,7 +440,6 @@ async function renderPrompt() {
 // --- Context: the documents the helper plans from (kidtube-data context/*.md), and your notes on them -------
 const CONTEXT = [['kid', 'About him'], ['strategy', 'Strategy'], ['math', 'Math'], ['letters', 'Letters'], ['world', 'World']];
 let contextDoc = 'kid';
-const contextDrafts = {};
 async function renderContext() {
   const c = await ask({ type: 'contextData' });
   if (route().tab !== 'context') return;
@@ -456,19 +454,13 @@ async function renderContext() {
   body.append(doc?.text ? renderMarkdown(doc.text) : el('p', 'muted', 'Not written yet. It appears after the next sync, or the helper writes it on its next run.'));
   const mine = c.notes.filter((x) => x.doc === contextDoc);
   const notes = el('div', 'box');
-  notes.append(el('h2', '', 'Your notes on this document'));
+  notes.append(el('h2', '', 'Your notes on this document'),
+    el('p', 'muted', 'Tap 🎤 (bottom right) while this document is open: the note is about it. The helper works your notes into the document on its next run.'));
   if (mine.length) {
     const ul = el('ul', 'notes');
     ul.append(...mine.map((x) => el('li', '', `${new Date(x.at).toLocaleDateString()} · waiting for the next run: ${x.text}`)));
     notes.append(ul);
   }
-  const doc_ = contextDoc;
-  const input = noteInput({
-    placeholder: 'For example: “He already counts to 20” · “More dinosaurs” · “No videos about scary animals”',
-    value: contextDrafts[doc_] ?? '', onInput: (v) => { contextDrafts[doc_] = v; },
-    save: async (text) => { const r = await ask({ type: 'contextNote', doc: doc_, text }); if (r?.ok) setTimeout(renderContext, 300); return r?.ok; },
-  });
-  notes.append(el('p', 'muted', 'Add as many notes as you like (type or 🎤 dictate). The helper works them into this document on its next run; “Add & ↻ Update data” runs it now with all your notes from every tab.'), ...input.nodes);
   view.replaceChildren(chips, notes, body);
 }
 
@@ -532,9 +524,7 @@ async function renderDetail(videoId) {
   if (d.history.length) {
     section('When he watched it', list(d.history.map((h) => `${new Date(h.at).toLocaleString([], { weekday: 'short', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}: ${mins(h.watchedSeconds) || 'under a minute'}${(h.quiz ?? []).length ? ` · questions ${h.quiz.map((q) => (q.result === 'passed' ? '✅' : q.result === 'failed' ? '❌' : '⏭️')).join('')}` : ''}`)));
   }
-  const notes = section('Notes for the AI');
-  if (d.helperNotes.length) notes.append(el('p', 'muted', 'Earlier comments the helper has:'), list(d.helperNotes));
-  notes.append(noteBox({ videoId }, d.notes, 'Add a note for the AI'));
+  if (d.helperNotes.length) section('Your earlier comments the helper has', list(d.helperNotes));
 
   view.replaceChildren(back, hero, ...sections);
 }
@@ -617,5 +607,16 @@ chrome.storage.onChanged.addListener((ch) => {
   else if (ch.settings) ask({ type: 'parentData' }).then((r) => { if (r && !r.parentMode) refresh(); });
 });
 setInterval(() => { if (data?.parentMode && data.parentUntil && data.parentUntil < Date.now()) refresh(); }, 30000);
+// --- notes for the AI: the 🎤 bottom right, the card on top. A note is about the screen it starts on. ----------
+function noteTarget() {
+  const r = route();
+  if (r.video) return { videoId: r.video };
+  if (r.tab === 'context') return { doc: contextDoc };
+  if (r.tab === 'prompt') return { prompt: true };
+  return { list: r.tab };   // today | planned | history | settings
+}
+notesDock({ card: $('notesCard'), where: noteTarget, docNames: Object.fromEntries(CONTEXT),
+  onSaved: () => { const t = route().tab; if (t === 'context') renderContext(); if (t === 'prompt') renderPrompt(); } });
+
 window.kidtubeParentReady = true;   // boot.js: the script ran
 refresh();
