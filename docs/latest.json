@@ -1,10 +1,10 @@
 {
-  "version": "0.9.8",
+  "version": "0.9.9",
   "target": "quetta",
-  "sourceCommit": "58381eaba306f4ac2d935d3049bcf0a2d3ffca81",
+  "sourceCommit": "2e24f16a0dd84cf4b5778274ddcfb29a52374b5f",
   "id": "mpgpgldgfogdipaaaobleoppocmhlidp",
-  "crxUrl": "https://andyvauliln.github.io/kidtube/kidtube-0.9.8.crx",
-  "zipUrl": "https://andyvauliln.github.io/kidtube/kidtube-0.9.8.zip",
+  "crxUrl": "https://andyvauliln.github.io/kidtube/kidtube-0.9.9.crx",
+  "zipUrl": "https://andyvauliln.github.io/kidtube/kidtube-0.9.9.zip",
   "quizTypes": [
     "text",
     "choice",
