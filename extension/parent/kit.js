@@ -59,6 +59,8 @@ export async function runNow() {
 // --- writing a note for the helper ------------------------------------------------------------------
 let dictating = null;   // the one recording in progress: { stop }
 // After ⏹ the words go to addNote(text) at once: the note joins the list (and waits for ↻ Update).
+// Pauses don't end a note: it records until ⏹, so a long note stays one note.
+const LONG_NOTE_MINUTES = 15;
 function micButton(ta, addNote) {
   const lang = navigator.language || 'en-US';
   // Not btn(): that one stays disabled until its work ends, and here the work is the recording, so ⏹ couldn't be tapped.
@@ -81,13 +83,13 @@ function micButton(ta, addNote) {
     b.textContent = '⏹';
     const done = () => { dictating = null; b.classList.remove('on'); b.textContent = '🎤'; };
     if (keys.gemini || keys.openrouter) {
-      // Cloud: records until you tap ⏹ (at most 2 minutes), then writes it down (free Gemini first, then OpenRouter).
+      // Cloud: records until you tap ⏹ (at most 5 minutes), then writes it down (free Gemini first, then OpenRouter).
       const ctl = new AbortController();
       dictating = { stop: () => ctl.abort() };
-      toast('Speak your note, then tap ⏹.');
-      const audio = await recordAnswer({ seconds: 120, stopSignal: ctl.signal, silenceStop: false });
+      toast('Speak your note, pauses are fine. Tap ⏹ when you’re done.');
+      const audio = await recordAnswer({ seconds: 300, stopSignal: ctl.signal, silenceStop: false });
       b.textContent = '…';
-      const heard = audio ? await transcribeAnswer(audio, { keys, lang, maxTokens: 800,
+      const heard = audio ? await transcribeAnswer(audio, { keys, lang, maxTokens: 3000,
         instruction: 'A parent dictates a note about their child\'s videos and learning. Use punctuation.' }) : null;
       done();
       if (heard?.length) { add(heard[0]); return finish(); }
@@ -95,15 +97,26 @@ function micButton(ta, addNote) {
       if (heard) return toast('Heard nothing.');
     }
     if (!SR) { done(); return toast('Dictation isn’t available here. Use the 🎤 on the iPad keyboard instead.'); }
-    // The device's own speech recognition: keeps listening until you tap ⏹.
+    // The device's own speech recognition: keeps listening until you tap ⏹. Android ends it after a pause:
+    // it starts again and the words join the same note.
     const r = new SR();
     r.lang = lang;
     r.continuous = true;
     r.interimResults = false;
-    dictating = { stop: () => { try { r.stop(); } catch {} } };
+    let stopped = false, failed = false;
+    const until = Date.now() + LONG_NOTE_MINUTES * 60000;
+    dictating = { stop: () => { stopped = true; try { r.stop(); } catch {} } };
     r.onresult = (e) => { for (let i = e.resultIndex; i < e.results.length; i++) if (e.results[i].isFinal) add(e.results[i][0].transcript); };
-    r.onerror = (e) => { if (e.error !== 'no-speech' && e.error !== 'aborted') toast('Dictation stopped. You can use the 🎤 on the iPad keyboard instead.'); };
-    r.onend = () => { done(); finish(); };
+    r.onerror = (e) => {
+      if (e.error === 'no-speech' || e.error === 'aborted') return;
+      failed = true;
+      toast('Dictation stopped. You can use the 🎤 on the iPad keyboard instead.');
+    };
+    r.onend = () => {
+      if (!stopped && !failed && Date.now() < until) { try { r.start(); return; } catch {} }
+      done(); finish();
+    };
+    toast('Speak your note, pauses are fine. Tap ⏹ when you’re done.');
     try { r.start(); } catch { done(); toast('Dictation isn’t available here. Use the 🎤 on the iPad keyboard instead.'); }
   });
   b.title = 'Dictate the note';

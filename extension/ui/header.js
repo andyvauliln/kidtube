@@ -181,6 +181,9 @@
   function mount(host, { dark = !!globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches } = {}) {
     const root = host.shadowRoot ?? host.attachShadow({ mode: 'closed' });
     host.classList.toggle('dark', dark);
+    // The account menu and Add app drop down over the page below, its sticky toolbar too (the parent tabs):
+    // lift the bar above the page's own layers. On YouTube content.js already pins it on top.
+    if (!host.style.position) { host.style.position = 'relative'; host.style.zIndex = '100'; }
     const style = el('style', '', CSS);
     const box = el('div', 'kt');
     root.replaceChildren(style, box);
