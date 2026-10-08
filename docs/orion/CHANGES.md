@@ -2,6 +2,11 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.9.10 (2026-10-08)
+
+- **The account menu and Add app show in full** on the parent screens. Before, the tabs bar (Today, Planned…) covered them.
+- **Long dictated notes.** 🎤 keeps recording through pauses until you tap ⏹, so one long note stays one note. With a Gemini or OpenRouter key it records up to 5 minutes.
+
 ## 0.9.9 (2026-10-08)
 
 - **A new header design.** Not signed in: the logo and **Sign in**. Signed in: your account (picture, email, menu) and **Switch**.
