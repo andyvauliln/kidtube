@@ -32,7 +32,7 @@ One version number for both browsers:
 3. **Orion:** follow the `update-orion` skill (orion-check, `node tools/build-orion.mjs`, a section in `docs/orion/CHANGES.md` the parent understands). Commit as `orion <version>: <short summary>`.
 4. `git push origin main`. If it is rejected: `git pull --rebase origin main`, test again, push.
 
-The tablet then sees the new version: Quetta updates itself, and Orion shows "⬆ Download".
+The tablet then sees the new version: Quetta installs it by itself within about 15 minutes (or at once when a parent screen opens) and reloads YouTube; Orion shows "⬆ Download". Say so in the summary: on Quetta the parent does nothing.
 
 ## When you are done
 
