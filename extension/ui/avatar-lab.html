@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Avatar lab</title>
+<link rel="stylesheet" href="ui.css">
+<style>
+  /* A test page for the mesh avatar friend (mesh.js): the same calls the talk screen makes, one button each. */
+  body { background: radial-gradient(circle at 50% 30%, #fff3d6, #ffe0b3); overflow: auto; user-select: text; }
+  main { display: flex; flex-wrap: wrap; gap: 16px; padding: 16px; justify-content: center; align-items: flex-start; }
+  .friend { width: min(92vw, 60vh, 480px); aspect-ratio: 1; position: relative; }
+  .friend canvas.mesh { width: 100%; height: 100%; display: block;
+    -webkit-mask-image: linear-gradient(#000 78%, transparent 97%); mask-image: linear-gradient(#000 78%, transparent 97%); }
+  .panel { background: #fff; border-radius: 18px; padding: 16px; width: min(92vw, 420px); display: flex; flex-direction: column; gap: 10px;
+    box-shadow: 0 3px 0 #0000000f, 0 6px 16px #00000014; }
+  .row { display: flex; flex-wrap: wrap; gap: 8px; }
+  button { border: 0; border-radius: 14px; background: #f3ece2; font: inherit; padding: 10px 14px; color: var(--ink); cursor: pointer; }
+  button.go { background: var(--accent); color: #fff; }
+  textarea, input, select { font: inherit; padding: 8px; border-radius: 10px; border: 2px solid #e5d6c0; width: 100%; }
+  textarea { min-height: 70px; }
+  .meter { height: 10px; border-radius: 5px; background: #eee; overflow: hidden; }
+  .meter i { display: block; height: 100%; width: 0; background: var(--accent); }
+  #status { font-size: 14px; white-space: pre-wrap; }
+</style>
+<body>
+<main>
+  <div class="friend" id="friend"></div>
+  <div class="panel">
+    <label for="avatar">Avatar folder (rig.json + built/)</label>
+    <div class="row"><select id="avatar"><option value="../avatars/miko-qipao">Miko (test sample)</option><option value="">Other folder…</option></select></div>
+    <input id="folder" placeholder="../avatars/name or https://…/avatar" hidden>
+    <button id="load">Load</button>
+    <label for="text">Words</label>
+    <textarea id="text">Hi! I'm your friend! Now we're going to watch a video about dinosaurs. Watch carefully, because at the end I will ask you a question!</textarea>
+    <div class="row">
+      <button class="go" id="say">🗣 Say it (tablet voice)</button>
+      <button class="go" id="babble">🔊 Test recording</button>
+    </div>
+    <label for="file">Or play your own recording (mp3, wav, ogg)</label>
+    <input id="file" type="file" accept="audio/*">
+    <div class="row">
+      <button id="happy">😀 Happy</button>
+      <button id="sad">😢 Sad</button>
+      <button id="wave">👋 Wave</button>
+      <button id="stop">⏹ Stop the tablet voice</button>
+    </div>
+    <div class="meter"><i id="level"></i></div>
+    <div id="status">Loading…</div>
+  </div>
+</main>
+<script type="module" src="avatar-lab.js"></script>
+</body>
+</html>

@@ -88,6 +88,8 @@ const MARKUP = `
     <input id="catchphrase" maxlength="60" placeholder="Pika pika!">
     <label for="friendImage">Picture: a link (https://…) or a file in the data repo (repo:characters/name.svg)</label>
     <input id="friendImage" placeholder="empty = the built-in cloud friend">
+    <label for="friendAvatar">Moving avatar (shown instead of the picture)</label>
+    <select id="friendAvatar"><option value="">None: use the picture</option><option value="miko-qipao">Miko (test sample)</option></select>
     <label class="check"><input type="checkbox" id="recorded"> Use the helper’s recorded voice when there is one</label>
     <p class="hint">The daily helper can record the friend’s lines (Gemini or OpenRouter, set on the server). Off: the tablet’s own voice says everything.</p>
 
@@ -261,6 +263,7 @@ export function mountSettings(root) {
     $('friendName').value = p.name ?? 'Zippy';
     $('pitch').value = p.voice?.pitch ?? 1.9;
     $('friendImage').value = p.imageUrl ?? '';
+    $('friendAvatar').value = p.avatar ?? '';
     $('catchphrase').value = p.catchphrase ?? '';
     $('recorded').checked = p.voice?.recorded !== false;
     // "openrouter" is the older name of "cloud".
@@ -319,6 +322,7 @@ export function mountSettings(root) {
         intro: $('intro').checked, outro: $('outro').checked,
         name: $('friendName').value.trim() || 'Zippy',
         imageUrl: $('friendImage').value.trim(),
+        avatar: $('friendAvatar').value,
         catchphrase: $('catchphrase').value.trim(),
         voice: { pitch: Number($('pitch').value), recorded: $('recorded').checked,
           listen: { provider: $('listenProvider').value, freeModels: freeModels(), models: listenModels() } },

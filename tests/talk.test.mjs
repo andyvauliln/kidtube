@@ -178,3 +178,12 @@ test('recorded lines and cloud listening reach the talk page', async () => {
   const { audioRefs } = await import('../extension/sw.js');
   assert.deepEqual([...audioRefs(q, fake.store.data.config)].sort(), ['audio/abc123.mp3', 'audio/cp.mp3', 'audio/yes.mp3']);
 });
+
+test('a mesh avatar chosen by the parent is passed to the talk page; anything else is not', async () => {
+  setConfig({ presenter: { intro: true, avatar: 'miko-qipao' } });
+  assert.equal((await send({ type: 'talk', videoId: A, mode: 'intro' })).avatar, '../avatars/miko-qipao');
+  setConfig({ presenter: { intro: true, avatar: '../../x' } });
+  assert.equal((await send({ type: 'talk', videoId: A, mode: 'intro' })).avatar, '');
+  setConfig({ presenter: { intro: true } });
+  assert.equal((await send({ type: 'talk', videoId: A, mode: 'intro' })).avatar, '');
+});

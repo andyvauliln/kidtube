@@ -2,6 +2,7 @@
 // The service worker decides what comes next; this page only talks, listens and reports.
 import { say, listen, recordedUrl, recordAnswer, transcribeAnswer, listenKeys } from './voice.js';
 import { createRig } from './rig.js';
+import { createMeshFriend } from './mesh.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { checkPin } from '../lib/pin.js';
 import { ask as send } from '../lib/ask.js';
@@ -20,7 +21,7 @@ const svg = $('buddy');
 
 // --- the character -----------------------------------------------------------------------------
 
-let rig = null;                 // moves the SVG character (rig.js); a plain picture only bobs
+let rig = null;                 // moves the SVG character (rig.js) or the mesh avatar (mesh.js); a plain picture only bobs
 function talking(on) {
   document.body.classList.toggle('talking', on);
   rig?.talking(on);
@@ -33,7 +34,7 @@ async function speak(line, lang = script.lang) {
   talking(true);
   // A recording made by the helper plays instead of the tablet's own voice (when the parent allows it).
   const recorded = script.recorded !== false && line.audioRef ? await recordedUrl(line.audioRef) : null;
-  try { await say(recorded ? { ...line, audioUrl: recorded } : line, { ...script.voice, lang: lang || script.voice?.lang }, { onWord: () => rig?.word() }); }
+  try { await say(recorded ? { ...line, audioUrl: recorded } : line, { ...script.voice, lang: lang || script.voice?.lang }, { onWord: () => rig?.word(), onAudio: (a) => rig?.audio?.(a) }); }
   finally { talking(false); if (recorded) URL.revokeObjectURL(recorded); }
 }
 
@@ -93,7 +94,17 @@ function animate(el) {
   if (el.querySelector('#body')) $('friend').classList.add('rigged');
 }
 
-function setupFriend() {
+async function setupFriend() {
+  $('startText').textContent = `👆 Tap ${script.name}`;
+  // A mesh avatar when the parent chose one; the drawing below when this tablet can't show it.
+  if (script.avatar) {
+    try {
+      rig = await createMeshFriend($('friend'), { base: script.avatar });
+      svg.remove();
+      $('friend').classList.add('rigged', 'mesh');
+      return;
+    } catch (e) { console.warn('mesh avatar not shown:', e); }
+  }
   const custom = script.svg && inlineSvg(script.svg);
   if (custom) { svg.replaceWith(custom); animate(custom); }
   else if (script.imageUrl) {
@@ -101,7 +112,6 @@ function setupFriend() {
     img.onerror = () => { img.replaceWith(svg); animate(svg); };
     svg.replaceWith(img);
   } else animate(svg);
-  $('startText').textContent = `👆 Tap ${script.name}`;
 }
 
 // --- answering -------------------------------------------------------------------------------
@@ -252,7 +262,7 @@ $('pinOk').onclick = async () => {
 script = await send({ type: 'talk', videoId, mode });
 // The keys for listening never leave this tablet (the parent stores them in Settings).
 const listenKey = await listenKeys();
-setupFriend();
+await setupFriend();
 if (!script.lines.length && !script.items.length) finish();
 // Browsers only let a page speak after a tap, so he taps the friend to start.
 $('start').onclick = run;

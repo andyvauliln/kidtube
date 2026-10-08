@@ -28,6 +28,7 @@ Changed in parent mode → Settings (the extension's options page leads there af
 | `quiz.enabled`, `quiz.maxAttempts`, `quiz.onFail`     | true, 3, continue                  | Questions after a video.                                                                     |
 | `quiz.items`                                          | (helper writes)                    | Today's questions.                                                                           |
 | `presenter.name`, `catchphrase`, `imageUrl`           | Pikachu, "Pika pika!", pikachu.svg | The talking friend.                                                                          |
+| `presenter.avatar`                                    | "" (none)                          | A mesh avatar in `extension/avatars/<name>/` (mesh-avatar-studio) shown instead of the picture; test page: `ui/avatar-lab.html`. |
 | `presenter.intro` / `outro`                           | true / true                        | Friend speaks before / after each video.                                                     |
 | `presenter.voice.lang`, `rate`, `pitch`               | en-US, 1.1, 2                      | Tablet's own voice (used when there is no recording).                                        |
 | `presenter.voice.listen`                              | device                             | How his spoken answers are heard.                                                            |

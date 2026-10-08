@@ -586,6 +586,8 @@ async function handle(msg, sender) {
         const ch = s.character && p.imageUrl === `repo:${s.character.path}` ? s.character : null;
         return {
           name, imageUrl: ch?.src ?? (p.imageUrl?.startsWith('https://') ? p.imageUrl : ''), svg: ch?.svg ?? '',
+          // a mesh avatar bundled in extension/avatars/<name>/ (talk.html is in ui/)
+          avatar: /^[a-z0-9-]+$/.test(p.avatar ?? '') ? `../avatars/${p.avatar}` : '',
           catchphrase: p.catchphrase ?? '', catchphraseAudioRef: p.catchphraseAudioRef ?? null, phrases: p.phrases ?? {},
           recorded: p.voice?.recorded !== false, listen: p.voice?.listen ?? { provider: 'cloud' },
           voice: { ...(p.voice ?? {}), lang }, lang, title: v.title, lines,

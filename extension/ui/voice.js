@@ -33,11 +33,13 @@ function speakOne(text, voice, onWord) {
   });
 }
 
-// line: { text, audioUrl? }. Resolves when it has finished. onWord is called at each spoken word, when the engine says so.
-export async function say(line, voice = {}, { onWord } = {}) {
+// line: { text, audioUrl? }. Resolves when it has finished. onWord is called at each spoken word, when the engine says so;
+// onAudio gets a recording's <audio> just before it plays (the mesh friend measures its loudness).
+export async function say(line, voice = {}, { onWord, onAudio } = {}) {
   if (line.audioUrl) {
     const ok = await new Promise((resolve) => {
       const a = new Audio(line.audioUrl);
+      onAudio?.(a);
       a.onended = () => resolve(true);
       a.onerror = () => resolve(false);
       a.play().catch(() => resolve(false));

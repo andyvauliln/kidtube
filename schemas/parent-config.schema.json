@@ -281,6 +281,14 @@
           "pattern": "^(https://.+|repo:[A-Za-z0-9_./-]+\\.(svg|png|jpg|jpeg|webp|gif))?$",
           "description": "\"\" = built-in character; https://… = a picture; repo:characters/x.svg = a file in the private data repo (an SVG with an element id=\"mouth\" gets a moving mouth)"
         },
+        "avatar": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "pattern": "^[a-z0-9-]*$",
+          "description": "\"\" = the picture above; a name = the mesh avatar bundled in extension/avatars/<name>/ (mesh-avatar-studio), shown instead of the picture where the tablet has WebGL2"
+        },
         "voice": {
           "type": [
             "object",
