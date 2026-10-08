@@ -28,7 +28,7 @@
     html.kidtube-shell #masthead-container, html.kidtube-shell ytm-mobile-topbar-renderer { top: var(--kidtube-h, 0px) !important; }
     html.kidtube-shell ytd-mini-guide-renderer { top: calc(56px + var(--kidtube-h, 0px)) !important; }
     iframe.kidtube-frame { position: fixed !important; border: 0 !important; margin: 0 !important; padding: 0 !important;
-      z-index: ${Z} !important; background: #fff; color-scheme: normal; display: block !important; }
+      z-index: ${Z} !important; background: #e6f2ff; color-scheme: normal; display: block !important; }
     /* allowSkip off: the seek bar can't be dragged (the video element is also guarded below) */
     html.kidtube-noskip .ytp-progress-bar-container, html.kidtube-noskip .ytp-progress-bar, html.kidtube-noskip .ytm-progress-bar,
     html.kidtube-noskip .YtmProgressBarHost, html.kidtube-noskip .ytp-scrubber-container, html.kidtube-noskip .player-controls-progress-bar,
@@ -67,8 +67,7 @@
   }
 
   function player() {
-    const v = document.querySelector('video.html5-main-video') || document.querySelector('#movie_player video, #player video, video');
-    return v;
+    return document.querySelector('video.html5-main-video') || document.querySelector('#movie_player video, #player video, video');
   }
 
   function place(f, x, y, w, h) {
@@ -128,45 +127,10 @@
     route();
   }
 
-  // --- in-page screens: the same screens as ui/home.html, strip.html, cover.html ------------------------------
-  // In a closed shadow root, so YouTube's CSS can't reach them. Each panel is attached once and redrawn only
-  // when what it shows changes, so a list keeps its scroll position.
-  const PAGE_CSS = `
-    * { box-sizing: border-box; }
-    .panel { position: fixed; pointer-events: auto; overflow: hidden; background: #fff8ec; color: #2b2b2b;
-      font: 600 16px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; -webkit-tap-highlight-color: transparent;
-      user-select: none; -webkit-user-select: none; }
-    .home, .strip { overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
-    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; padding: 16px 16px 80px; align-content: start; }
-    .strip .grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; padding: 12px 16px 24px; }
-    .card { position: relative; background: #fff; border: 0; padding: 0; border-radius: 18px; overflow: hidden; text-align: left;
-      color: inherit; font: inherit; box-shadow: 0 3px 0 #0000000f, 0 6px 16px #00000014; cursor: pointer; }
-    .card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; background: #eee; }
-    .card .t { padding: 10px 12px 12px; font-size: 17px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-    .strip .card .t { font-size: 15px; }
-    .card .d { padding: 0 12px 12px; color: #8a7f70; font-size: 14px; font-weight: 500; }
-    .card .star { position: absolute; top: 6px; left: 6px; font-size: 30px; }
-    .card.waiting { opacity: .45; filter: grayscale(.7); }
-    .center { min-height: 100%; display: grid; place-items: center; text-align: center; padding: 24px; }
-    .lockbg { background: #efeaff; }
-    .big { font-size: 64px; line-height: 1; }
-    h1 { font-size: 28px; margin: 16px 0 8px; }
-    p { margin: 4px 0; color: #8a7f70; font-weight: 500; font-size: 18px; }
-    a { color: #6c63ff; font-size: 20px; display: inline-block; margin-top: 16px; }
-    .parentbtn { position: fixed; right: 12px; top: 12px; height: 36px; padding: 0 14px; border: 0; border-radius: 18px; background: #ffffffe0;
-      color: #6b6257; font: 600 14px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; box-shadow: 0 1px 4px #0002; z-index: 1; }
-    .home .grid { padding-top: 60px; }
-    .bar { display: flex; align-items: center; gap: 12px; padding: 12px 16px 0; }
-    .bar .parentbtn { position: static; margin-left: auto; flex: none; }
-    .homebtn { border: 0; border-radius: 14px; background: #ff7a3d; color: #fff; font: inherit; font-size: 18px; padding: 10px 18px; flex: none; }
-    .homebtn:disabled { background: #d9d2c7; }
-    .wait { color: #8a7f70; font-weight: 500; }
-    .locked .grid .card { filter: grayscale(1); opacity: .45; pointer-events: none; }
-    .lockcover { inset: 0; background: #f4f2fb; display: grid; place-items: center; text-align: center; padding: 24px; }
-    .lockcard { background: #fff; border-radius: 24px; padding: 36px 28px 28px; max-width: 440px; box-shadow: 0 12px 40px #0000001a; }
-    .lockcard p { font-size: 16px; }
-    .lockcover button { margin-top: 24px; height: 48px; border: 0; border-radius: 24px; padding: 0 28px; font: inherit; background: #0f0f0f; color: #fff; }
-  `;
+  // --- in-page screens: the same screens as ui/home.html, strip.html and cover.html, drawn by ui/render.js ---------
+  // In a closed shadow root with ui/ui.css, so YouTube's CSS can't reach them and they look the same as the iframes.
+  // Each panel is attached once and redrawn only when what it shows changes, so a list keeps its scroll position.
+  const PANEL_CSS = '.panel { position: fixed; pointer-events: auto; }';
   let ui = null;
   function shadow() {
     if (!ui) {
@@ -174,121 +138,31 @@
       host.id = 'kidtube-ui';
       host.style.cssText = `position:fixed!important;inset:0!important;z-index:${Z}!important;pointer-events:none!important;display:block!important`;
       ui = host.attachShadow({ mode: 'closed' });
-      ui.append(Object.assign(document.createElement('style'), { textContent: PAGE_CSS }));
+      const sheet = document.createElement('style');
+      sheet.textContent = PANEL_CSS;
+      ui.append(sheet);
+      fetch(chrome.runtime.getURL('ui/ui.css')).then((r) => r.text()).then((css) => { sheet.textContent = `${css}\n${PANEL_CSS}`; }).catch(() => {});
     }
     if (!ui.host.isConnected) document.documentElement.appendChild(ui.host);
     return ui;
   }
-  const el = (tag, cls, text) => Object.assign(document.createElement(tag), cls ? { className: cls } : {}, text != null ? { textContent: text } : {});
-  function button(cls, text, onTap) {
-    const b = el('button', cls, text);
-    b.addEventListener('click', onTap);
-    return b;
-  }
+  const K = () => globalThis.KidTubeUI;
+  const el = (tag, cls, text) => K().el(tag, cls, text);
 
   function panel(name, src) {
     let p = frames[name];
     if (!p) {
-      p = frames[name] = el('div', 'panel');
+      p = frames[name] = el('div', 'panel screen');
       shadow().append(p);
-      if (src === 'ui/home.html') fillHome(p);
-      else if (src === 'ui/home.html?locked=1') fillLock(p);
-      else if (src === 'ui/strip.html') fillStrip(p);
+      let ctl = null;
+      if (src === 'ui/home.html') ctl = K().mountHome(p, { ask });
+      else if (src === 'ui/home.html?locked=1') ctl = K().mountHome(p, { ask, locked: true });
+      else if (src === 'ui/strip.html') ctl = K().mountStrip(p, { ask });
+      else p.classList.add('cover');
+      p.refresh = () => ctl?.refresh();
+      p.stop = () => ctl?.stop();
     } else shadow();
     return p;
-  }
-  function every(p, ms) {
-    p.refresh();
-    const t = setInterval(p.refresh, ms);
-    p.stop = () => clearInterval(t);
-  }
-
-  // The grown-up's way out of kid mode: the PIN page, then parent mode (as ui/home.js and ui/strip.html).
-  const parentButton = () => Object.assign(button('parentbtn', '🔒 Parent', () => ask({ type: 'parentGate' })), { title: 'Parent mode (PIN)' });
-
-  function cards(videos, small) {
-    const grid = el('div', 'grid');
-    for (const v of videos) {
-      const b = el('button', 'card' + (v.waiting ? ' waiting' : ''));
-      const img = el('img');
-      img.src = v.thumbnailUrl || `https://i.ytimg.com/vi/${v.videoId}/mqdefault.jpg`;
-      img.alt = '';
-      b.append(img, el('div', 't', v.title));
-      if (!small && v.durationSeconds) b.append(el('div', 'd', `${Math.round(v.durationSeconds / 60)} min`));
-      if (v.required) b.append(el('div', 'star', '⭐'));
-      if (!v.waiting) b.addEventListener('click', () => ask({ type: 'open', videoId: v.videoId }));
-      grid.append(b);
-    }
-    return grid;
-  }
-  function message(icon, title, text, cls = '') {
-    const box = el('div', `center ${cls}`);
-    const inner = el('div');
-    inner.append(el('div', 'big', icon), el('h1', '', title), el('p', '', text));
-    box.append(inner);
-    return box;
-  }
-  function lockView(lock) {
-    const when = lock.reason === 'stopped' ? 'Let’s try again tomorrow' : lock.opens ? `See you ${lock.opens.day} at ${lock.opens.at}` : 'See you later';
-    const [icon, title] = lock.reason === 'dailyCap' ? ['🌙', 'That’s all for today']
-      : lock.reason === 'stopped' ? ['🌟', 'Good work today'] : ['⏰', 'Videos are sleeping'];
-    return message(icon, title, when, 'lockbg');
-  }
-  function problemView() {
-    const box = message('🔧', 'KidTube can’t reach its background in this browser', 'Ask a grown-up to open the check below and send the result.');
-    const a = el('a', '', 'Check this browser');
-    a.href = chrome.runtime.getURL('ui/check.html');
-    a.target = '_blank';
-    box.firstChild.append(a);
-    return box;
-  }
-
-  function fillHome(p) {
-    p.classList.add('home');
-    const body = el('div');
-    p.append(body, parentButton());
-    let shown = null;
-    p.refresh = async () => {
-      const st = await ask({ type: 'state' });
-      if (!p.isConnected) return;
-      if (!st) { if (shown === null) { shown = 'problem'; body.replaceChildren(problemView()); } return; }
-      const key = JSON.stringify([st.lock, st.videos.map((v) => [v.videoId, v.title, !!v.waiting, !!v.required])]);
-      if (key === shown) return;
-      shown = key;
-      body.replaceChildren(st.lock ? lockView(st.lock)
-        : st.videos.length ? cards(st.videos, false) : message('🌱', 'New videos are coming', 'Ask a grown-up to check back later.'));
-    };
-    every(p, 30000);
-  }
-  function fillLock(p) {
-    p.refresh = async () => {
-      const st = await ask({ type: 'state' });
-      if (p.isConnected) p.replaceChildren(lockView(st?.lock ?? { reason: 'dailyCap' }));
-    };
-    p.refresh();
-  }
-  const fmt = (s) => (s >= 60 ? `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}` : `${s} s`);
-  function fillStrip(p) {
-    p.classList.add('strip');
-    const home = button('homebtn', '🏠 Home', () => ask({ type: 'goHome' }));
-    const wait = el('span', 'wait');
-    const bar = el('div', 'bar');
-    bar.append(home, wait, parentButton());
-    const body = el('div');
-    p.append(bar, body);
-    let shown = null;
-    p.refresh = async () => {
-      const st = await ask({ type: 'state' });
-      if (!st || !p.isConnected) return;
-      const left = st.session?.secondsUntilUnlock ?? 0;
-      const locked = left > 0;
-      p.classList.toggle('locked', locked);
-      home.disabled = locked;
-      wait.textContent = locked ? `You can choose another video in ${fmt(left)}` : '';
-      const key = st.videos.map((v) => `${v.videoId}${v.waiting ? '-' : ''}`).join();
-      if (key !== shown) { shown = key; body.replaceChildren(cards(st.videos, true)); }
-    };
-    every(p, 1000);
   }
 
   function showLock() {
@@ -333,12 +207,12 @@
     if (shell.locked) {
       hideHeader();
       if (!lockBox) {
-        lockBox = el('div', 'panel lockcover');
+        lockBox = el('div', 'screen lockcover');
         shadow().append(lockBox);
       } else shadow();
       const inner = el('div', 'lockcard');
       inner.append(el('div', 'big', '🔒'), el('h1', '', 'Ask a grown-up'), el('p', '', shell.why || 'KidTube is locked.'),
-        button('', 'Unlock with the PIN', () => ask({ type: 'openApps' })));
+        K().button('', 'Unlock with the PIN', () => ask({ type: 'openApps' })));
       lockBox.replaceChildren(inner);
       silenceVideos();
       return;

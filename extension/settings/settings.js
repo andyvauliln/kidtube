@@ -7,23 +7,34 @@ import { ask as send } from '../lib/ask.js';
 import { el as make } from '../parent/kit.js';
 
 const MARKUP = `
-  <section>
+  <nav class="secnav noswipe" aria-label="Settings sections">
+    <button type="button" data-sec="sec-update">Update</button>
+    <button type="button" data-sec="sec-status">Status</button>
+    <button type="button" data-sec="sec-time">Time and list</button>
+    <button type="button" data-sec="sec-sites">Websites</button>
+    <button type="button" data-sec="sec-friend">Talking friend</button>
+    <button type="button" data-sec="sec-hearing">Hearing</button>
+    <button type="button" data-sec="sec-pin">PIN</button>
+  </nav>
+
+  <section id="sec-update">
     <h2>Update</h2>
-    <p class="muted">Gets the newest video list, rules and app version.</p>
+    <p class="muted">Gets the newest video list, rules and app version, and sends your notes for the AI.</p>
     <button class="primary" id="update">Update now</button>
     <p id="updateOut" class="muted"></p>
     <a class="install" id="install" hidden>Get the new version (install page)</a>
   </section>
 
-  <section>
+  <section id="sec-status">
     <h2>Status</h2>
     <dl id="status"></dl>
     <button id="resetToday">Reset today’s minutes</button>
+    <p class="hint">Gives back today’s minutes and undoes “no more videos today”.</p>
   </section>
 
-  <section class="rules">
-    <h2>Rules</h2>
-    <p class="muted">Changes work on this tablet right away and are saved to GitHub, where the agent sees them.</p>
+  <section id="sec-time" class="rules">
+    <h2>Time and list</h2>
+    <p class="muted">Changes work on this tablet right away and are saved to GitHub, where the helper sees them.</p>
 
     <label>Watching hours</label>
     <div id="windows"></div>
@@ -32,7 +43,8 @@ const MARKUP = `
     <div class="two">
       <div><label for="maxMinutes">Minutes per day</label><input id="maxMinutes" type="number" min="0" max="1440" inputmode="numeric">
         <p class="hint">0 = no limit. Paused time doesn't count.</p></div>
-      <div><label for="queueSize">Videos on the home screen</label><input id="queueSize" type="number" min="1" max="30" inputmode="numeric"></div>
+      <div><label for="queueSize">Videos on the home screen</label><input id="queueSize" type="number" min="1" max="30" inputmode="numeric">
+        <p class="hint">Also how many videos the helper plans per day.</p></div>
     </div>
 
     <div class="two">
@@ -54,22 +66,25 @@ const MARKUP = `
       <option value="off">⭐ is only a mark, he picks freely</option>
     </select>
 
-    <label class="check"><input type="checkbox" id="allowSkip"> Allow skipping inside a video</label>
-    <p class="hint">Off: he can't jump forward or speed it up. Going back is always allowed.</p>
+    <label class="check"><span>Allow skipping inside a video <small>Off: he can't jump forward or speed it up. Going back is always allowed.</small></span><input type="checkbox" id="allowSkip"></label>
+  </section>
 
-    <label class="check"><input type="checkbox" id="blockSites"> Block other websites in this browser</label>
+  <section id="sec-sites" class="rules">
+    <h2>Websites and channels</h2>
+    <label class="check"><span>Block other websites in this browser <small>youtube.com and KidTube’s own pages always stay open.</small></span><input type="checkbox" id="blockSites"></label>
     <label for="sites">Websites that stay open (one per line)</label>
     <textarea id="sites" placeholder="youtube.com"></textarea>
-    <p class="hint">youtube.com always stays open. A site also allows its subdomains.</p>
+    <p class="hint">A site also allows its subdomains.</p>
 
     <label for="channels">Blocked channels (channel ids starting with UC, one per line)</label>
     <textarea id="channels" placeholder="UC…"></textarea>
+  </section>
 
-    <h2 style="margin-top:20px">Talking friend</h2>
-    <label class="check"><input type="checkbox" id="intro"> Says hello before each video</label>
-    <label class="check"><input type="checkbox" id="outro"> Says what we learned after each video</label>
-    <label class="check"><input type="checkbox" id="quizOn"> Asks questions after the video</label>
-    <p class="hint">The agent writes the words and the questions for each video. Without them the friend says a short hello and “well done”.</p>
+  <section id="sec-friend" class="rules">
+    <h2>Talking friend</h2>
+    <label class="check"><span>Says hello before each video</span><input type="checkbox" id="intro"></label>
+    <label class="check"><span>Says what we learned after each video</span><input type="checkbox" id="outro"></label>
+    <label class="check"><span>Asks questions after the video <small>The helper writes the words and the questions for each video. Without them the friend says a short hello and “well done”.</small></span><input type="checkbox" id="quizOn"></label>
     <div class="two">
       <div><label for="onFail">After <span id="attemptsLabel">3</span> wrong answers</label>
         <select id="onFail">
@@ -88,10 +103,13 @@ const MARKUP = `
     <input id="catchphrase" maxlength="60" placeholder="Pika pika!">
     <label for="friendImage">Picture: a link (https://…) or a file in the data repo (repo:characters/name.svg)</label>
     <input id="friendImage" placeholder="empty = the built-in cloud friend">
-    <label class="check"><input type="checkbox" id="recorded"> Use the helper’s recorded voice when there is one</label>
-    <p class="hint">The daily helper can record the friend’s lines (Gemini or OpenRouter, set on the server). Off: the tablet’s own voice says everything.</p>
+    <label class="check"><span>Use the helper’s recorded voice when there is one <small>The daily helper can record the friend’s lines (Gemini or OpenRouter, set on the server). Off: the tablet’s own voice says everything.</small></span><input type="checkbox" id="recorded"></label>
+    <button id="tryVoice">🔊 Try the voice</button>
+  </section>
 
-    <label for="listenProvider">Hearing his answers</label>
+  <section id="sec-hearing" class="rules">
+    <h2>Hearing his answers</h2>
+    <label for="listenProvider">How his spoken answers are heard</label>
     <select id="listenProvider">
       <option value="cloud">Record and send: free Groq and Gemini first, then paid OpenRouter (more accurate)</option>
       <option value="device">The tablet’s own speech recognition</option>
@@ -112,15 +130,16 @@ const MARKUP = `
       <button id="tryCloud">🎤 Try it: say a word</button>
       <p id="cloudOut" class="hint"></p>
     </div>
-    <button id="tryVoice">🔊 Try the voice</button>
     <button id="tryMic">🎤 Try the microphone</button>
     <p id="micOut" class="hint">Press “Try the microphone” once and allow it, so the questions can hear him.</p>
-
-    <button class="primary" id="saveRules">Save rules</button>
-    <p id="rulesOut" class="muted"></p>
   </section>
 
-  <section>
+  <div class="savebar" id="savebar" hidden>
+    <span id="rulesOut" class="muted">Unsaved changes</span>
+    <button class="primary" id="saveRules">Save rules</button>
+  </div>
+
+  <section id="sec-pin">
     <h2>PIN</h2>
     <p class="muted">The same PIN for every account and app on this tablet. The apps header’s account menu saves it to a file, with the GitHub connection.</p>
     <button id="changePin">Change PIN</button>
@@ -232,12 +251,28 @@ export function mountSettings(root) {
     const to = Object.assign(document.createElement('input'), { type: 'time', value: w.to, className: 'to' });
     times.append(from, to);
     const del = el('button', 'Remove');
-    del.onclick = () => box.remove();
+    del.onclick = () => { box.remove(); sayRules('Unsaved changes'); };
     box.append(days, times, del);
     return box;
   }
 
+  // The save bar appears as soon as a rule changes (and while some rules are saved on this tablet only).
+  const savebar = $('savebar');
+  function sayRules(text, cls = 'muted', show = true) {
+    $('rulesOut').className = cls;
+    $('rulesOut').textContent = text;
+    savebar.hidden = !show;
+  }
+  let drawing = false;
+  for (const sec of root.querySelectorAll('section.rules')) {
+    for (const t of ['input', 'change']) sec.addEventListener(t, () => { if (!drawing) sayRules('Unsaved changes'); });
+  }
+  root.querySelectorAll('.secnav button').forEach((b) => b.addEventListener('click', () => {
+    $(b.dataset.sec).scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
+
   async function renderRules() {
+    drawing = true;
     const { config: c, pending } = await send({ type: 'getRules' });
     $('windows').replaceChildren(...(c.time?.allowed ?? []).map(windowEditor));
     $('maxMinutes').value = c.time?.maxMinutesPerDay ?? 0;
@@ -278,10 +313,11 @@ export function mountSettings(root) {
       if (repoKeys.openrouter) $('voiceKey').placeholder = 'Empty: the key from the data repo is used';
     });
     voiceLang = p.voice?.lang || 'en-US';
-    $('rulesOut').textContent = pending ? 'Some rules are saved on this tablet only and will go to GitHub on the next sync.' : '';
+    if (pending) sayRules('Some rules are saved on this tablet only and will go to GitHub on the next sync.'); else savebar.hidden = true;
+    drawing = false;
   }
 
-  $('addWindow').addEventListener('click', () => $('windows').append(windowEditor()));
+  $('addWindow').addEventListener('click', () => { $('windows').append(windowEditor()); sayRules('Unsaved changes'); });
 
   function readRules() {
     const errors = [];
@@ -334,14 +370,13 @@ export function mountSettings(root) {
 
   $('saveRules').addEventListener('click', async () => {
     const { patch, errors } = readRules();
-    if (errors.length) { $('rulesOut').className = 'err'; $('rulesOut').textContent = errors.join(' '); return; }
+    if (errors.length) { sayRules(errors.join(' '), 'err'); return; }
     $('saveRules').disabled = true;
-    $('rulesOut').className = 'muted';
-    $('rulesOut').textContent = 'Saving…';
+    sayRules('Saving…');
     try {
       const r = await send({ type: 'saveRules', patch });
-      $('rulesOut').className = r.saved === 'github' ? 'ok' : 'muted';
-      $('rulesOut').textContent = r.saved === 'github' ? 'Saved on the tablet and on GitHub ✓' : `Working on this tablet now. ${r.error ?? ''}`;
+      if (r?.saved === 'github') sayRules('Saved on the tablet and on GitHub ✓', 'ok');
+      else sayRules(`Working on this tablet now. ${r?.error ?? ''}`);
     } finally {
       $('saveRules').disabled = false;
       renderStatus();

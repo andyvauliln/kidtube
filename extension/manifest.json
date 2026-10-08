@@ -29,6 +29,7 @@
       ],
       "js": [
         "ui/header.js",
+        "ui/render.js",
         "content/content.js"
       ],
       "run_at": "document_start"

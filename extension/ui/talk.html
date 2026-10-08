@@ -5,10 +5,12 @@
 <title>KidTube</title>
 <link rel="stylesheet" href="ui.css">
 <style>
-  body { background: radial-gradient(circle at 50% 30%, #fff3d6, #ffe0b3); overflow: hidden; }
-  .stage { height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; }
-  @media (orientation: landscape) { .stage { flex-direction: row; } .side { max-width: 55%; } }
-  .friend { width: min(52vw, 46vh, 340px); aspect-ratio: 1; position: relative; animation: bob 2.4s ease-in-out infinite; }
+  body.talk { background: radial-gradient(circle at 50% 30%, #ffffff 0%, var(--sky) 50%, #d4e7ff 100%); }
+  .stage { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; padding: 16px; }
+  @media (orientation: landscape) { .stage { flex-direction: row; gap: 32px; } .side { max-width: 55%; } }
+  /* nothing said yet: the friend alone, in the middle */
+  .stage:has(.bubble:empty):has(.answers:empty):has(.heard:empty) .side { display: none; }
+  .friend { width: min(52vw, 46vh, 340px); aspect-ratio: 1; position: relative; animation: bob 2.4s ease-in-out infinite; flex: none; }
   .friend svg, .friend img { width: 100%; height: 100%; object-fit: contain; display: block; }
   .talking .friend { animation: bob .45s ease-in-out infinite; }
   .talking .friend img { animation: squash .22s ease-in-out infinite alternate; }
@@ -18,30 +20,42 @@
   @keyframes bob { 50% { transform: translateY(-10px); } }
   @keyframes squash { to { transform: scale(1.04, .96); } }
   .friend #mouth, .friend #mouthOpen { transition: transform .08s; }
-  .side { display: flex; flex-direction: column; align-items: center; gap: 14px; width: 100%; max-width: 640px; }
-  .bubble { background: #fff; border-radius: 22px; padding: 16px 20px; font-size: 24px; line-height: 1.3; text-align: center;
-    box-shadow: 0 4px 0 #0000000f, 0 8px 22px #0000001a; min-height: 1em; max-height: 36vh; overflow: auto; }
-  .bubble:empty { visibility: hidden; }
+  .side { display: flex; flex-direction: column; align-items: center; gap: 16px; width: 100%; max-width: 640px; }
+  .bubble { position: relative; background: #fff; border-radius: 26px; padding: 18px 24px; font-size: 26px; font-weight: 800; line-height: 1.3; text-align: center;
+    box-shadow: var(--lift); min-height: 1em; max-height: 36vh; overflow: auto; }
+  .bubble:empty { display: none; }
+  .bubble::after { content: ''; position: absolute; width: 18px; height: 18px; background: #fff; transform: rotate(45deg); left: 50%; top: -8px; margin-left: -9px; }
+  @media (orientation: landscape) { .bubble::after { left: -8px; top: 50%; margin: -9px 0 0; } }
   .answers { display: flex; flex-wrap: wrap; justify-content: center; gap: 12px; }
-  .answers button, .go { border: 0; border-radius: 18px; background: #fff; font: inherit; font-size: 26px; padding: 14px 24px; min-width: 96px;
-    box-shadow: 0 4px 0 #0000001f; color: var(--ink); }
-  .answers button:active, .go:active { transform: translateY(2px); box-shadow: 0 2px 0 #0000001f; }
-  .go, .answers button.ok { background: var(--accent); color: #fff; }
-  .answers input { font: inherit; font-size: 26px; padding: 12px 16px; border-radius: 16px; border: 2px solid #e5d6c0; width: 220px; text-align: center; }
-  .mic { width: 110px; height: 110px; border-radius: 50%; font-size: 52px; background: #fff; }
-  .mic.on { background: #ff5252; animation: pulse 1s ease-in-out infinite; }
-  @keyframes pulse { 50% { box-shadow: 0 0 0 18px #ff525233; } }
+  .answers:empty { display: none; }
+  .answers button, .go { border-radius: 20px; background: #fff; font-size: 26px; font-weight: 800; padding: 14px 26px; min-width: 100px;
+    box-shadow: 0 5px 0 rgba(31, 42, 68, .14); color: var(--ink); transition: transform .1s, box-shadow .1s; }
+  .answers button:active, .go:active { transform: translateY(3px); box-shadow: 0 2px 0 rgba(31, 42, 68, .14); }
+  .go, .answers button.ok { background: var(--coral); color: #fff; box-shadow: 0 5px 0 var(--coral-deep); }
+  .answers input { font: inherit; font-size: 26px; font-weight: 800; padding: 12px 16px; border-radius: 18px; border: 3px solid var(--line); background: #fff;
+    width: 220px; text-align: center; color: var(--ink); }
+  .answers input:focus { outline: none; border-color: var(--coral); }
+  .mic { width: 116px; height: 116px; min-width: 0; border-radius: 50% !important; padding: 0 !important; font-size: 52px; line-height: 1; }
+  .mic.on { background: var(--coral); color: #fff; animation: pulse 1s ease-in-out infinite; }
+  @keyframes pulse { 50% { box-shadow: 0 5px 0 var(--coral-deep), 0 0 0 18px rgba(255, 107, 92, .25); } }
   .heard { color: var(--muted); font-size: 18px; min-height: 1.2em; }
-  .start { position: fixed; inset: 0; display: grid; place-items: end center; padding-bottom: 8vh; background: transparent; border: 0; font: inherit; }
-  .start span { background: var(--accent); color: #fff; font-size: 28px; padding: 14px 28px; border-radius: 30px; box-shadow: 0 4px 0 #0000002a; }
-  .parent { position: fixed; right: 10px; bottom: 10px; background: transparent; border: 0; font-size: 20px; opacity: .35; }
-  .pinbox { position: fixed; inset: 0; background: #0008; display: grid; place-items: center; }
-  .pinbox div { background: #fff; border-radius: 16px; padding: 20px; text-align: center; }
-  .pinbox input { font-size: 26px; width: 180px; text-align: center; letter-spacing: 6px; padding: 8px; }
-  .pinbox p { font-size: 15px; }
+  .start { position: fixed; inset: 0; display: grid; place-items: end center; padding-bottom: 8vh; background: transparent; }
+  .start span { background: var(--coral); color: #fff; font-size: 28px; font-weight: 900; padding: 16px 32px; border-radius: 34px;
+    box-shadow: 0 6px 0 var(--coral-deep); animation: beckon 1.6s ease-in-out infinite; }
+  @keyframes beckon { 50% { transform: translateY(-6px); } }
+  .parent { position: fixed; right: 12px; bottom: 12px; width: 44px; height: 44px; border-radius: 22px; display: grid; place-items: center;
+    background: rgba(255, 255, 255, .6); color: var(--muted); opacity: .6; }
+  .pinbox { position: fixed; inset: 0; background: rgba(31, 42, 68, .55); display: grid; place-items: center; padding: 16px; }
+  .pinbox div { background: #fff; border-radius: 24px; padding: 24px; text-align: center; box-shadow: 0 16px 48px rgba(0, 0, 0, .3); }
+  .pinbox input { font: inherit; font-size: 28px; width: 200px; text-align: center; letter-spacing: 8px; padding: 10px; border-radius: 14px; border: 3px solid var(--line); }
+  .pinbox p { font-size: 15px; color: var(--muted); margin: 8px 0; }
+  .pinbox .go { margin: 8px 4px 0; font-size: 18px; padding: 12px 22px; }
+  .pinbox .go.quiet { background: #eef3fa; color: var(--ink); box-shadow: 0 5px 0 var(--line); }
+  .problem { flex: 1; }
   [hidden] { display: none !important; }
+  @media (prefers-reduced-motion: reduce) { .friend, .talking .friend, .talking .friend img, .start span, .mic.on { animation: none; } }
 </style>
-<body>
+<body class="screen talk">
   <div class="stage" id="stage">
     <div class="friend" id="friend">
       <svg id="buddy" viewBox="0 0 200 200" aria-hidden="true">
@@ -68,14 +82,15 @@
       <div class="heard" id="heard"></div>
     </div>
   </div>
-  <button class="start" id="start"><span id="startText">👆 Tap to start</span></button>
-  <button class="parent" id="parent" title="Parent">🔒</button>
+  <button class="start" id="start" hidden><span id="startText">👆 Tap to start</span></button>
+  <button class="parent" id="parent" title="Parent: skip with the PIN" aria-label="Parent: skip with the PIN"></button>
   <div class="pinbox" id="pinbox" hidden><div>
     <p>Parent PIN to skip</p>
-    <input id="pin" type="password" inputmode="numeric" maxlength="8" autocomplete="off">
-    <p id="pinErr"></p>
-    <button class="go" id="pinOk">Skip</button> <button class="go" id="pinCancel" style="background:#eee;color:#333">Back</button>
+    <input id="pin" type="password" inputmode="numeric" maxlength="8" autocomplete="off" aria-label="PIN">
+    <p id="pinErr" class="err"></p>
+    <button class="go" id="pinOk">Skip</button> <button class="go quiet" id="pinCancel">Back</button>
   </div></div>
+  <script src="render.js"></script>
   <script type="module" src="talk.js"></script>
 </body>
 </html>

@@ -1,27 +1,103 @@
-:root { --bg: #fff8ec; --card: #ffffff; --ink: #2b2b2b; --muted: #8a7f70; --accent: #ff7a3d; --lock: #6c63ff; }
-* { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; background: var(--bg); color: var(--ink); font: 600 16px/1.3 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-  -webkit-tap-highlight-color: transparent; user-select: none; }
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 16px; padding: 16px; overflow-y: auto; height: 100%; align-content: start; }
-.card { background: var(--card); border: 0; padding: 0; border-radius: 18px; overflow: hidden; text-align: left; color: inherit; font: inherit;
-  box-shadow: 0 3px 0 #0000000f, 0 6px 16px #00000014; cursor: pointer; transition: transform .1s; }
-.card:active { transform: scale(.97); }
-.card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; background: #eee; }
-.card .t { padding: 10px 12px 12px; font-size: 17px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.card .d { padding: 0 12px 12px; color: var(--muted); font-size: 14px; font-weight: 500; }
-.center { height: 100%; display: grid; place-items: center; text-align: center; padding: 24px; }
-.big { font-size: 64px; line-height: 1; }
-h1 { font-size: 28px; margin: 16px 0 8px; }
-p { margin: 4px 0; color: var(--muted); font-weight: 500; font-size: 18px; }
-.parentbtn { position: fixed; right: 12px; top: 12px; height: 36px; padding: 0 14px; border: 0; border-radius: 18px; background: #ffffffe0;
-  color: #6b6257; font: 600 14px/1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; box-shadow: 0 1px 4px #0002; z-index: 10; cursor: pointer; }
-body.kidhome .grid { padding-top: 60px; }   /* room for 🔒 Parent */
-/* must-watch videos (⭐) and the ones waiting for them */
-.card { position: relative; }
-.card .star { position: absolute; top: 6px; left: 6px; font-size: 30px; filter: drop-shadow(0 2px 2px #0005); }
-.card.waiting { opacity: .45; filter: grayscale(.7); }
-.card.waiting::after { content: '⭐ first'; position: absolute; top: 8px; right: 8px; background: #fffc; border-radius: 12px; padding: 2px 8px; font-size: 14px; }
+/* KidTube's kid screens: the home list, the strip beside the player, the lock screens and the talking friend.
+   One file for the extension's pages (body.screen) and for the in-page panels Orion draws into a shadow root
+   (content.js fetches this file), so everything hangs off .screen, never html or body alone.
+   Built by ui/render.js. */
+.screen {
+  --sky: #e6f2ff; --sky-2: #f6faff; --ink: #1f2a44; --muted: #66758f; --card: #ffffff; --line: #d6e3f3;
+  --sun: #ffc83d; --sun-ink: #7a5200; --coral: #ff6b5c; --coral-deep: #d9493c; --leaf: #4cc27b;
+  --night: #242c58; --night-2: #3d4b8f; --night-ink: #c9d2f5;
+  --radius: 22px; --lift: 0 6px 0 rgba(31, 42, 68, .10), 0 10px 24px rgba(31, 42, 68, .10);
+  --font: "Nunito", "Varela Round", ui-rounded, "SF Pro Rounded", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: linear-gradient(180deg, var(--sky) 0%, var(--sky-2) 100%); color: var(--ink);
+  font: 700 16px/1.3 var(--font); -webkit-tap-highlight-color: transparent; user-select: none; -webkit-user-select: none;
+}
+.screen *, .screen *::before, .screen *::after { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; }
+.screen button { font: inherit; color: inherit; cursor: pointer; border: 0; background: none; padding: 0; margin: 0; }
+.screen button:focus-visible, .screen a:focus-visible { outline: 3px solid var(--coral); outline-offset: 2px; }
+.screen svg { display: block; flex: none; }
+.screen .body { flex: 1 1 auto; min-height: 0; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain; }
+.screen.cover { background: var(--sky); }
+
+/* --- the home screen's top bar ----------------------------------------------------------------------------- */
+.topbar { display: flex; align-items: center; gap: 14px; padding: 14px 18px 8px; flex: none; }
+.hello { font-size: 22px; font-weight: 900; letter-spacing: -.2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; min-width: 0; }
+.meter { flex: 0 1 240px; height: 16px; border-radius: 8px; background: #fff; box-shadow: inset 0 0 0 2px var(--line); position: relative; }
+.meter .fill { height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--sun), #ff9f43); min-width: 16px;
+  position: relative; transition: width .6s ease; }
+.meter .sunicon { position: absolute; right: -10px; top: 50%; width: 30px; height: 30px; margin-top: -15px; border-radius: 50%;
+  background: var(--sun); color: var(--sun-ink); display: grid; place-items: center; box-shadow: 0 2px 0 rgba(122, 82, 0, .25); }
+.meter.low .fill { background: linear-gradient(90deg, var(--coral), #ff9f43); }
+.meter.low .sunicon { background: var(--coral); color: #fff; }
+.parentbtn { margin-left: auto; flex: none; display: inline-flex; align-items: center; gap: 6px; height: 38px; padding: 0 14px 0 10px;
+  border-radius: 19px; background: #fff; color: var(--muted); font-size: 14px; font-weight: 800; box-shadow: 0 2px 0 rgba(31, 42, 68, .10); }
+.parentbtn:active { transform: translateY(1px); box-shadow: none; }
+.night .parentbtn { background: rgba(255, 255, 255, .14); color: #fff; box-shadow: none; }
+.night .topbar .hello, .night .meter { visibility: hidden; }
+
+/* --- the cards ---------------------------------------------------------------------------------------------- */
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 18px; padding: 8px 18px 90px; align-content: start; }
+.grid.small { grid-template-columns: repeat(auto-fill, minmax(172px, 1fr)); gap: 12px; padding: 10px 16px 24px; }
+.card { position: relative; display: block; width: 100%; background: var(--card); border-radius: var(--radius); overflow: hidden; text-align: left;
+  box-shadow: var(--lift); transition: transform .12s ease, box-shadow .12s ease; }
+.card:active { transform: translateY(4px) scale(.985); box-shadow: 0 2px 0 rgba(31, 42, 68, .10), 0 4px 10px rgba(31, 42, 68, .08); }
+.card .pic { position: relative; background: #dfe9f5; }
+.card img { width: 100%; aspect-ratio: 16 / 9; object-fit: cover; display: block; }
+.card .len { position: absolute; right: 8px; bottom: 8px; background: rgba(31, 42, 68, .78); color: #fff; font-size: 13px; font-weight: 800;
+  border-radius: 10px; padding: 3px 8px; }
+.card .star { position: absolute; left: 8px; top: 8px; width: 40px; height: 40px; border-radius: 50%; background: var(--sun); color: var(--sun-ink);
+  display: grid; place-items: center; box-shadow: 0 3px 0 rgba(122, 82, 0, .25); transform: rotate(-10deg); }
+.card.small .star { width: 32px; height: 32px; }
+.card .t { padding: 12px 14px 14px; font-size: 18px; line-height: 1.25; font-weight: 800; display: -webkit-box; -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical; overflow: hidden; }
+.card.small .t { font-size: 15px; padding: 10px 12px 12px; }
+.card.waiting { opacity: .55; filter: saturate(.25); }
+.card .waittag { position: absolute; right: 8px; top: 8px; display: inline-flex; align-items: center; gap: 3px; background: #fff; color: var(--ink);
+  border-radius: 12px; padding: 4px 9px 4px 7px; font-size: 13px; font-weight: 800; }
 .nudge { animation: nudge .4s ease-in-out; }
 .star.nudge { animation: pop .6s ease-in-out 2; }
 @keyframes nudge { 25% { transform: translateX(-8px); } 75% { transform: translateX(8px); } }
-@keyframes pop { 50% { transform: scale(1.5) rotate(15deg); } }
+@keyframes pop { 50% { transform: scale(1.4) rotate(10deg); } }
+
+/* --- centered messages: the lock screens, "new videos are coming", problems --------------------------------- */
+.center { min-height: 100%; display: grid; place-items: center; text-align: center; padding: 24px; }
+.center .big { font-size: 88px; line-height: 1; }
+.center h1 { font-size: 32px; font-weight: 900; margin: 18px 0 8px; letter-spacing: -.3px; }
+.center p { margin: 0; font-size: 20px; font-weight: 700; color: var(--muted); }
+.center .link { display: inline-block; margin-top: 20px; font-size: 18px; color: var(--coral-deep); }
+.lockview { background: radial-gradient(circle at 50% 15%, var(--night-2), var(--night) 70%); color: #fff; }
+.lockview p { color: var(--night-ink); }
+.lockview::before { content: ''; position: absolute; inset: 0; pointer-events: none; opacity: .7;
+  background: radial-gradient(2px 2px at 12% 22%, #fff 50%, transparent 51%), radial-gradient(2px 2px at 28% 62%, #fff 50%, transparent 51%),
+    radial-gradient(3px 3px at 72% 18%, #fff 50%, transparent 51%), radial-gradient(2px 2px at 86% 48%, #fff 50%, transparent 51%),
+    radial-gradient(2px 2px at 54% 80%, #fff 50%, transparent 51%), radial-gradient(2px 2px at 40% 12%, #fff 50%, transparent 51%); }
+/* locked: the night sky fills the screen; only the Parent button stays, floating top right */
+.night { position: relative; }
+.night .topbar { position: absolute; top: 0; right: 0; z-index: 1; }
+.night .body { position: absolute; inset: 0; }
+.night .lockview { position: absolute; inset: 0; }
+
+/* --- the strip beside the player ------------------------------------------------------------------------------ */
+.strip .bar { display: flex; align-items: center; gap: 14px; padding: 12px 16px 4px; flex: none; }
+.homebtn { display: inline-flex; align-items: center; gap: 8px; height: 48px; padding: 0 20px 0 16px; border-radius: 24px; background: var(--coral); color: #fff;
+  font-size: 19px; font-weight: 900; box-shadow: 0 4px 0 var(--coral-deep); transition: transform .1s, box-shadow .1s; }
+.homebtn:active { transform: translateY(3px); box-shadow: 0 1px 0 var(--coral-deep); }
+.homebtn:disabled { background: #cfd8e6; box-shadow: 0 4px 0 #afbbcd; color: #fff; cursor: default; transform: none; }
+.wait { font-size: 16px; font-weight: 700; color: var(--muted); min-width: 0; }
+.wait b { color: var(--ink); font-weight: 900; font-variant-numeric: tabular-nums; }
+.strip.locked .card { pointer-events: none; filter: grayscale(1); opacity: .45; }
+
+/* --- YouTube locked after an account change (content.js) ----------------------------------------------------- */
+.lockcover { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; pointer-events: auto;
+  background: radial-gradient(circle at 50% 15%, var(--night-2), var(--night) 70%); color: #fff; }
+.lockcard { background: #fff; color: var(--ink); border-radius: 28px; padding: 36px 28px 28px; max-width: 440px; box-shadow: 0 16px 48px rgba(0, 0, 0, .35); }
+.lockcard .big { font-size: 64px; line-height: 1; }
+.lockcard h1 { font-size: 26px; font-weight: 900; margin: 14px 0 8px; }
+.lockcard p { font-size: 16px; color: var(--muted); margin: 0; }
+.lockcard button { margin-top: 24px; height: 50px; border-radius: 25px; padding: 0 28px; background: var(--ink); color: #fff; font-weight: 800; font-size: 17px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .nudge, .star.nudge { animation: none; }
+  .card, .meter .fill { transition: none; }
+}

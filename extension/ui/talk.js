@@ -249,10 +249,19 @@ $('pinOk').onclick = async () => {
   if (!running) finish();
 };
 
+$('parent').append(globalThis.KidTubeUI.icon('lock', 22));
 script = await send({ type: 'talk', videoId, mode });
 // The keys for listening never leave this tablet (the parent stores them in Settings).
 const listenKey = await listenKeys();
-setupFriend();
-if (!script.lines.length && !script.items.length) finish();
-// Browsers only let a page speak after a tap, so he taps the friend to start.
-$('start').onclick = run;
+if (!script) {
+  // The background didn't answer: say so instead of a friend that never speaks, and offer the way out.
+  $('stage').replaceChildren(globalThis.KidTubeUI.problemView());
+  $('stage').firstChild.classList.add('problem');
+  $('stage').firstChild.firstChild.append(globalThis.KidTubeUI.button('go', 'Back to the list', () => { location.href = 'https://m.youtube.com/'; }));
+} else {
+  setupFriend();
+  if (!script.lines.length && !script.items.length) finish();
+  // Browsers only let a page speak after a tap, so he taps the friend to start.
+  $('start').hidden = false;
+  $('start').onclick = run;
+}

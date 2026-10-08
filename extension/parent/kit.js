@@ -77,6 +77,8 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
   let writing = false;       // the recording is being written down
   let started = 0, clock = null, notice = '', cloud = false;
   let notes = [];
+  // On a fresh page the waiting notes fold into one line; a recording, a typed note or Show open the list.
+  let expanded = false;
 
   const label = (n) => n.videoId ? `Video · ${n.title || n.videoId}` : n.doc ? `Context · ${docNames[n.doc] ?? n.doc}`
     : n.type === 'prompt' ? 'Prompt' : TYPE_LABEL[n.list] ?? 'Message';
@@ -87,6 +89,7 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
       : await ask({ type: 'wish', list: at.list ?? 'settings', text });
     if (!r?.ok) { toast('Could not save the note. Is parent mode still on?'); return false; }
     notice = '';
+    expanded = true;
     card.classList.remove('open');   // the card stays while notes wait
     await draw();
     onSaved();
@@ -108,12 +111,22 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
     fab.textContent = rec ? '⏹' : writing ? '…' : '🎤';
     fab.classList.toggle('on', !!rec);
     if (card.hidden) return;
+    const folded = !expanded && !busy && !retry && !notice && !card.classList.contains('open') && notes.length > 0;
+    card.classList.toggle('compact', folded);
+    if (folded) {
+      const sum = el('div', 'ncsum', `${notes.length} note${notes.length === 1 ? '' : 's'} waiting for the AI`);
+      sum.append(el('small', '', notes.map((n) => `${label(n)}: ${n.text}`).join(' · ')));
+      card.replaceChildren(sum,
+        btn('Show', async () => { expanded = true; await draw(); }, 'small'),
+        btn(`Apply notes (${notes.length})`, async () => { if (await runNow()) await draw(); }, 'small primary'));
+      return;
+    }
     const head = el('div', 'nchead');
     head.append(el('h2', '', notes.length ? `Notes for the AI · ${notes.length}` : 'Notes for the AI'));
-    const close = el('button', 'ghost small nclose', '✕');
+    const close = el('button', 'ghost small nclose', notes.length ? 'Fold' : '✕');
     close.title = 'Hide (the notes stay)';
-    close.addEventListener('click', () => { card.classList.remove('open'); if (!notes.length && !busy) card.hidden = true; else draw(); });
-    if (!notes.length && !busy) head.append(close);
+    close.addEventListener('click', () => { expanded = false; notice = ''; card.classList.remove('open'); if (!notes.length && !busy) card.hidden = true; else draw(); });
+    if (!busy) head.append(close);
     const parts = [head];
     if (rec) {
       const s = Math.round((Date.now() - started) / 1000);
@@ -196,6 +209,7 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     notice = '';
     retry = null;
+    expanded = true;
     if (!keys.groq && !keys.gemini && !keys.openrouter && !SR) {
       card.classList.add('open');
       notice = 'Dictation isn’t available here: type the note, or use the 🎤 on the keyboard.';

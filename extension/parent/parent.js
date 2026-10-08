@@ -273,14 +273,38 @@ function syncLine() {
 
 // --- the three lists -------------------------------------------------------------------------------
 
+// The day at a glance: videos watched, minutes used, must-watch videos left.
+function stat(value, unit, label, { bar = null, tone = '' } = {}) {
+  const box = el('div', `stat${tone ? ` ${tone}` : ''}`);
+  const b = el('b', '', String(value));
+  if (unit) b.append(el('small', '', ` ${unit}`));
+  box.append(b, el('span', '', label));
+  if (bar != null) { const track = el('div', 'bar'); const fill = el('i'); fill.style.width = `${Math.round(Math.max(0, Math.min(1, bar)) * 100)}%`; track.append(fill); box.append(track); }
+  return box;
+}
+function statsRow() {
+  const vs = data.today;
+  const watched = vs.filter((v) => v.watchedAt).length;
+  const stars = vs.filter((v) => v.required), starsLeft = stars.filter((v) => !v.watchedAt).length;
+  const m = data.minutes ?? { played: 0, max: 0 };
+  const used = m.max ? m.played / m.max : 0;
+  const row = el('div', 'stats');
+  row.append(
+    stat(watched, `of ${vs.length}`, 'videos watched today', { bar: vs.length ? watched / vs.length : 0 }),
+    stat(m.played, m.max ? `of ${m.max} min` : 'min', m.stopped ? 'minutes · stopped for today' : m.max ? 'minutes of screen time' : 'minutes, no limit set',
+      { bar: m.max ? used : null, tone: m.stopped || used >= 1 ? 'bad' : used >= .8 ? 'warn' : '' }),
+    stat(starsLeft, stars.length ? `of ${stars.length}` : '', 'must-watch ⭐ left', { bar: stars.length ? 1 - starsLeft / stars.length : null }),
+  );
+  return row;
+}
+
 function renderToday() {
   const vs = data.today;
-  const left = vs.filter((v) => !v.watchedAt).length;
   const head = el('div', 'box');
   head.append(el('h2', '', 'What he sees today'),
-    el('p', 'muted', `${vs.length} video${vs.length === 1 ? '' : 's'} · ${vs.length - left} watched · ${vs.filter((v) => v.required).length} must-watch. Removing a video brings the next planned one in.`),
+    el('p', 'muted', 'His list in his order: the first unwatched videos, then the ones he watched. Removing a video brings the next planned one in.'),
     syncLine());
-  view.replaceChildren(head, ...(vs.length ? vs.map((v) => row(v, 'today')) : [el('p', 'muted', 'Nothing on today’s list.')]));
+  view.replaceChildren(statsRow(), head, ...(vs.length ? vs.map((v) => row(v, 'today')) : [el('p', 'muted', 'Nothing on today’s list.')]));
 }
 
 function renderPlanned() {
@@ -494,8 +518,10 @@ async function renderDetail(videoId) {
   const where = d.where === 'watched' ? 'history' : d.where;
   const again = async () => { await refresh(); };
   if (['today', 'planned', 'history'].includes(where)) side.append(actionsFor(d, where, { onDone: again }));
-  if (d.where === 'removed') side.append(el('div', 'actions'), btn('Put back in the plan', async () => { if (await plan('restore', videoId)) { toast('Back in the plan.'); await again(); } }));
-  side.append(btn('▶ Watch it yourself', () => ask({ type: 'watchHere', videoId }), 'primary'));
+  const more = el('div', 'actions');
+  if (d.where === 'removed') more.append(btn('Put back in the plan', async () => { if (await plan('restore', videoId)) { toast('Back in the plan.'); await again(); } }));
+  more.append(btn('▶ Watch it yourself', () => ask({ type: 'watchHere', videoId }), 'primary'));
+  side.append(more);
   hero.append(t, side);
 
   const sections = [];
