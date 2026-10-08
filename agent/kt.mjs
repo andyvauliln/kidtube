@@ -446,11 +446,18 @@ async function makeVoices(queue, pc, s) {
   } else {
     const make = async (text, lang) => {
       lang = langOf(text, lang);
-      // A recording that exists is kept: Groq's (one per model), or the provider's (also Groq's fallback).
-      const names = [...(groqFor(lang, cfg) ? cfg.groq.models.map((m) => audioPath(text, lang, cfg, groqTag(cfg, m))) : []), audioPath(text, lang, cfg)];
-      const have = names.find((p) => existsSync(join(dataDir, p)));
-      if (have) { want.add(have); report.kept++; return `repo:${have}`; }
-      if (Date.now() > deadline || !voices.canSpeak(lang)) { report.skipped++; want.add(names[0]); return null; }
+      // A recording that exists is kept: Groq's (one per model), or the provider's. A provider recording made as
+      // Groq's fallback is used only while Groq can't make the line (its day over, the budget spent): otherwise
+      // Groq is asked again, so the friend ends up with one voice for English.
+      const groqNames = groqFor(lang, cfg) ? cfg.groq.models.map((m) => audioPath(text, lang, cfg, groqTag(cfg, m))) : [];
+      const providerName = audioPath(text, lang, cfg);
+      const haveGroq = groqNames.find((p) => existsSync(join(dataDir, p)));
+      const haveProvider = existsSync(join(dataDir, providerName)) ? providerName : null;
+      const groqNow = groqNames.length > 0 && !voices.groqGone && Date.now() <= deadline;
+      const keep = (p) => { want.add(p); report.kept++; return `repo:${p}`; };
+      if (haveGroq) return keep(haveGroq);
+      if (haveProvider && !groqNow) return keep(haveProvider);
+      if (Date.now() > deadline || !voices.canSpeak(lang)) { report.skipped++; return null; }
       try {
         const { mp3, by } = await voices.speak(text, lang);
         const path = audioPath(text, lang, cfg, by);
@@ -460,7 +467,10 @@ async function makeVoices(queue, pc, s) {
         report.made++;
         if (by && report.groq) report.groq.made++;
         return `repo:${path}`;
-      } catch (e) { want.add(names[0]); report.errors.push(`${text.slice(0, 40)}: ${e.message.slice(0, 160)}`); return null; }
+      } catch (e) {
+        report.errors.push(`${text.slice(0, 40)}: ${e.message.slice(0, 160)}`);
+        return haveProvider ? keep(haveProvider) : null;   // the old fallback recording stays until a better one is made
+      }
     };
     for (const v of queue.videos) {
       const lang = v.lang ?? 'en';

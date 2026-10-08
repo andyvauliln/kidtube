@@ -158,7 +158,7 @@
     async function refresh() {
       const st = await ask({ type: 'state' });
       if (!alive) return;
-      if (!st) { if (shown === null) { shown = 'problem'; body.replaceChildren(problemView()); } return; }
+      if (!st) { if (shown === null) { shown = 'problem'; root.classList.toggle('night', locked); body.replaceChildren(locked ? lockView({ reason: 'dailyCap' }) : problemView()); } return; }
       const lock = st.lock ?? (locked ? { reason: 'dailyCap' } : null);
       bar.update({ ...st, lock });
       const key = JSON.stringify([lock, st.videos.map((v) => [v.videoId, v.title, !!v.waiting, !!v.required])]);

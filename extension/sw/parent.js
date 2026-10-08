@@ -6,7 +6,7 @@ import { isVideoId, thumbUrl } from '../lib/url.js';
 import { appOf } from '../lib/apps.js';
 import { PLAN_ACTIONS, applyPlan, applyPlanEvent, entryFromRecord, applyPromptNotes } from '../lib/plan.js';
 import { effective, parentMode } from './store.js';
-import { newEvent, fullLang } from './session.js';
+import { newEvent, fullLang, todayPlayed } from './session.js';
 
 export const getMemory = async () => (await chrome.storage.local.get('memory')).memory ?? null;
 
@@ -147,7 +147,7 @@ export async function parentData(s) {
   const planned = [...new Set(order)].filter((id) => !todayIds.has(id) && ['idea', 'planned', 'today'].includes(recs[id]?.status) && !s.watched[id])
     .map((id) => cardOf(id, {}, recs[id], s));
   const { account = null } = await chrome.storage.local.get('account');
-  const played = s.today?.playedSeconds ?? 0;
+  const played = todayPlayed(s, config);   // starts a new day when the date changed, like the kid's screens
   return {
     account, app: appOf(account).id,
     parentUntil: s.settings.parentUntil || 0, parentMode: parentMode(s), mode: s.settings.mode ?? null,

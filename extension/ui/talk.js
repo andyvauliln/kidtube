@@ -257,7 +257,9 @@ if (!script) {
   // The background didn't answer: say so instead of a friend that never speaks, and offer the way out.
   $('stage').replaceChildren(globalThis.KidTubeUI.problemView());
   $('stage').firstChild.classList.add('problem');
-  $('stage').firstChild.firstChild.append(globalThis.KidTubeUI.button('go', 'Back to the list', () => { location.href = 'https://m.youtube.com/'; }));
+  const from = (() => { try { return new URL(document.referrer).hostname; } catch { return ''; } })();
+  const home = `https://${/(^|\.)youtube\.com$/.test(from) ? from : 'm.youtube.com'}/`;
+  $('stage').firstChild.firstChild.append(globalThis.KidTubeUI.button('go', 'Back to the list', () => { location.href = home; }));
 } else {
   setupFriend();
   if (!script.lines.length && !script.items.length) finish();

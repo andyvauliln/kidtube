@@ -2,6 +2,7 @@
 // Content scripts and the kid's screens only ask and show; the handlers decide.
 import { TARGET } from '../lib/target.js';
 import { homeUrl, watchUrl, isVideoId, thumbUrl } from '../lib/url.js';
+import { lockReason, nowIso } from '../lib/time.js';
 import { visibleVideos } from '../lib/queue.js';
 import { appOf } from '../lib/apps.js';
 import { PARENT_PAGE, PIN_PAGE, DEFAULT_REPO } from './constants.js';
@@ -157,7 +158,8 @@ const HANDLERS = {
       ses.playedSeconds += seconds;
       markWatchedIfCounts(s, config);
     }
-    const reason = lockNow(s, config);
+    // Only the hours and the daily cap end a video here ("stopped" after a quiz is decided by talkDone).
+    const reason = lockReason(config, new Date(), s.today.playedSeconds);
     if (reason) {
       s.outbox.push(newEvent('timeUp', { reason, playedMinutes: Math.round(s.today.playedSeconds / 60) }));
       if (ses) endSession(s, 'timeUp');
@@ -205,7 +207,7 @@ const HANDLERS = {
       : null;
     if (!bad) return;
     s.outbox.push(newEvent('blocked', { target: bad, videoId: ses.videoId, url: watchUrl(host, ses.videoId) }));
-    s.watched[ses.videoId] ??= new Date().toISOString();
+    s.watched[ses.videoId] ??= nowIso();
     endSession(s, 'blockedOnLoad');
     await chrome.tabs.update(tabId, { url: homeUrl(host) });
   }),

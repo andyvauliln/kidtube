@@ -130,7 +130,13 @@
   // --- in-page screens: the same screens as ui/home.html, strip.html and cover.html, drawn by ui/render.js ---------
   // In a closed shadow root with ui/ui.css, so YouTube's CSS can't reach them and they look the same as the iframes.
   // Each panel is attached once and redrawn only when what it shows changes, so a list keeps its scroll position.
-  const PANEL_CSS = '.panel { position: fixed; pointer-events: auto; }';
+  // Enough to position and paint the panels before ui.css arrives (or if it never does): the lock cover must
+  // cover YouTube and take taps from the first moment.
+  const PANEL_CSS = `
+    .panel { position: fixed; pointer-events: auto; overflow: hidden; background: #e6f2ff; }
+    .lockcover { position: fixed; inset: 0; pointer-events: auto; background: #242c58; color: #fff; display: grid; place-items: center; text-align: center; padding: 24px; }
+    .lockcard { background: #fff; color: #1f2a44; border-radius: 28px; padding: 36px 28px 28px; max-width: 440px; }
+    .lockcard button { margin-top: 24px; height: 50px; border-radius: 25px; padding: 0 28px; background: #1f2a44; color: #fff; font: inherit; border: 0; }`;
   let ui = null;
   function shadow() {
     if (!ui) {
