@@ -190,12 +190,14 @@
     const picker = Object.assign(el('input'), { type: 'file', accept: '.json,application/json', hidden: true });
     root.append(picker);
 
-    let data = null, alive = true, busy = '', loading = false;
+    let data = null, alive = true, busy = '', loading = false, again = null;
     const ui = { menu: false, add: false, pick: null, github: false, repo: null, token: '', note: '', noteKind: '' };
     const say = (text, kind = '') => { ui.note = text; ui.noteKind = kind; draw(); };
 
+    // A refresh asked for while one is running is not dropped: it runs right after (the storage can change twice).
     async function refresh(force = false) {
-      if (!alive || loading) return;
+      if (!alive) return;
+      if (loading) { again = again || force; return; }
       loading = true;
       try {
         const h = await ask({ type: 'header', refresh: force });
@@ -203,7 +205,10 @@
         data = h;
         // Typing in the GitHub form: don't redraw under the cursor.
         if (!root.activeElement || root.activeElement.tagName !== 'INPUT') draw();
-      } finally { loading = false; }
+      } finally {
+        loading = false;
+        if (again !== null) { const f = again; again = null; refresh(f); }
+      }
     }
 
     async function act(label, msg) {
