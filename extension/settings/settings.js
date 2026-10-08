@@ -93,11 +93,13 @@ const MARKUP = `
 
     <label for="listenProvider">Hearing his answers</label>
     <select id="listenProvider">
-      <option value="cloud">Record and send: free Gemini first, then paid OpenRouter (more accurate)</option>
+      <option value="cloud">Record and send: free Groq and Gemini first, then paid OpenRouter (more accurate)</option>
       <option value="device">The tablet’s own speech recognition</option>
     </select>
     <div id="cloudListen" hidden>
-      <p class="hint">His answer is recorded and sent to the first model that works: the free Gemini models, then the paid OpenRouter ones. A model that hits its limit rests a minute and the next one answers. If none work, the tablet’s own recognition is used. A key typed here stays on this tablet only. An empty field uses the key in the data repo’s kidtube/keys.json, if there is one.</p>
+      <p class="hint">His answer is recorded and sent to the first model that works: Groq’s free Whisper, the free Gemini models, then the paid OpenRouter ones. A model that hits its limit rests a minute and the next one answers. If none work, the tablet’s own recognition is used. A key typed here stays on this tablet only. An empty field uses the key in the data repo’s kidtube/keys.json, if there is one.</p>
+      <label for="groqKey">Groq API key (free, from console.groq.com; tried first)</label>
+      <input id="groqKey" type="password" autocomplete="off" placeholder="gsk_…">
       <label for="geminiKey">Gemini API key (free tier, from aistudio.google.com)</label>
       <input id="geminiKey" type="password" autocomplete="off" placeholder="AIza…">
       <label for="freeModels">Free Gemini models, tried first, in order (one per line)</label>
@@ -266,8 +268,10 @@ export function mountSettings(root) {
     $('freeModels').value = (p.voice?.listen?.freeModels ?? FREE_LISTEN_MODELS).join('\n');
     $('listenModels').value = (p.voice?.listen?.models ?? PAID_LISTEN_MODELS).join('\n');
     $('cloudListen').hidden = $('listenProvider').value !== 'cloud';
-    chrome.storage.local.get(['voiceKey', 'geminiKey', 'repoKeys']).then(({ voiceKey, geminiKey, repoKeys = {} }) => {
+    chrome.storage.local.get(['voiceKey', 'geminiKey', 'groqKey', 'repoKeys']).then(({ voiceKey, geminiKey, groqKey, repoKeys = {} }) => {
       $('voiceKey').value = voiceKey ?? '';
+      $('groqKey').value = groqKey ?? '';
+      if (repoKeys.groq) $('groqKey').placeholder = 'Empty: the key from the data repo is used';
       $('geminiKey').value = geminiKey ?? '';
       // An empty field uses the key from the data repo (kidtube/keys.json).
       if (repoKeys.gemini) $('geminiKey').placeholder = 'Empty: the key from the data repo is used';
@@ -360,15 +364,16 @@ export function mountSettings(root) {
     if (cloud) askCloudAccess();
   });
   // A typed key is stored on this tablet only: never in the rules, never on GitHub.
-  const saveKeys = () => chrome.storage.local.set({ voiceKey: $('voiceKey').value.trim(), geminiKey: $('geminiKey').value.trim() });
+  const saveKeys = () => chrome.storage.local.set({ voiceKey: $('voiceKey').value.trim(), geminiKey: $('geminiKey').value.trim(), groqKey: $('groqKey').value.trim() });
   $('voiceKey').addEventListener('change', saveKeys);
   $('geminiKey').addEventListener('change', saveKeys);
+  $('groqKey').addEventListener('change', saveKeys);
   $('tryCloud').addEventListener('click', async () => {
     askCloudAccess();
     await saveKeys();
     const { repoKeys = {} } = await chrome.storage.local.get('repoKeys');
-    const keys = { gemini: $('geminiKey').value.trim() || repoKeys.gemini || '', openrouter: $('voiceKey').value.trim() || repoKeys.openrouter || '' };
-    if (!keys.gemini && !keys.openrouter) { $('cloudOut').textContent = 'Enter a Gemini key, an OpenRouter key, or both.'; return; }
+    const keys = { groq: $('groqKey').value.trim() || repoKeys.groq || '', gemini: $('geminiKey').value.trim() || repoKeys.gemini || '', openrouter: $('voiceKey').value.trim() || repoKeys.openrouter || '' };
+    if (!keys.groq && !keys.gemini && !keys.openrouter) { $('cloudOut').textContent = 'Enter a Groq, Gemini or OpenRouter key.'; return; }
     $('cloudOut').textContent = 'Listening… say a word now.';
     const audio = await recordAnswer({ seconds: 4 });
     if (audio === null) { $('cloudOut').textContent = 'The microphone is not allowed here. Press “Try the microphone” first.'; return; }

@@ -276,16 +276,16 @@ async function connectGitHub(msg) {
 // chrome.storage is erased when the extension is removed (Orion updates); this file brings them back.
 async function exportSettings() {
   if (!(await headerOpen())) return { ok: false, error: 'Unlock with the PIN first.' };
-  const { settings = {}, voiceKey, geminiKey } = await chrome.storage.local.get(['settings', 'voiceKey', 'geminiKey']);
+  const { settings = {}, voiceKey, geminiKey, groqKey } = await chrome.storage.local.get(['settings', 'voiceKey', 'geminiKey', 'groqKey']);
   const keep = Object.fromEntries(BACKUP_KEYS.filter((k) => settings[k]).map((k) => [k, settings[k]]));
-  return { ok: true, file: { kidtubeSettings: 1, savedAt: new Date().toISOString(), ...keep, ...(voiceKey ? { voiceKey } : {}), ...(geminiKey ? { geminiKey } : {}) } };
+  return { ok: true, file: { kidtubeSettings: 1, savedAt: new Date().toISOString(), ...keep, ...(voiceKey ? { voiceKey } : {}), ...(geminiKey ? { geminiKey } : {}), ...(groqKey ? { groqKey } : {}) } };
 }
 async function importSettings(file) {
   if (!(await headerOpen())) return { ok: false, error: 'Unlock with the PIN first.' };
   if (file?.kidtubeSettings !== 1) return { ok: false, error: 'That file is not a KidTube settings file.' };
   const { settings = {} } = await chrome.storage.local.get('settings');
   const back = Object.fromEntries(BACKUP_KEYS.filter((k) => typeof file[k] === 'string' && file[k]).map((k) => [k, file[k]]));
-  const voice = Object.fromEntries(['voiceKey', 'geminiKey'].filter((k) => typeof file[k] === 'string' && file[k]).map((k) => [k, file[k]]));
+  const voice = Object.fromEntries(['voiceKey', 'geminiKey', 'groqKey'].filter((k) => typeof file[k] === 'string' && file[k]).map((k) => [k, file[k]]));
   await chrome.storage.local.set({ settings: { ...settings, ...back }, ...voice });
   await chrome.storage.local.remove('repoProfiles');
   const r = await sync();
@@ -1345,7 +1345,7 @@ async function doSync() {
         const j = await r.json();
         const str = (v) => (typeof v === 'string' ? v.trim() : '');
         etags['keys.json'] = r.headers.get('etag');
-        await chrome.storage.local.set({ repoKeys: { gemini: str(j?.geminiKey), openrouter: str(j?.openrouterKey) } });
+        await chrome.storage.local.set({ repoKeys: { groq: str(j?.groqKey), gemini: str(j?.geminiKey), openrouter: str(j?.openrouterKey) } });
       }
     } catch {}
   }

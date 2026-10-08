@@ -60,7 +60,7 @@ export async function runNow() {
 // The 🎤 records a note about what is on the screen (where()): a tab, a video, a context document or the prompt.
 // Pauses don't end it: it records until ⏹. Then the words join the card, which lists every note still on this
 // tablet, from every tab, with ✕ and Clear all. Apply notes sends them all to the AI (the same as ↻ Update data).
-// The words are written down by Gemini (free key: gemini-3.5-transcribe first) or OpenRouter (Settings → keys). Only without either key
+// The words are written down by Groq's Whisper, Gemini (gemini-3.5-transcribe first) or OpenRouter (Settings → keys). Only without either key
 // the browser's own speech recognition writes them, and the card says so.
 const LONG_NOTE_MINUTES = 15;   // the browser's recognition
 const CLOUD_NOTE_MINUTES = 5;   // Gemini / OpenRouter: 5 min of 16 kHz WAV is ~13 MB sent, under Gemini's 20 MB
@@ -196,7 +196,7 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     notice = '';
     retry = null;
-    if (!keys.gemini && !keys.openrouter && !SR) {
+    if (!keys.groq && !keys.gemini && !keys.openrouter && !SR) {
       card.classList.add('open');
       notice = 'Dictation isn’t available here: type the note, or use the 🎤 on the keyboard.';
       await draw();
@@ -207,7 +207,7 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
     started = Date.now();
     clock = setInterval(draw, 1000);
     const stopClock = () => { clearInterval(clock); clock = null; };
-    cloud = !!(keys.gemini || keys.openrouter);
+    cloud = !!(keys.groq || keys.gemini || keys.openrouter);
     if (cloud) {
       const ctl = new AbortController();
       rec = { stop: () => ctl.abort() };

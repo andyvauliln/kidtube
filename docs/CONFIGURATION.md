@@ -50,7 +50,7 @@ A profile = one YouTube (Google) account email, with one app (`kidtube` for now)
 - `memory.json` — the helper's record of every video (parent mode Planned / History).
 - `audio/*.mp3`, `transcripts/*.json`, `characters/`.
 - It writes `activity/` (watches, answers, thumbs, comments, wishes, parent-mode plan changes).
-- Beside the profile folders: `<app>/keys.json` (0.9.15, optional) — `{ "schemaVersion": 1, "geminiKey": "AIza…", "openrouterKey": "sk-or-…" }`, the listening keys for every tablet and profile of the app. A key typed in Settings → Talking friend wins. The data repo must stay private.
+- Beside the profile folders: `<app>/keys.json` (0.9.15, optional) — `{ "schemaVersion": 1, "groqKey": "gsk_…", "geminiKey": "AIza…", "openrouterKey": "sk-or-…" }` (0.9.18: groqKey), the listening keys for every tablet and profile of the app. A key typed in Settings → Talking friend wins. The data repo must stay private.
 
 ---
 

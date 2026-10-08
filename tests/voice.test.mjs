@@ -9,8 +9,8 @@ globalThis.chrome = { storage: { local: {
 } } };
 // answer(route, body) → { status, text, headers, delay } ; delay: 'hang' never answers (until aborted).
 globalThis.fetch = async (url, init) => {
-  const body = JSON.parse(init.body);
-  const route = url.includes('generativelanguage') ? `gemini:${decodeURIComponent(url.match(/models\/([^:]+):/)[1])}` : `openrouter:${body.model}`;
+  const body = init.body instanceof FormData ? Object.fromEntries(init.body) : JSON.parse(init.body);
+  const route = url.includes('api.groq.com') ? `groq:${body.model}` : url.includes('generativelanguage') ? `gemini:${decodeURIComponent(url.match(/models\/([^:]+):/)[1])}` : `openrouter:${body.model}`;
   const call = { route, body, headers: init.headers, aborted: false };
   calls.push(call);
   const a = answer(route, body) ?? { status: 500 };
@@ -21,11 +21,11 @@ globalThis.fetch = async (url, init) => {
     if (a.delay !== 'hang') setTimeout(resolve, a.delay ?? 0);
   });
   if (a.status !== 200) return new Response('{}', { status: a.status, headers: a.headers ?? {} });
-  const json = route.includes('transcribe') ? { candidates: [{ content: { parts: [{ audioTranscription: { text: a.text } }] } }] }
+  const json = route.startsWith('groq') ? { text: a.text } : route.includes('transcribe') ? { candidates: [{ content: { parts: [{ audioTranscription: { text: a.text } }] } }] }
     : route.startsWith('gemini') ? { candidates: [{ content: { parts: [{ text: a.text }] } }] } : { choices: [{ message: { content: a.text } }] };
   return new Response(JSON.stringify(json), { status: 200 });
 };
-const { transcribeAnswer, listenRoutes, FREE_LISTEN_MODELS, PAID_LISTEN_MODELS, NOTE_LISTEN_MODELS } = await import('../extension/ui/voice.js');
+const { transcribeAnswer, listenRoutes, FREE_LISTEN_MODELS, PAID_LISTEN_MODELS, NOTE_LISTEN_MODELS, GROQ_LISTEN_MODELS } = await import('../extension/ui/voice.js');
 
 const audio = new Uint8Array(44 + 32000);   // one second of 16 kHz WAV
 const keys = { gemini: 'AIza-test', openrouter: 'sk-or-test' };
@@ -153,4 +153,32 @@ test('onFail says why each model failed', async () => {
   const why = [];
   assert.equal(await transcribeAnswer(audio, { keys, ...fast, onFail: (r, w) => why.push(`${r.model}:${w}`) }), null);
   assert.deepEqual(why.sort(), [...FREE_LISTEN_MODELS.map((m, i) => `${m}:${[429, 503][i]}`), ...PAID_LISTEN_MODELS.map((m) => `${m}:401`)].sort());
+});
+
+test('Groq’s Whisper goes first: the WAV as a file, no language set (a note may mix two)', async () => {
+  answer = () => ({ status: 200, text: ' Добавь видео про dinosaurs. ' });
+  let used;
+  assert.deepEqual(await transcribeAnswer(audio, { keys: { ...keys, groq: 'gsk_test' }, onUsed: (u) => { used = u; } }), ['Добавь видео про dinosaurs.']);
+  assert.equal(used.model, GROQ_LISTEN_MODELS[0]);
+  assert.equal(calls[0].route, `groq:${GROQ_LISTEN_MODELS[0]}`);
+  assert.equal(calls[0].headers.Authorization, 'Bearer gsk_test');
+  assert.ok(calls[0].body.file instanceof Blob);
+  assert.equal(calls[0].body.language, undefined);
+  assert.deepEqual(listenRoutes({ keys: { ...keys, groq: 'g' } }).map((r) => r.via), ['groq', 'groq', 'gemini', 'gemini', 'openrouter', 'openrouter']);
+});
+
+test('Whisper’s silence (“.”, “Thank you.”, “Продолжение следует…”) is nothing heard; a note saying “can’t hear” is kept', async () => {
+  for (const said of [' .', 'Thank you.', 'Продолжение следует...']) {
+    answer = () => ({ status: 200, text: said });
+    assert.deepEqual(await transcribeAnswer(audio, { keys: { groq: 'g' } }), [], said);
+  }
+  answer = () => ({ status: 200, text: 'He can’t hear the video, make it louder.' });
+  assert.deepEqual(await transcribeAnswer(audio, { keys: { groq: 'g' } }), ['He can’t hear the video, make it louder.']);
+});
+
+test('the limits are per Groq model: one over its limit → the other Groq model, then Gemini', async () => {
+  answer = (route) => (route === `groq:${GROQ_LISTEN_MODELS[0]}` ? { status: 429, headers: { 'retry-after': '30' } } : { status: 200, text: 'more numbers' });
+  let used;
+  assert.deepEqual(await transcribeAnswer(audio, { keys: { ...keys, groq: 'g' }, onUsed: (u) => { used = u; } }), ['more numbers']);
+  assert.equal(used.model, GROQ_LISTEN_MODELS[1]);
 });

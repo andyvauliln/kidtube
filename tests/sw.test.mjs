@@ -174,7 +174,7 @@ test('listening keys from the data repo: kidtube/keys.json, beside the profile f
     return realFetch(url, opts);
   };
   await send({ type: 'sync' });
-  assert.deepEqual(fake.store.repoKeys, { gemini: 'AIza-from-repo', openrouter: '' });
+  assert.deepEqual(fake.store.repoKeys, { groq: '', gemini: 'AIza-from-repo', openrouter: '' });
   const { listenKeys } = await import('../extension/ui/voice.js');
   assert.equal((await listenKeys()).gemini, 'AIza-from-repo');
   await chrome.storage.local.set({ geminiKey: 'AIza-typed' });

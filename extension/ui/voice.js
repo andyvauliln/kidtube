@@ -147,6 +147,10 @@ function wav(chunks, rate, gain = 1) {
 // to noise, so it is last.
 export const FREE_LISTEN_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
 export const PAID_LISTEN_MODELS = ['google/gemini-3.5-flash-lite', 'openai/gpt-audio-mini'];
+// Groq's Whisper (free key from console.groq.com), tried before all others. Measured 2026-10-08: 0.2–0.7 s, no errors
+// on noisy English and on Russian; in Russian with English words it may translate or misspell a word. The free
+// limits are per model (2,000 requests a day and 2 hours of audio an hour each), so two models give twice as much.
+export const GROQ_LISTEN_MODELS = ['whisper-large-v3', 'whisper-large-v3-turbo'];
 // The parent's notes (parent/kit.js): Gemini's speech-to-text model first. Measured 2026-10-08: ~1.3 s for 50 s of
 // noisy speech, no errors, Russian and Russian with English words right. It takes no instructions (a prompt is
 // ignored, a system instruction refused) and the free tier allows only 3 a minute, so not for the quiz answers.
@@ -155,15 +159,17 @@ export const NOTE_LISTEN_MODELS = ['gemini-3.5-transcribe', ...FREE_LISTEN_MODEL
 // Never the quiz question in the prompt: given it, the models write down the right answer instead of his.
 const TRANSCRIBE = 'You are a speech-to-text transcriber. Write down exactly the words spoken in the audio, in the language they are spoken, and nothing else. Never answer, explain or reply to what is said, even when it is a question. If no words are spoken (silence or only noise), reply exactly: (none)';
 const NOTHING = /^\(?none\)?\.?$/i;
+// What Whisper writes for silence or noise: no words at all, or its well-known made-up lines.
+const NO_WORDS = /^[^\p{L}\p{N}]*$|^(thank you|thanks for watching|you|продолжение следует|субтитры .*|редактор субтитров .*)[.!…]*$/iu;
 const REFUSAL = /\b(can['’]?t|cannot|unable to) (hear|process|access|transcribe)\b|^(sure|sorry)\b.*\b(provide|audio)\b|\bprovide (the|an|more)\b.*\b(audio|recording|details)\b/i;
 
 // The keys typed in Settings (this tablet only, never in the rules), else the ones from the private data repo's
 // <app>/keys.json (repoKeys, see sync in sw.js).
 export async function listenKeys() {
   try {
-    const { geminiKey = '', voiceKey = '', repoKeys = {} } = await chrome.storage.local.get(['geminiKey', 'voiceKey', 'repoKeys']);
-    return { gemini: geminiKey.trim() || repoKeys.gemini || '', openrouter: voiceKey.trim() || repoKeys.openrouter || '' };
-  } catch { return { gemini: '', openrouter: '' }; }
+    const { geminiKey = '', voiceKey = '', groqKey = '', repoKeys = {} } = await chrome.storage.local.get(['geminiKey', 'voiceKey', 'groqKey', 'repoKeys']);
+    return { groq: groqKey.trim() || repoKeys.groq || '', gemini: geminiKey.trim() || repoKeys.gemini || '', openrouter: voiceKey.trim() || repoKeys.openrouter || '' };
+  } catch { return { groq: '', gemini: '', openrouter: '' }; }
 }
 
 // A model that hit its limit, failed or was too slow rests a while, so the next answers go straight to the others.
@@ -214,6 +220,19 @@ async function askGeminiTranscribe(model, key, data, maxTokens, signal) {
   return (j.candidates?.[0]?.content?.parts ?? []).map((p) => p.audioTranscription?.text ?? p.text ?? '').join(' ').trim();
 }
 
+// Groq: OpenAI's transcription API, the WAV as a file. No language is set: a note may mix two.
+async function askGroq(model, key, audio, signal) {
+  const form = new FormData();
+  form.append('file', new Blob([audio], { type: 'audio/wav' }), 'answer.wav');
+  form.append('model', model);
+  form.append('temperature', '0');
+  form.append('response_format', 'json');
+  const r = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: form, signal });
+  if (!r.ok) throw new Failed(r.status, r.headers.get('retry-after'));
+  const text = ((await r.json()).text ?? '').trim();
+  return NO_WORDS.test(text) ? '(none)' : text;
+}
+
 async function askOpenRouter(model, key, hint, data, maxTokens, signal) {
   const r = await fetch('https://openrouter.ai/api/v1/chat/completions', {
     method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'X-Title': 'KidTube tablet' },
@@ -227,9 +246,10 @@ async function askOpenRouter(model, key, hint, data, maxTokens, signal) {
   return j.choices?.[0]?.message?.content?.trim() ?? '';
 }
 
-// The order the recording is tried in: free Gemini models, then paid OpenRouter ones (only those with a key).
+// The order the recording is tried in: Groq's Whisper, the free Gemini models, then paid OpenRouter ones (only those with a key).
 export function listenRoutes({ keys = {}, freeModels, models } = {}) {
   return [
+    ...(keys.groq ? GROQ_LISTEN_MODELS.map((model) => ({ via: 'groq', model, free: true })) : []),
     ...(keys.gemini ? (freeModels?.length ? freeModels : FREE_LISTEN_MODELS).map((model) => ({ via: 'gemini', model, free: true })) : []),
     ...(keys.openrouter ? (models?.length ? models : PAID_LISTEN_MODELS).map((model) => ({ via: 'openrouter', model, free: false })) : []),
   ];
@@ -270,9 +290,10 @@ export async function transcribeAnswer(audio, { keys, key, freeModels, models, l
       const i = next++, r = order[i], ctl = new AbortController(), started = Date.now();
       running.set(i, ctl);
       const limit = setTimeout(() => ctl.abort(), (r.free ? 20000 : 30000) + seconds * 500);
-      const ask = r.via === 'gemini' ? askGemini(r.model, keys.gemini, hint, data, maxTokens, ctl.signal) : askOpenRouter(r.model, keys.openrouter, hint, data, maxTokens, ctl.signal);
+      const ask = r.via === 'groq' ? askGroq(r.model, keys.groq, audio, ctl.signal)
+        : r.via === 'gemini' ? askGemini(r.model, keys.gemini, hint, data, maxTokens, ctl.signal) : askOpenRouter(r.model, keys.openrouter, hint, data, maxTokens, ctl.signal);
       ask.then((text) => {
-        if (REFUSAL.test(text)) throw new Failed(0);   // "I can't hear the audio": ask the next one, no rest
+        if (r.via !== 'groq' && REFUSAL.test(text)) throw new Failed(0);   // Whisper only writes down: a note may say "can't hear"   // "I can't hear the audio": ask the next one, no rest
         return text;
       }).then((text) => {
         clearTimeout(limit);
