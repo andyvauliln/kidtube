@@ -448,7 +448,7 @@ async function makeVoices(queue, pc, s) {
       if (existsSync(join(dataDir, path))) { report.kept++; return `repo:${path}`; }
       if (Date.now() > deadline || voices.quotaGone) { report.skipped++; return null; }
       try {
-        const mp3 = await voices.speak(text);
+        const mp3 = await voices.speak(text, lang);
         mkdirSync(join(dataDir, 'audio'), { recursive: true });
         writeFileSync(join(dataDir, path), mp3);
         report.made++;

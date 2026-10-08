@@ -103,6 +103,7 @@ Nothing is substituted into the prompt text itself; these numbers reach Claude t
 | `transcripts.models`                               | 3.5-flash-lite, 3.7-flash, … | Tried in order.                                                                |
 | `voices.speak.provider`                            | gemini                       | `device` / `gemini` (free) / `openrouter` (paid).                              |
 | `voices.speak.voice`, `pitch`, `style`             | Puck, 1.15, cartoon voice    | Pikachu's recorded voice.                                                      |
+| `voices.speak.groq`                                | orpheus-v1-english, hannah   | English lines first by Groq's Orpheus (`GROQ_API_KEY`; free 100 lines a day), the provider for the rest. |
 | `voices.speak.maxMinutes`                          | 8                            | Recording budget per run; the rest is spoken by the tablet.                    |
 | `llm.*`, `openrouter.*`                            | free models first            | Text models for the backup script only.                                        |
 

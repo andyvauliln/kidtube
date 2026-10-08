@@ -157,6 +157,43 @@ test('a recording’s file name changes with the text and the voice settings', a
   assert.notEqual(audioPath('Hi!', 'en', cfg), audioPath('Hi!', 'en', { ...cfg, pitch: 1.3 }));
 });
 
+test('voices: Groq’s Orpheus makes the English lines first; Russian and Groq’s used-up day go to Gemini', async () => {
+  const { createVoices, audioPath } = await import('../agent/lib/voices.mjs');
+  const cfg = { provider: 'gemini', voice: 'Puck', pitch: 1.15, groq: { models: ['canopylabs/orpheus-v1-english'], voice: 'hannah', direction: '[cheerful]' } };
+  // Russian lines keep their old file names (not recorded again); English ones get new names once.
+  assert.equal(audioPath('Привет!', 'ru', cfg), audioPath('Привет!', 'ru', { provider: 'gemini', voice: 'Puck', pitch: 1.15 }));
+  assert.notEqual(audioPath('Hi!', 'en', cfg), audioPath('Hi!', 'en', { provider: 'gemini', voice: 'Puck', pitch: 1.15 }));
+  const wav = Buffer.alloc(44 + 4800);   // 0.1 s of silence, 24 kHz
+  wav.write('RIFF', 0); wav.writeUInt32LE(36 + 4800, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(24000, 24); wav.writeUInt32LE(48000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(4800, 40);
+  const calls = [];
+  let groqDay = true;
+  const fetchImpl = async (url, init) => {
+    const body = JSON.parse(init.body);
+    calls.push(url.includes('groq') ? `groq:${body.input}` : 'gemini');
+    if (url.includes('groq')) {
+      if (!groqDay) return new Response('{"error":{"message":"Rate limit reached ... requests per day (RPD)"}}', { status: 429, headers: { 'retry-after': '600' } });
+      return new Response(wav, { status: 200, headers: { 'content-type': 'audio/wav' } });
+    }
+    return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'audio/L16;rate=24000', data: wav.subarray(44).toString('base64') } }] } }] }), { status: 200 });
+  };
+  const v = createVoices({ env: { GROQ_API_KEY: 'gsk', GEMINI_API_KEY: 'g' }, cfg, fetchImpl });
+  assert.ok((await v.speak('Hi there!', 'en')).length > 0);
+  assert.deepEqual(calls, ['groq:[cheerful] Hi there!']);
+  await v.speak('Привет!', 'ru');
+  assert.deepEqual(calls.slice(1), ['gemini']);
+  groqDay = false;
+  await v.speak('Bye!', 'en');
+  assert.deepEqual(calls.slice(2), ['groq:[cheerful] Bye!', 'gemini']);
+  await v.speak('Again!', 'en');
+  assert.deepEqual(calls.slice(4), ['gemini'], 'Groq’s day is over: not asked again this run');
+  assert.equal(v.quotaGone, false);
+  const noKey = createVoices({ env: { GEMINI_API_KEY: 'g' }, cfg, fetchImpl });
+  calls.length = 0;
+  await noKey.speak('Hi!', 'en');
+  assert.deepEqual(calls, ['gemini'], 'no GROQ_API_KEY: Gemini only');
+});
+
 test('parent notes on context documents reach the helper', () => {
   const news = applyActivity({}, [{ eventId: 'e1', type: 'context', at: '2026-10-05T10:00:00Z', doc: 'math', text: 'He counts to 20' }]);
   assert.deepEqual(news.context, [{ doc: 'math', text: 'He counts to 20', at: '2026-10-05T10:00:00Z' }]);

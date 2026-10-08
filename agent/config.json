@@ -69,6 +69,17 @@
       "pitch": 1.15,
       "maxMinutes": 8,
       "style": "Say this in a cheerful, squeaky, excited cartoon-creature voice for a small child",
+      "groq": {
+        "models": [
+          "canopylabs/orpheus-v1-english"
+        ],
+        "voice": "hannah",
+        "direction": "[cheerful]",
+        "langs": [
+          "en"
+        ],
+        "note": "Tried first for English lines (GROQ_API_KEY). Voices: autumn, diana, hannah, austin, daniel, troy. Free: 100 lines a day, 1,200 tokens a minute. Remove this block to stop."
+      },
       "gemini": {
         "models": [
           "gemini-3.8-flash-tts",

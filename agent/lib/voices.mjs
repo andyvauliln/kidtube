@@ -2,15 +2,22 @@
 //   provider "device"     → nothing is made; the tablet speaks with its own voice
 //   provider "gemini"     → Gemini speech models (free tier on the Gemini key)
 //   provider "openrouter" → audio models on OpenRouter (paid; checked that they said exactly the text)
+// With voices.speak.groq and GROQ_API_KEY, English lines are first made by Groq's Orpheus (free: 100 lines a day,
+// 1,200 tokens a minute); the provider above makes the rest, and every line Groq can't make.
 // Every line becomes audio/<hash>.mp3 in the data repo; the tablet plays it instead of its own voice.
 import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 
 const GEMINI = 'https://generativelanguage.googleapis.com/v1beta/models';
 const OPENROUTER = 'https://openrouter.ai/api/v1/chat/completions';
+const GROQ = 'https://api.groq.com/openai/v1/audio/speech';
 
+// Groq's Orpheus speaks only the languages in voices.speak.groq.langs (default English).
+const groqFor = (lang, cfg) => !!cfg.groq?.models?.length && (cfg.groq.langs ?? ['en']).some((l) => String(lang ?? 'en').startsWith(l));
+// A Groq line gets its own name, so turning Groq on records the English lines again once.
 export const audioPath = (text, lang, cfg) =>
-  `audio/${createHash('sha1').update(JSON.stringify([text, lang, cfg.provider, cfg.voice, cfg.style, cfg.pitch])).digest('hex').slice(0, 16)}.mp3`;
+  `audio/${createHash('sha1').update(JSON.stringify([text, lang, cfg.provider, cfg.voice, cfg.style, cfg.pitch,
+    ...(groqFor(lang, cfg) ? [`groq:${cfg.groq.models[0]}:${cfg.groq.voice ?? 'hannah'}`] : [])])).digest('hex').slice(0, 16)}.mp3`;
 
 const words = (s) => String(s).toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
@@ -18,7 +25,7 @@ export function createVoices({ env, cfg, log = console.log, fetchImpl = fetch })
   const provider = cfg?.provider ?? 'device';
   const style = cfg.style ?? 'Say this in a cheerful, squeaky, excited cartoon-creature voice for a small child';
   const tries = {};
-  let quotaGone = false;
+  let quotaGone = false, groqGone = !env.GROQ_API_KEY;
 
   // Raw audio (wav or 16-bit PCM at `rate`) → a small mp3, pitched up a little for the friend.
   function toMp3(buf, { pcmRate = null } = {}) {
@@ -54,6 +61,32 @@ export function createVoices({ env, cfg, log = console.log, fetchImpl = fetch })
     throw new Error(`Gemini voice: ${errors.join(' | ')}`);
   }
 
+  // Orpheus on Groq: a WAV at 24 kHz. The direction in brackets ([cheerful]) sets the tone and isn't spoken.
+  async function groq(text) {
+    const g = cfg.groq, errors = [];
+    for (const model of g.models) {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const r = await fetchImpl(GROQ, {
+          method: 'POST', headers: { Authorization: `Bearer ${env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model, voice: g.voice ?? 'hannah', response_format: 'wav', input: `${g.direction ?? '[cheerful]'} ${text}`.trim() }),
+          signal: AbortSignal.timeout(60000),
+        }).catch((e) => ({ ok: false, status: 0, headers: new Headers(), text: async () => e.message }));
+        if (r.ok) return toMp3(Buffer.from(await r.arrayBuffer()));
+        const msg = String(await r.text().catch(() => '')).slice(0, 160);
+        if (r.status === 429) {
+          // Over the minute's tokens: wait as asked. Over the day's 100 lines: Groq is done for this run.
+          const wait = Number(r.headers.get('retry-after') ?? 30);
+          if (wait > 70 || r.headers.get('x-ratelimit-remaining-requests') === '0' || /per day|RPD/i.test(msg)) { groqGone = true; throw new Error(`Groq voice: daily limit used up`); }
+          await new Promise((res) => setTimeout(res, (wait + 1) * 1000));
+          continue;
+        }
+        errors.push(`${model}: HTTP ${r.status} ${msg}`);
+        break;
+      }
+    }
+    throw new Error(`Groq voice: ${errors.join(' | ') || 'no answer'}`);
+  }
+
   async function openrouter(text) {
     const errors = [];
     for (const model of cfg.openrouter?.models ?? ['openai/gpt-audio-mini']) {
@@ -81,12 +114,19 @@ export function createVoices({ env, cfg, log = console.log, fetchImpl = fetch })
   return {
     provider,
     enabled: provider !== 'device',
-    get quotaGone() { return quotaGone; },
-    async speak(text) {
-      if (quotaGone) throw new Error('daily voice quota used up');
-      if (provider === 'gemini') return gemini(text);
-      if (provider === 'openrouter') return openrouter(text);
-      throw new Error('voices.speak.provider is "device": nothing to make');
+    // True when nothing can be made any more this run (the provider's and Groq's day are both used up).
+    get quotaGone() { return quotaGone && (groqGone || !cfg.groq); },
+    async speak(text, lang = 'en') {
+      let before = '';
+      if (groqFor(lang, cfg) && !groqGone) {
+        try { return await groq(text); } catch (e) { before = `${e.message} | `; }
+      }
+      try {
+        if (quotaGone) throw new Error('daily voice quota used up');
+        if (provider === 'gemini') return await gemini(text);
+        if (provider === 'openrouter') return await openrouter(text);
+        throw new Error('voices.speak.provider is "device": nothing to make');
+      } catch (e) { throw new Error(before + e.message); }
     },
   };
 }
