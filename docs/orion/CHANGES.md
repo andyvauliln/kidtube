@@ -2,6 +2,16 @@
 
 Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
 
+## 0.9.9 (2026-10-08)
+
+- **A new header design.** Not signed in: the logo and **Sign in**. Signed in: your account (picture, email, menu) and **Switch**.
+- **No GitHub yet:** the header shows a card with the data repo and the token, and **Connect**, **Load from file**, **Save to file**.
+- **Connected:** the account's apps are round icons; the open app has a red ring. **Add app** adds a new app with an empty list.
+- The account menu has the GitHub connection, saving and loading the settings file, and Sign out.
+- A tap on an app opens it in parent mode. **Parent | Kid** at the top right switches the mode.
+- In kid mode there is no header. The kid's screens have **🔒 Parent** at the top right; it asks for the PIN.
+- One PIN page for everything. Settings no longer repeats what the header does (GitHub, mode, accounts, the settings file, the second AI box).
+
 ## 0.9.8 (2026-10-07)
 
 - **The apps header.** When no app runs, YouTube is normal YouTube with a KidTube header on top. Sign in or switch the account there (YouTube's own buttons work too).
