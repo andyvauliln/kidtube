@@ -1672,26 +1672,49 @@ async function externalGuard(host) {
 // --- updates -------------------------------------------------------------------------------
 
 const sync_ = () => sync();
+async function latestRelease() {
+  try { return await (await fetch(LATEST_URL, { cache: 'no-store' })).json(); } catch { return null; }
+}
+
+// Asks the browser to look at updates.xml now. Chrome 109+ gives { status, version }, older ones (status, details).
+const askUpdate = () => new Promise((resolve) => {
+  try {
+    chrome.runtime.requestUpdateCheck((a) => resolve((a && typeof a === 'object' ? a.status : a) ?? 'error'));
+  } catch {
+    resolve('error');
+  }
+});
+
+// Quetta: the browser itself looks at updates.xml only every few hours. When latest.json names a newer
+// version, KidTube asks for it (at most every 5 min); the browser downloads it, onUpdateAvailable
+// restarts KidTube, and onInstalled reloads YouTube. Orion installs from a .zip by hand.
+const UPDATE_ASK_MS = 5 * 60 * 1000;
+let updateAsked = 0, updateStatus = null;
+async function autoUpdate(latest) {
+  if (TARGET === 'orion' || !latest?.version || cmpVersion(latest.version, chrome.runtime.getManifest().version) <= 0) return null;
+  if (Date.now() - updateAsked < UPDATE_ASK_MS) return updateStatus;
+  updateAsked = Date.now();
+  return (updateStatus = await askUpdate());
+}
+
 async function checkUpdate() {
   const installed = chrome.runtime.getManifest().version;
-  // Orion installs from a .zip and has no update_url: the parent installs the new .zip by hand.
-  const check = TARGET === 'orion' ? { status: 'manual' }
-    : await new Promise((resolve) => chrome.runtime.requestUpdateCheck((status, details) => resolve({ status, details })))
-      .catch((e) => ({ status: 'error', error: String(e) }));
-  let latest = null;
-  try { latest = await (await fetch(LATEST_URL, { cache: 'no-store' })).json(); } catch {}
+  const check = TARGET === 'orion' ? { status: 'manual' } : { status: await askUpdate() };
+  if (TARGET !== 'orion') { updateAsked = Date.now(); updateStatus = check.status; }
+  const latest = await latestRelease();
   const newer = latest && cmpVersion(latest.version, installed) > 0;
   const sync = await sync_();
   return { installed, check, latest: latest?.version ?? null, installPage: newer ? INSTALL_PAGE : null, download: newer ? latest.zipUrl ?? null : null, sync };
 }
 
-// The installed version and the newest release, with a direct download link (parent mode header).
+// The installed version and the newest release (parent toolbar). Quetta asks for the update itself
+// (updating: the browser's answer); Orion gets a download link.
 async function appVersion() {
   const installed = chrome.runtime.getManifest().version;
-  let latest = null;
-  try { latest = await (await fetch(LATEST_URL, { cache: 'no-store' })).json(); } catch {}
+  const latest = await latestRelease();
   const newer = !!latest && cmpVersion(latest.version, installed) > 0;
   return { ok: true, installed, target: TARGET, latest: latest?.version ?? null, newer,
+    updating: newer ? await autoUpdate(latest) : null,
     download: latest?.zipUrl ?? null, installPage: INSTALL_PAGE };
 }
 
@@ -1733,6 +1756,12 @@ chrome.runtime.onInstalled.addListener(async ({ reason } = {}) => {
   // A fresh install without a connection: open the install page, where content/backup.js gives it back.
   const { settings = {} } = await chrome.storage.local.get('settings');
   if (reason === 'install' && !settings.token) chrome.tabs.create({ url: INSTALL_PAGE }).catch(() => {});
+  // After an update the open YouTube tabs still run the old content script, cut off from KidTube: reload them.
+  if (reason === 'update') for (const t of (await chrome.tabs.query?.({ url: '*://*.youtube.com/*' }).catch(() => [])) ?? []) chrome.tabs.reload(t.id).catch(() => {});
 });
 chrome.runtime.onStartup.addListener(start);
-chrome.alarms.onAlarm.addListener((a) => { if (a.name === 'poll') sync(); });
+chrome.alarms.onAlarm.addListener(async (a) => {
+  if (a.name !== 'poll') return;
+  sync();
+  autoUpdate(await latestRelease());
+});

@@ -163,3 +163,24 @@ test('a new profile without its files yet: a note, not a problem', async () => {
   assert.ok(!r.errors.some((e) => e.includes('parent-config.json') || e.includes('queue.json')), r.errors.join(' | '));
   assert.match(r.notes[0], /^New profile: kidtube\/kid\/ has no parent-config\.json or queue\.json yet/);
 });
+
+test('Quetta asks for a newer release itself, and reloads YouTube after the update', async () => {
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url) => (String(url).endsWith('/latest.json')
+    ? { ok: true, status: 200, json: async () => ({ version: '9.9.9', zipUrl: 'https://x.test/k.zip' }) }
+    : realFetch(url));
+  let asked = 0;
+  fake.runtime.requestUpdateCheck = (cb) => { asked++; cb({ status: 'update_available', version: '9.9.9' }); };
+  const v = await send({ type: 'version' });
+  assert.equal(v.newer, true);
+  assert.equal(v.updating, 'update_available');
+  await send({ type: 'version' });
+  assert.equal(asked, 1, 'at most one ask every 5 minutes');
+
+  const reloaded = [];
+  fake.tabs.query = async () => [{ id: 3 }, { id: 4 }];
+  fake.tabs.reload = async (id) => { reloaded.push(id); };
+  await fake.listeners.installed[0]({ reason: 'update' });
+  globalThis.fetch = realFetch;
+  assert.deepEqual(reloaded, [3, 4]);
+});

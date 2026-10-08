@@ -184,6 +184,7 @@ export function mountSettings(root) {
       const parts = [`Installed ${r.installed}`];
       if (r.latest) parts.push(`newest ${r.latest}`);
       if (r.check?.status === 'update_available') parts.push('downloading the new version, the app will restart');
+      if (r.check?.status === 'throttled' && r.installPage) parts.push('the browser asks to wait: KidTube tries again within a few minutes');
       if (r.check?.status === 'manual' && r.installPage) parts.push('install the new .zip by hand (link below)');
       parts.push(r.sync?.errors?.length ? `sync problem: ${r.sync.errors.join('; ')}` : 'video list and rules are up to date');
       $('updateOut').textContent = parts.join(' · ');

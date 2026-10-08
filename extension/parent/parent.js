@@ -20,14 +20,28 @@ const dayLabel = (date) => {
   return diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
 };
 
-// --- the app version: installed, and a download link when there is a newer one -------------------
+// --- the app version: installed, and the newer one when there is one ------------------------------
+// Quetta installs it by itself (the browser downloads it, KidTube restarts); Orion needs the .zip by hand.
+const UPDATING = {
+  update_available: 'installing, KidTube restarts in a moment',
+  throttled: 'KidTube installs it within a few minutes',
+  no_update: 'the browser does not see it yet, it tries again soon',
+};
+let versionTimer = null;
 async function showVersion() {
   const v = await ask({ type: 'version' });
   if (!v?.ok) return;
   const box = $('ver');
   box.replaceChildren(document.createTextNode(`v${v.installed}`));
   box.title = v.latest ? `Newest: ${v.latest}` : 'Could not check for a newer version';
-  if (v.newer && v.download) {
+  clearTimeout(versionTimer);
+  if (!v.newer) return;
+  if (v.target !== 'orion') {
+    box.append(el('span', 'upd', `⬆ ${v.latest}: ${UPDATING[v.updating] ?? UPDATING.throttled}`));
+    versionTimer = setTimeout(showVersion, 60_000);
+    return;
+  }
+  if (v.download) {
     const a = el('a', '', `⬆ ${v.latest} — Download`);
     // The install page, not the .zip itself: opening it refreshes the copy of your connection (content/backup.js).
     a.href = v.installPage || v.download;

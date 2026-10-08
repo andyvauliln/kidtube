@@ -262,7 +262,7 @@ The code is public (`andyvauliln/kidtube`). Everything about him is private (`an
 
 | What | Where |
 | --- | --- |
-| Extension code, helper code, prompts, schemas | `kidtube` repo. The extension is published on GitHub Pages and updates itself. |
+| Extension code, helper code, prompts, schemas | `kidtube` repo. The extension is published on GitHub Pages and updates itself: on Quetta, KidTube reads `latest.json` every 15 min (and when a parent screen opens), asks the browser for a newer version (`requestUpdateCheck`, at most every 5 min), restarts when it is downloaded and reloads the open YouTube tabs. Orion's .zip is installed by hand. |
 | Today's list, rules, questions | `kidtube-data`: `queue.json`, `parent-config.json` |
 | What he did | `kidtube-data/activity/<day>.json` |
 | Transcripts | `kidtube-data/transcripts/<video id>.json` |
