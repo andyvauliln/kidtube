@@ -92,10 +92,12 @@ export async function recordAnswer({ seconds = 6, onLevel, stopSignal, silenceSt
   try { stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true } }); }
   catch { return null; }
   const ctx = new AudioContext({ sampleRate: 16000 });
+  // Android may start it suspended (no user gesture left after the awaits): then no sound arrives at all.
+  if (ctx.state !== 'running') await ctx.resume().catch(() => {});
   const src = ctx.createMediaStreamSource(stream);
   const node = ctx.createScriptProcessor(4096, 1, 1);
   const chunks = [];
-  let spoke = false, quietSince = 0;
+  let spoke = false, quietSince = 0, peak = 0;
   const started = performance.now();
   await new Promise((resolve) => {
     const stop = () => { node.onaudioprocess = null; resolve(); };
@@ -107,6 +109,7 @@ export async function recordAnswer({ seconds = 6, onLevel, stopSignal, silenceSt
       let sum = 0;
       for (const x of d) sum += x * x;
       const level = Math.sqrt(sum / d.length);
+      peak = Math.max(peak, level);
       onLevel?.(level);
       const now = performance.now();
       if (level > 0.03) { spoke = true; quietSince = 0; }
@@ -117,19 +120,23 @@ export async function recordAnswer({ seconds = 6, onLevel, stopSignal, silenceSt
   });
   src.disconnect(); node.disconnect();
   stream.getTracks().forEach((t) => t.stop());
+  const state = ctx.state;
   await ctx.close();
-  if (!spoke) return new Uint8Array(0);
-  return wav(chunks, 16000);
+  const info = { seconds: Math.round(chunks.length * 4096 / 16000), peak: Math.round(peak * 1000) / 1000, state };
+  // A short answer that never got loud is silence. A long recording (a note) is sent anyway: a quiet microphone
+  // still holds words, and the loudness is raised below.
+  if (!chunks.length || (!spoke && silenceStop)) return Object.assign(new Uint8Array(0), { info });
+  return Object.assign(wav(chunks, 16000, spoke ? 1 : Math.min(30, 0.1 / Math.max(peak, 0.001))), { info });
 }
 
-function wav(chunks, rate) {
+function wav(chunks, rate, gain = 1) {
   const n = chunks.reduce((a, c) => a + c.length, 0);
   const buf = new DataView(new ArrayBuffer(44 + n * 2));
   const str = (o, s) => { for (let i = 0; i < s.length; i++) buf.setUint8(o + i, s.charCodeAt(i)); };
   str(0, 'RIFF'); buf.setUint32(4, 36 + n * 2, true); str(8, 'WAVEfmt '); buf.setUint32(16, 16, true); buf.setUint16(20, 1, true); buf.setUint16(22, 1, true);
   buf.setUint32(24, rate, true); buf.setUint32(28, rate * 2, true); buf.setUint16(32, 2, true); buf.setUint16(34, 16, true); str(36, 'data'); buf.setUint32(40, n * 2, true);
   let o = 44;
-  for (const c of chunks) for (const x of c) { buf.setInt16(o, Math.max(-1, Math.min(1, x)) * 0x7fff, true); o += 2; }
+  for (const c of chunks) for (const x of c) { buf.setInt16(o, Math.max(-1, Math.min(1, x * gain)) * 0x7fff, true); o += 2; }
   return new Uint8Array(buf.buffer);
 }
 

@@ -178,7 +178,10 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
       onFail: (r, why) => fails.push(`${r.model}: ${WHY[why] ?? why}`) });
     writing = false;
     if (heard?.length) { await save(heard[0], at); return; }
-    if (heard) notice = 'Heard nothing. Try again closer to the tablet.';
+    if (heard) {
+      const i = audio.info;
+      notice = `Heard nothing${i ? ` (${i.seconds} s recorded, loudest ${Math.round(i.peak * 100)}%${i.state !== 'running' && i.state !== 'closed' ? `, sound ${i.state}` : ''})` : ''}. Try again closer to the tablet.`;
+    }
     else {
       retry = { audio, at };
       notice = `The recording could not be written down (${fails.join('; ') || 'no key'}). It is kept: tap Try again in a minute.`;
@@ -211,7 +214,14 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
       await draw();
       const audio = await recordAnswer({ seconds: CLOUD_NOTE_MINUTES * 60, stopSignal: ctl.signal, silenceStop: false });
       rec = null;
-      if (audio) { stopClock(); await writeDown(audio, at); return; }
+      if (audio?.length) { stopClock(); await writeDown(audio, at); return; }
+      if (audio) {   // no sound reached KidTube at all
+        stopClock();
+        const i = audio.info ?? {};
+        notice = `The microphone gave KidTube no sound (${i.seconds ?? 0} s, sound ${i.state ?? '?'}). Close other apps that use the microphone, then try again.`;
+        await draw();
+        return;
+      }
       // null: the browser didn't let KidTube record. Its own recognition may still work.
       cloud = false;
       if (!SR) { stopClock(); notice = 'The browser doesn’t let KidTube use the microphone. Allow it (Android Settings → Apps → the browser → Permissions → Microphone), or type the note.'; await draw(); return; }

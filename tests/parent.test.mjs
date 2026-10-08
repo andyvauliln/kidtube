@@ -341,6 +341,7 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
       return { ok: true, status: 200, json: async () => ({}) };
     }
     if (!files[path]) return { ok: false, status: 404, json: async () => ({}), headers: { get: () => null } };
+    if (path === 'run-status.json') return { ok: true, status: 200, json: async () => files[path].json, headers: { get: () => null } };   // read raw
     return { ok: true, status: 200, json: async () => ({ sha: files[path].sha, content: Buffer.from(JSON.stringify(files[path].json)).toString('base64') }) };
   };
   try {
@@ -383,6 +384,11 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
     assert.equal(notes.find((e) => e.type === 'wish').list, 'settings');
     assert.equal(puts.at(-1), 'requests/run.json');    // the request goes after the notes
     assert.equal((await fromPage({ type: 'runStatus' })).held, 0);
+    assert.equal((await fromPage({ type: 'runStatus' })).state, 'queued');
+    // The server worked on notes under its own id after the request: the tablet stops waiting.
+    files['run-status.json'] = { json: { schemaVersion: 1, requestId: 'notes-x', state: 'done', message: 'ok', startedAt: new Date(Date.now() + 1000).toISOString(), finishedAt: new Date(Date.now() + 2000).toISOString() } };
+    await fromPage({ type: 'sync' });
+    assert.equal((await fromPage({ type: 'runStatus' })).state, 'done');
 
     // Settings → Update now (sync with notes: true) also sends them.
     await fromPage({ type: 'wish', text: 'More Russian' });

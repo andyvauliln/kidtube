@@ -1454,7 +1454,8 @@ function runView(s) {
   const req = s.data.runRequest ?? null;
   const st = s.data.runStatus ?? null;
   const held = s.outbox.filter((e) => e.held).length;
-  if (req && st?.requestId !== req.id) return { state: 'queued', at: req.at, message: 'Asked. The server starts it within a minute or two.', held };
+  // Waiting only while no run has started since the request: a run for notes sent without one has its own id.
+  if (req && st?.requestId !== req.id && !(st?.startedAt && st.startedAt >= req.at)) return { state: 'queued', at: req.at, message: 'Asked. The server starts it within a minute or two.', held };
   if (!st) return { state: 'none', held };
   return { state: st.state, at: st.finishedAt ?? st.startedAt, message: st.message ?? '', held };
 }
