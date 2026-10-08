@@ -13,11 +13,15 @@ const OPENROUTER = 'https://openrouter.ai/api/v1/chat/completions';
 const GROQ = 'https://api.groq.com/openai/v1/audio/speech';
 
 // Groq's Orpheus speaks only the languages in voices.speak.groq.langs (default English).
-const groqFor = (lang, cfg) => !!cfg.groq?.models?.length && (cfg.groq.langs ?? ['en']).some((l) => String(lang ?? 'en').startsWith(l));
-// A Groq line gets its own name, so turning Groq on records the English lines again once.
-export const audioPath = (text, lang, cfg) =>
-  `audio/${createHash('sha1').update(JSON.stringify([text, lang, cfg.provider, cfg.voice, cfg.style, cfg.pitch,
-    ...(groqFor(lang, cfg) ? [`groq:${cfg.groq.models[0]}:${cfg.groq.voice ?? 'hannah'}`] : [])])).digest('hex').slice(0, 16)}.mp3`;
+export const groqFor = (lang, cfg) => !!cfg.groq?.models?.length && (cfg.groq.langs ?? ['en']).some((l) => String(lang ?? 'en').startsWith(l));
+// Who made a Groq line: its model, voice and tone. Part of the file's name, so a change records the line again.
+export const groqTag = (cfg, model = cfg.groq?.models?.[0]) => `groq:${model}:${cfg.groq?.voice ?? 'hannah'}:${cfg.groq?.direction ?? '[cheerful]'}`;
+// A line's file: named after the text, the voice settings and, for a line Groq made, Groq's tag (`by`), so a line
+// the provider made as Groq's fallback keeps the provider's name and Groq is asked for it again another day.
+export const audioPath = (text, lang, cfg, by = null) =>
+  `audio/${createHash('sha1').update(JSON.stringify([text, lang, cfg.provider, cfg.voice, cfg.style, cfg.pitch, ...(by ? [by] : [])])).digest('hex').slice(0, 16)}.mp3`;
+// Russian text in an "English" slot (a catchphrase, a line without a language) is Russian.
+export const langOf = (text, lang = 'en') => (/\p{Script=Cyrillic}/u.test(String(text)) && !String(lang).startsWith('ru') ? 'ru' : lang);
 
 const words = (s) => String(s).toLowerCase().normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
 
@@ -26,6 +30,10 @@ export function createVoices({ env, cfg, log = console.log, fetchImpl = fetch })
   const style = cfg.style ?? 'Say this in a cheerful, squeaky, excited cartoon-creature voice for a small child';
   const tries = {};
   let quotaGone = false, groqGone = !env.GROQ_API_KEY;
+  // One shape for every answer, also when the network failed: { ok, status, headers, text(), json(), arrayBuffer() }.
+  const post = (url, init) => fetchImpl(url, init).catch((e) => ({
+    ok: false, status: 0, headers: new Headers(), text: async () => e.message, json: async () => ({ error: { message: e.message } }), arrayBuffer: async () => new ArrayBuffer(0),
+  }));
 
   // Raw audio (wav or 16-bit PCM at `rate`) → a small mp3, pitched up a little for the friend.
   function toMp3(buf, { pcmRate = null } = {}) {
@@ -38,12 +46,12 @@ export function createVoices({ env, cfg, log = console.log, fetchImpl = fetch })
   async function gemini(text) {
     const errors = [];
     for (const model of cfg.gemini?.models ?? ['gemini-3.8-flash-tts', 'gemini-2.5-flash-preview-tts']) {
-      const r = await fetchImpl(`${GEMINI}/${model}:generateContent`, {
+      const r = await post(`${GEMINI}/${model}:generateContent`, {
         method: 'POST', headers: { 'x-goog-api-key': env.GEMINI_API_KEY, 'Content-Type': 'application/json' },
         body: JSON.stringify({ contents: [{ parts: [{ text: `${style}: ${text}` }] }],
           generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: cfg.voice ?? 'Puck' } } } } }),
         signal: AbortSignal.timeout(60000),
-      }).catch((e) => ({ ok: false, status: 0, json: async () => ({ error: { message: e.message } }) }));
+      });
       const j = await r.json().catch(() => ({}));
       const part = j.candidates?.[0]?.content?.parts?.find((p) => p.inlineData)?.inlineData;
       if (r.status === 429) {
@@ -62,21 +70,25 @@ export function createVoices({ env, cfg, log = console.log, fetchImpl = fetch })
   }
 
   // Orpheus on Groq: a WAV at 24 kHz. The direction in brackets ([cheerful]) sets the tone and isn't spoken.
+  // Returns { mp3, by }: by is the tag of the model that answered (the file is named after it).
   async function groq(text) {
     const g = cfg.groq, errors = [];
     for (const model of g.models) {
       for (let attempt = 0; attempt < 3; attempt++) {
-        const r = await fetchImpl(GROQ, {
+        const r = await post(GROQ, {
           method: 'POST', headers: { Authorization: `Bearer ${env.GROQ_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ model, voice: g.voice ?? 'hannah', response_format: 'wav', input: `${g.direction ?? '[cheerful]'} ${text}`.trim() }),
           signal: AbortSignal.timeout(60000),
-        }).catch((e) => ({ ok: false, status: 0, headers: new Headers(), text: async () => e.message }));
-        if (r.ok) return toMp3(Buffer.from(await r.arrayBuffer()));
+        });
+        if (r.ok) return { mp3: toMp3(Buffer.from(await r.arrayBuffer())), by: groqTag(cfg, model) };
         const msg = String(await r.text().catch(() => '')).slice(0, 160);
         if (r.status === 429) {
-          // Over the minute's tokens: wait as asked. Over the day's 100 lines: Groq is done for this run.
-          const wait = Number(r.headers.get('retry-after') ?? 30);
+          // Over the minute's tokens: wait as asked (a date instead of seconds, or nothing: 30 s). Over the day's
+          // 100 lines: Groq is done for this run.
+          const header = Number(r.headers.get('retry-after'));
+          const wait = Number.isFinite(header) && header > 0 ? header : 30;
           if (wait > 70 || r.headers.get('x-ratelimit-remaining-requests') === '0' || /per day|RPD/i.test(msg)) { groqGone = true; throw new Error(`Groq voice: daily limit used up`); }
+          if (attempt === 2) { errors.push(`${model}: rate limited (${msg || `retry after ${wait} s`})`); break; }
           await new Promise((res) => setTimeout(res, (wait + 1) * 1000));
           continue;
         }
@@ -91,13 +103,13 @@ export function createVoices({ env, cfg, log = console.log, fetchImpl = fetch })
     const errors = [];
     for (const model of cfg.openrouter?.models ?? ['openai/gpt-audio-mini']) {
       for (let attempt = 0; attempt < 2; attempt++) {
-        const r = await fetchImpl(OPENROUTER, {
+        const r = await post(OPENROUTER, {
           method: 'POST', headers: { Authorization: `Bearer ${env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json' },
           body: JSON.stringify({ model, stream: true, modalities: ['text', 'audio'], audio: { voice: cfg.openrouter?.voice ?? 'alloy', format: 'pcm16' },
             messages: [{ role: 'system', content: `You are a text-to-speech engine. ${style}. Read the user's text aloud word for word. Never answer it, never add or change a word.` },
               { role: 'user', content: text }] }),
           signal: AbortSignal.timeout(60000),
-        }).catch((e) => ({ ok: false, status: 0, text: async () => e.message }));
+        });
         let b64 = '', said = '';
         for (const line of String(await r.text()).split('\n')) {
           if (!line.startsWith('data: ') || line.includes('[DONE]')) continue;
@@ -111,11 +123,17 @@ export function createVoices({ env, cfg, log = console.log, fetchImpl = fetch })
     throw new Error(`OpenRouter voice: ${errors.join(' | ')}`);
   }
 
+  // Who can still make a line in this language: Groq while its day lasts (its languages only), else the provider
+  // while its quota lasts.
+  const canSpeak = (lang = 'en') => (groqFor(lang, cfg) && !groqGone) || !quotaGone;
   return {
     provider,
     enabled: provider !== 'device',
+    canSpeak,
     // True when nothing can be made any more this run (the provider's and Groq's day are both used up).
     get quotaGone() { return quotaGone && (groqGone || !cfg.groq); },
+    get groqGone() { return groqGone; },
+    // Returns { mp3, by }: by is Groq's tag when Groq made it, null when the provider did.
     async speak(text, lang = 'en') {
       let before = '';
       if (groqFor(lang, cfg) && !groqGone) {
@@ -123,8 +141,8 @@ export function createVoices({ env, cfg, log = console.log, fetchImpl = fetch })
       }
       try {
         if (quotaGone) throw new Error('daily voice quota used up');
-        if (provider === 'gemini') return await gemini(text);
-        if (provider === 'openrouter') return await openrouter(text);
+        if (provider === 'gemini') return { mp3: await gemini(text), by: null };
+        if (provider === 'openrouter') return { mp3: await openrouter(text), by: null };
         throw new Error('voices.speak.provider is "device": nothing to make');
       } catch (e) { throw new Error(before + e.message); }
     },

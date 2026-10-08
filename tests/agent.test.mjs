@@ -158,11 +158,16 @@ test('a recording’s file name changes with the text and the voice settings', a
 });
 
 test('voices: Groq’s Orpheus makes the English lines first; Russian and Groq’s used-up day go to Gemini', async () => {
-  const { createVoices, audioPath } = await import('../agent/lib/voices.mjs');
+  const { createVoices, audioPath, groqTag, langOf } = await import('../agent/lib/voices.mjs');
   const cfg = { provider: 'gemini', voice: 'Puck', pitch: 1.15, groq: { models: ['canopylabs/orpheus-v1-english'], voice: 'hannah', direction: '[cheerful]' } };
-  // Russian lines keep their old file names (not recorded again); English ones get new names once.
+  // A line the provider made keeps its name whatever the Groq settings; a line Groq made is named after Groq's
+  // model, voice and tone, so a changed tone records it again and a fallback recording never hides Groq's.
   assert.equal(audioPath('Привет!', 'ru', cfg), audioPath('Привет!', 'ru', { provider: 'gemini', voice: 'Puck', pitch: 1.15 }));
-  assert.notEqual(audioPath('Hi!', 'en', cfg), audioPath('Hi!', 'en', { provider: 'gemini', voice: 'Puck', pitch: 1.15 }));
+  assert.equal(audioPath('Hi!', 'en', cfg), audioPath('Hi!', 'en', { provider: 'gemini', voice: 'Puck', pitch: 1.15 }));
+  assert.notEqual(audioPath('Hi!', 'en', cfg, groqTag(cfg)), audioPath('Hi!', 'en', cfg));
+  assert.notEqual(audioPath('Hi!', 'en', cfg, groqTag(cfg)), audioPath('Hi!', 'en', cfg, groqTag({ ...cfg, groq: { ...cfg.groq, direction: '[whisper]' } })));
+  assert.equal(langOf('Привет, друзья!', 'en'), 'ru', 'a Russian catchphrase is Russian, not an English line for Orpheus');
+  assert.equal(langOf('Hello', 'en'), 'en');
   const wav = Buffer.alloc(44 + 4800);   // 0.1 s of silence, 24 kHz
   wav.write('RIFF', 0); wav.writeUInt32LE(36 + 4800, 4); wav.write('WAVEfmt ', 8); wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
   wav.writeUInt32LE(24000, 24); wav.writeUInt32LE(48000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34); wav.write('data', 36); wav.writeUInt32LE(4800, 40);
@@ -178,16 +183,20 @@ test('voices: Groq’s Orpheus makes the English lines first; Russian and Groq�
     return new Response(JSON.stringify({ candidates: [{ content: { parts: [{ inlineData: { mimeType: 'audio/L16;rate=24000', data: wav.subarray(44).toString('base64') } }] } }] }), { status: 200 });
   };
   const v = createVoices({ env: { GROQ_API_KEY: 'gsk', GEMINI_API_KEY: 'g' }, cfg, fetchImpl });
-  assert.ok((await v.speak('Hi there!', 'en')).length > 0);
+  const first = await v.speak('Hi there!', 'en');
+  assert.ok(first.mp3.length > 0);
+  assert.equal(first.by, groqTag(cfg), 'Groq made it: the file gets Groq’s name');
   assert.deepEqual(calls, ['groq:[cheerful] Hi there!']);
-  await v.speak('Привет!', 'ru');
+  assert.equal((await v.speak('Привет!', 'ru')).by, null);
   assert.deepEqual(calls.slice(1), ['gemini']);
   groqDay = false;
-  await v.speak('Bye!', 'en');
+  assert.equal((await v.speak('Bye!', 'en')).by, null, 'Gemini made it as the fallback: the provider’s name');
   assert.deepEqual(calls.slice(2), ['groq:[cheerful] Bye!', 'gemini']);
   await v.speak('Again!', 'en');
   assert.deepEqual(calls.slice(4), ['gemini'], 'Groq’s day is over: not asked again this run');
   assert.equal(v.quotaGone, false);
+  assert.equal(v.canSpeak('en'), true);
+  assert.equal(v.canSpeak('ru'), true);
   const noKey = createVoices({ env: { GEMINI_API_KEY: 'g' }, cfg, fetchImpl });
   calls.length = 0;
   await noKey.speak('Hi!', 'en');

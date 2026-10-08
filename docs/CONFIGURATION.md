@@ -68,7 +68,7 @@ A profile = one YouTube (Google) account email, with one app (`kidtube` for now)
 - Searches run in the `video-scout` subagent (`.claude/agents/video-scout.md`, Haiku, tool `Bash` only).
 - After the run, `agent/runlog.mjs` prints the report to the log and adds one line (time, minutes, turns, cost, tokens, models, ok) to `runs.json` in kidtube-data (last 60). Parent mode → Prompt shows it.
 - If nothing was saved: backup `agent/run.mjs` (fixed program, free OpenRouter models). It does not use the context documents, subjects or spares yet.
-- Log: `~/.local/share/kidtube/state/helper.log` (now includes every search). Secrets: `~/.config/kidtube/agent.env` (OPENROUTER_API_KEY, GEMINI_API_KEY).
+- Log: `~/.local/share/kidtube/state/helper.log` (now includes every search). Secrets: `~/.config/kidtube/agent.env` (OPENROUTER_API_KEY, GEMINI_API_KEY, and GROQ_API_KEY for the friend's English lines by Groq's Orpheus; without it the `groq` block in `agent/config.json` does nothing).
 
 #### Runs on request (parent mode)
 

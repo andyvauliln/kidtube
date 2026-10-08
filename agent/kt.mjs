@@ -28,7 +28,7 @@ import { helperInfo } from './lib/info.mjs';
 import { buildQuiz, templateCatalog } from './lib/quiz.mjs';
 import { tooHard } from './lib/prompts.mjs';
 import { createGemini } from './lib/gemini.mjs';
-import { createVoices, audioPath } from './lib/voices.mjs';
+import { createVoices, audioPath, groqFor, groqTag, langOf } from './lib/voices.mjs';
 import { search } from '../tools/video-info.mjs';
 import { locate } from './lib/profile.mjs';
 import { mergeConfig } from '../extension/lib/merge.js';
@@ -429,10 +429,12 @@ function seedProfile() {
 
 // Recorded voice for every line the friend says today (config voices.speak).
 async function makeVoices(queue, pc, s) {
-  const cfg = config.voices?.speak ?? { provider: 'device' };
+  const speak = config.voices?.speak ?? { provider: 'device' };
+  // Without GROQ_API_KEY the Groq block in config.json changes nothing: no Groq names, no recording again.
+  const cfg = env.GROQ_API_KEY ? speak : { ...speak, groq: undefined };
   const voices = createVoices({ env, cfg });
   const want = new Set();
-  const report = { provider: cfg.provider, made: 0, kept: 0, skipped: 0, errors: [] };
+  const report = { provider: cfg.provider, groq: cfg.groq ? { models: cfg.groq.models, made: 0, gone: false } : null, made: 0, kept: 0, skipped: 0, errors: [] };
   // Gemini can be slow or overloaded (3 models × 60 s per line): after this budget the rest is
   // left to the tablet's own voice and recorded on a later run, so save always finishes.
   const deadline = Date.now() + (cfg.maxMinutes ?? 8) * 60000;
@@ -443,17 +445,22 @@ async function makeVoices(queue, pc, s) {
     if (pc.presenter) { delete pc.presenter.phrases; delete pc.presenter.catchphraseAudioRef; }
   } else {
     const make = async (text, lang) => {
-      const path = audioPath(text, lang, cfg);
-      want.add(path);
-      if (existsSync(join(dataDir, path))) { report.kept++; return `repo:${path}`; }
-      if (Date.now() > deadline || voices.quotaGone) { report.skipped++; return null; }
+      lang = langOf(text, lang);
+      // A recording that exists is kept: Groq's (one per model), or the provider's (also Groq's fallback).
+      const names = [...(groqFor(lang, cfg) ? cfg.groq.models.map((m) => audioPath(text, lang, cfg, groqTag(cfg, m))) : []), audioPath(text, lang, cfg)];
+      const have = names.find((p) => existsSync(join(dataDir, p)));
+      if (have) { want.add(have); report.kept++; return `repo:${have}`; }
+      if (Date.now() > deadline || !voices.canSpeak(lang)) { report.skipped++; want.add(names[0]); return null; }
       try {
-        const mp3 = await voices.speak(text, lang);
+        const { mp3, by } = await voices.speak(text, lang);
+        const path = audioPath(text, lang, cfg, by);
+        want.add(path);
         mkdirSync(join(dataDir, 'audio'), { recursive: true });
         writeFileSync(join(dataDir, path), mp3);
         report.made++;
+        if (by && report.groq) report.groq.made++;
         return `repo:${path}`;
-      } catch (e) { report.errors.push(`${text.slice(0, 40)}: ${e.message.slice(0, 160)}`); return null; }
+      } catch (e) { want.add(names[0]); report.errors.push(`${text.slice(0, 40)}: ${e.message.slice(0, 160)}`); return null; }
     };
     for (const v of queue.videos) {
       const lang = v.lang ?? 'en';
@@ -480,6 +487,7 @@ async function makeVoices(queue, pc, s) {
       }
     }
   }
+  if (report.groq) report.groq.gone = voices.groqGone;
   // Recordings nobody uses any more are removed, so the repo stays small.
   const adir = join(dataDir, 'audio');
   if (existsSync(adir)) for (const f of readdirSync(adir)) if (!want.has(`audio/${f}`)) unlinkSync(join(adir, f));
