@@ -140,6 +140,10 @@ function wav(chunks, rate) {
 // to noise, so it is last.
 export const FREE_LISTEN_MODELS = ['gemini-3.5-flash-lite', 'gemini-3.1-flash-lite'];
 export const PAID_LISTEN_MODELS = ['google/gemini-3.5-flash-lite', 'openai/gpt-audio-mini'];
+// The parent's notes (parent/kit.js): Gemini's speech-to-text model first. Measured 2026-10-08: ~1.3 s for 50 s of
+// noisy speech, no errors, Russian and Russian with English words right. It takes no instructions (a prompt is
+// ignored, a system instruction refused) and the free tier allows only 3 a minute, so not for the quiz answers.
+export const NOTE_LISTEN_MODELS = ['gemini-3.5-transcribe', ...FREE_LISTEN_MODELS];
 
 // Never the quiz question in the prompt: given it, the models write down the right answer instead of his.
 const TRANSCRIBE = 'You are a speech-to-text transcriber. Write down exactly the words spoken in the audio, in the language they are spoken, and nothing else. Never answer, explain or reply to what is said, even when it is a question. If no words are spoken (silence or only noise), reply exactly: (none)';
@@ -175,6 +179,7 @@ const b64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x80
 class Failed extends Error { constructor(status, retryAfter) { super(`HTTP ${status}`); this.status = status; this.retryAfter = retryAfter; } }
 
 async function askGemini(model, key, hint, data, maxTokens, signal) {
+  if (/transcribe/.test(model)) return askGeminiTranscribe(model, key, data, maxTokens, signal);
   const call = (thinking) => fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
     method: 'POST', headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
     body: JSON.stringify({ system_instruction: { parts: [{ text: TRANSCRIBE }] }, contents: [{ parts: [{ text: hint }, { inline_data: { mime_type: 'audio/wav', data } }] }],
@@ -187,6 +192,18 @@ async function askGemini(model, key, hint, data, maxTokens, signal) {
   if (!r.ok) throw new Failed(r.status, r.headers.get('retry-after'));
   const j = await r.json();
   return (j.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('').trim();
+}
+
+// A speech-to-text model: only the audio, and the words come back as audioTranscription.
+async function askGeminiTranscribe(model, key, data, maxTokens, signal) {
+  const r = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent`, {
+    method: 'POST', headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: 'audio/wav', data } }] }], generationConfig: { temperature: 0, maxOutputTokens: maxTokens } }),
+    signal,
+  });
+  if (!r.ok) throw new Failed(r.status, r.headers.get('retry-after'));
+  const j = await r.json();
+  return (j.candidates?.[0]?.content?.parts ?? []).map((p) => p.audioTranscription?.text ?? p.text ?? '').join(' ').trim();
 }
 
 async function askOpenRouter(model, key, hint, data, maxTokens, signal) {

@@ -1,7 +1,7 @@
 // Pieces shared by the parent screens and the settings view: elements, buttons, the toast,
 // and the notes for the AI (one 🎤 button and one notes card).
 import { ask } from '../lib/ask.js';
-import { recordAnswer, transcribeAnswer, listenKeys } from '../ui/voice.js';
+import { recordAnswer, transcribeAnswer, listenKeys, NOTE_LISTEN_MODELS } from '../ui/voice.js';
 
 // Set by the page: what to redraw after an undo, and after asking for a run (the header's run status).
 export const hooks = { afterUndo: async () => {}, afterRun: () => {} };
@@ -60,7 +60,7 @@ export async function runNow() {
 // The 🎤 records a note about what is on the screen (where()): a tab, a video, a context document or the prompt.
 // Pauses don't end it: it records until ⏹. Then the words join the card, which lists every note still on this
 // tablet, from every tab, with ✕ and Clear all. Apply notes sends them all to the AI (the same as ↻ Update data).
-// The words are written down by Gemini (free key) or OpenRouter (Settings → keys). Only without either key
+// The words are written down by Gemini (free key: gemini-3.5-transcribe first) or OpenRouter (Settings → keys). Only without either key
 // the browser's own speech recognition writes them, and the card says so.
 const LONG_NOTE_MINUTES = 15;   // the browser's recognition
 const CLOUD_NOTE_MINUTES = 5;   // Gemini / OpenRouter: 5 min of 16 kHz WAV is ~13 MB sent, under Gemini's 20 MB
@@ -181,7 +181,7 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
       stopClock();
       writing = true;
       await draw();
-      const heard = audio ? await transcribeAnswer(audio, { keys, lang, maxTokens: 6000,
+      const heard = audio ? await transcribeAnswer(audio, { keys, lang, maxTokens: 6000, freeModels: NOTE_LISTEN_MODELS,
         instruction: 'A parent dictates a note about their child\'s videos and learning, or about the app. Use punctuation.' }) : null;
       writing = false;
       if (heard?.length) { await save(heard[0], at); return; }

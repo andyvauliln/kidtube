@@ -21,10 +21,11 @@ globalThis.fetch = async (url, init) => {
     if (a.delay !== 'hang') setTimeout(resolve, a.delay ?? 0);
   });
   if (a.status !== 200) return new Response('{}', { status: a.status, headers: a.headers ?? {} });
-  const json = route.startsWith('gemini') ? { candidates: [{ content: { parts: [{ text: a.text }] } }] } : { choices: [{ message: { content: a.text } }] };
+  const json = route.includes('transcribe') ? { candidates: [{ content: { parts: [{ audioTranscription: { text: a.text } }] } }] }
+    : route.startsWith('gemini') ? { candidates: [{ content: { parts: [{ text: a.text }] } }] } : { choices: [{ message: { content: a.text } }] };
   return new Response(JSON.stringify(json), { status: 200 });
 };
-const { transcribeAnswer, listenRoutes, FREE_LISTEN_MODELS, PAID_LISTEN_MODELS } = await import('../extension/ui/voice.js');
+const { transcribeAnswer, listenRoutes, FREE_LISTEN_MODELS, PAID_LISTEN_MODELS, NOTE_LISTEN_MODELS } = await import('../extension/ui/voice.js');
 
 const audio = new Uint8Array(44 + 32000);   // one second of 16 kHz WAV
 const keys = { gemini: 'AIza-test', openrouter: 'sk-or-test' };
@@ -127,4 +128,22 @@ test('silence is [] without a call; everything failing is null (the device liste
   answer = () => ({ status: 503 });
   assert.equal(await transcribeAnswer(audio, { keys, ...fast }), null);
   assert.equal(calls.length, 4);
+});
+
+test('notes: gemini-3.5-transcribe first, with only the audio; its words come as audioTranscription', async () => {
+  answer = () => ({ status: 200, text: 'Добавь видео про dinosaurs.' });
+  let used;
+  assert.deepEqual(await transcribeAnswer(audio, { keys, freeModels: NOTE_LISTEN_MODELS, maxTokens: 6000, onUsed: (u) => { used = u; } }), ['Добавь видео про dinosaurs.']);
+  assert.equal(used.model, 'gemini-3.5-transcribe');
+  assert.equal(calls[0].route, 'gemini:gemini-3.5-transcribe');
+  assert.equal(calls[0].body.system_instruction, undefined);                 // the model refuses one
+  assert.deepEqual(calls[0].body.contents[0].parts.map((p) => Object.keys(p)), [['inline_data']]);
+});
+
+test('notes: transcribe over its limit (3 a minute) → the next free model, and it rests', async () => {
+  answer = (route) => (route.includes('transcribe') ? { status: 429, headers: { 'retry-after': '40' } } : { status: 200, text: 'a note' });
+  assert.deepEqual(await transcribeAnswer(audio, { keys, freeModels: NOTE_LISTEN_MODELS }), ['a note']);
+  await new Promise((r) => setTimeout(r, 10));
+  assert.ok(store.listenCooldown['gemini:gemini-3.5-transcribe'] > Date.now() + 30000);
+  assert.ok(!FREE_LISTEN_MODELS.includes('gemini-3.5-transcribe'));          // the quiz answers don't use it
 });
