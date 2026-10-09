@@ -2,6 +2,10 @@
 
 Newest first. Each version is built from `extension/` with `build/build-orion.mjs` (see [ORION.md](https://github.com/andyvauliln/kidtube/blob/main/docs/ORION.md)).
 
+## 0.10.3 (2026-10-09)
+
+- **The apps row starts closed.** Each time a page opens or reloads, the apps row in the header is hidden. Tap the round apps button to show it.
+
 ## 0.10.2 (2026-10-09)
 
 - **Switch account works.** After you sign in to another Google account, YouTube's home waits until KidTube sees the new account. Then the header shows the new email and that account's data. The account menu shows when YouTube was last checked.
