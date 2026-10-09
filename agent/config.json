@@ -114,5 +114,12 @@
     "perDay": 10,
     "workDir": "~/.local/share/kidtube/app",
     "note": "agent/poll.sh: new notes from the parent → Claude Code runs agent/NOTES.md in its own checkout (workDir); it changes the app or the helper and releases; at most perDay runs a day"
+  },
+  "fixAgent": {
+    "enabled": true,
+    "perDay": 6,
+    "model": "claude-opus-5-5",
+    "effort": "medium",
+    "note": "agent/poll.sh: new problem reports from the tablets' checks (problems/<day>.json in the data repo) → Claude Code runs agent/FIX.md in the notes agent's checkout; it reproduces, fixes, tests and releases; its answers go to fixes.json. At most perDay runs a day; enabled: false stops it (the tablets still report)."
   }
 }

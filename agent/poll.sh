@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
 # Runs every minute (crontab). No AI unless there is work to do:
+# - new problem reports from the tablets' checks (agent/problems.mjs finds them) → the fix agent (agent/FIX.md),
+#   first; its answers go to fixes.json, which the tablets read.
 # - new notes from the parent in kidtube-data (agent/notes.mjs finds them) → the notes agent: Claude Code with
 #   agent/NOTES.md in its own checkout of the code. It changes the app or the helper, releases a new version,
 #   and can ask for a helper run.
@@ -30,6 +32,67 @@ git -C "$CLONE" fetch --quiet origin && git -C "$CLONE" reset --quiet --hard "or
 # Only what was there now counts as looked at. A request or a note pushed while a run below works (the tablet's
 # ↻ Update writes the notes first and the run request a few seconds later) makes the next minute look again.
 echo "$remote" > "$SROOT/poll-head"
+
+# The agents' own checkout of the code, fresh from GitHub: never the one someone may be working in. $1: the log.
+prepare_app() {
+  [ -d "$APP/.git" ] || git clone --quiet "$(git -C "$ROOT" remote get-url origin)" "$APP" >> "$1" 2>&1
+  git -C "$APP" fetch --quiet origin && git -C "$APP" checkout --quiet main && git -C "$APP" reset --quiet --hard origin/main && git -C "$APP" clean --quiet -fd
+  local lock
+  lock=$(sha1sum "$APP/package-lock.json" 2>/dev/null | cut -c1-40)
+  if [ -n "$lock" ] && { [ ! -d "$APP/node_modules" ] || [ "$lock" != "$(cat "$SROOT/app-npm" 2>/dev/null)" ]; }; then
+    (cd "$APP" && npm ci --silent) >> "$1" 2>&1 && echo "$lock" > "$SROOT/app-npm"
+  fi
+}
+
+# --- the fix lane: problems the tablets' checks reported (problems/<day>.json) → the fix agent (agent/FIX.md) ----
+# Before the parents' notes: a broken app first. agent/problems.mjs finds new ones (no AI) and writes fixes.json
+# from the agent's result; the tablets read it. fixAgent in config.json: enabled, perDay, model, effort.
+fix_lane() {
+  [ "$(cfg "c.fixAgent?.enabled===false?'off':'on'")" = on ] || return 0
+  local problems count ran max log result
+  problems=$(node agent/problems.mjs new --data "$CLONE" --state "$SROOT") || return 0
+  count=$(printf '%s' "$problems" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(String(JSON.parse(s).length))}catch{process.stdout.write('0')}})")
+  [ "${count:-0}" -gt 0 ] || return 0
+  max=$(cfg "c.fixAgent?.perDay??6")
+  ran=$(grep -c "^$(date -u +%F) " "$SROOT/fix-runs.log" 2>/dev/null || true)
+  [ "${ran:-0}" -lt "$max" ] || return 0   # the reports wait for tomorrow (they stay new)
+  log="$SROOT/fix.log"
+  echo "$(date -u +%F) $count" >> "$SROOT/fix-runs.log"
+  printf '%s\n' "$problems" > "$SROOT/problems-in.json"
+  echo "=== $(date -u +%FT%TZ) fix agent: $count problem(s)" >> "$log"
+  prepare_app "$log"
+  result="$SROOT/fix-result.json"
+  rm -f "$result"
+  mkdir -p "$SROOT/fix-runs"
+  local model effort prompt
+  model=$(cfg "c.fixAgent?.model??c.notesAgent?.model")
+  effort=$(cfg "c.fixAgent?.effort??c.notesAgent?.effort")
+  prompt="$(cat "$APP/agent/FIX.md")
+
+## The problems
+
+\`\`\`json
+$problems
+\`\`\`
+
+- Result file: $result
+- Data repo (read only): $CLONE
+- Today: $(date -u +%F)"
+  (cd "$APP" && CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 BASH_DEFAULT_TIMEOUT_MS=900000 BASH_MAX_TIMEOUT_MS=1800000 \
+    claude -p "$prompt" --model "${model:-opus}" ${effort:+--effort "$effort"} \
+      --permission-mode dontAsk --allowedTools "Bash" "Read" "Edit" "Write" "Glob" "Grep" "Skill" "Agent" "Task" \
+      --add-dir "$SROOT" "$CLONE" --output-format json < /dev/null) > "$SROOT/fix-runs/$(date -u +%Y%m%dT%H%M%SZ).json" 2>> "$log"
+  echo "=== claude exit $?" >> "$log"
+  # Handled either way: a problem the agent could not finish is not tried again every minute.
+  node agent/problems.mjs mark "$SROOT/problems-in.json" --state "$SROOT" >> "$log"
+  [ -f "$result" ] || printf '{"fixes":[]}' > "$result"
+  node agent/problems.mjs record "$result" --data "$CLONE" >> "$log"
+  git -C "$CLONE" add fixes.json
+  git -C "$CLONE" -c user.name="KidTube helper" commit --quiet -m "helper: fixes ($count problem(s))" || return 0
+  for i in 1 2 3; do git -C "$CLONE" push --quiet origin HEAD && break; git -C "$CLONE" pull --quiet --rebase origin HEAD; done
+  if [ -z "$(git -C "$ROOT" status --porcelain)" ]; then git -C "$ROOT" pull --quiet --ff-only origin main >> "$log" 2>&1; fi
+}
+fix_lane
 
 # The profiles to look at; none in config.json: the old layout, one child at the root of the repo ("-").
 PROFILES=$(node agent/lib/profile.mjs list)
@@ -116,13 +179,7 @@ if [ "$count" -gt 0 ]; then
   log="$SROOT/notes.log"
   echo "=== $(date -u +%FT%TZ) notes agent: $count note(s), request $statusId${PROFILE:+, profile $PROFILE}" >> "$log"
 
-  # Its own checkout, fresh from GitHub: never the one someone may be working in.
-  [ -d "$APP/.git" ] || git clone --quiet "$(git -C "$ROOT" remote get-url origin)" "$APP" >> "$log" 2>&1
-  git -C "$APP" fetch --quiet origin && git -C "$APP" checkout --quiet main && git -C "$APP" reset --quiet --hard origin/main && git -C "$APP" clean --quiet -fd
-  lock=$(sha1sum "$APP/package-lock.json" 2>/dev/null | cut -c1-40)
-  if [ -n "$lock" ] && { [ ! -d "$APP/node_modules" ] || [ "$lock" != "$(cat "$SROOT/app-npm" 2>/dev/null)" ]; }; then
-    (cd "$APP" && npm ci --silent) >> "$log" 2>&1 && echo "$lock" > "$SROOT/app-npm"
-  fi
+  prepare_app "$log"
 
   RESULT="$STATE/notes-result.json"
   rm -f "$RESULT"

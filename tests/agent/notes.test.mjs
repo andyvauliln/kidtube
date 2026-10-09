@@ -40,7 +40,7 @@ function world() {
   sh(`git clone -q ${p('data.git')} ${p('data')} 2>/dev/null; cd ${p('data')} && mkdir -p activity && echo '{}' > memory.json && git add -A && git commit -qm init && git push -q origin HEAD:main && git remote set-head origin main`);
   sh(`git clone -q ${p('code.git')} ${p('root')} 2>/dev/null`);
   mkdirSync(p('root', 'agent', 'lib'), { recursive: true });
-  for (const f of ['poll.sh', 'notes.mjs', 'NOTES.md', 'lib/profile.mjs', 'lib/data.mjs']) copyFileSync(join('agent', f), p('root', 'agent', f));
+  for (const f of ['poll.sh', 'notes.mjs', 'NOTES.md', 'problems.mjs', 'FIX.md', 'lib/profile.mjs', 'lib/data.mjs']) copyFileSync(join('agent', f), p('root', 'agent', f));
   // The old layout: one child at the root of the data repo, no profiles.
   writeFileSync(p('root', 'agent', 'config.json'), JSON.stringify({ ...JSON.parse(readFileSync('agent/config.json', 'utf8')), profiles: [] }));
   // The helper: commits a new list the way the real one does.
@@ -76,6 +76,17 @@ console.log('{}');
       if (request) { mkdirSync(join(tablet, 'requests'), { recursive: true }); writeFileSync(join(tablet, 'requests', 'run.json'), JSON.stringify({ schemaVersion: 1, id: request, at: 'now' })); }
       sh(`git add -A && git commit -qm tablet && git push -q origin HEAD:main`, tablet);
     },
+    // A tablet's checks report problems (extension/core/checks/runner.js sendReports).
+    report: (reports, day = '2026-10-06') => {
+      sh(`git pull -q --rebase origin main`, tablet);
+      mkdirSync(join(tablet, 'problems'), { recursive: true });
+      const f = join(tablet, 'problems', `${day}.json`);
+      const cur = existsSync(f) ? JSON.parse(readFileSync(f, 'utf8')) : { schemaVersion: 1, date: day, reports: [] };
+      for (const r of reports) { const i = cur.reports.findIndex((x) => x.reportId === r.reportId); if (i >= 0) cur.reports[i] = r; else cur.reports.push(r); }
+      writeFileSync(f, JSON.stringify(cur));
+      sh(`git add -A && git commit -qm "problems ${day}" && git push -q origin HEAD:main`, tablet);
+    },
+    fixes: () => { sh('git pull -q --rebase origin main', tablet); return JSON.parse(readFileSync(join(tablet, 'fixes.json'), 'utf8')).fixes; },
     answer: (a) => writeFileSync(p('answer.json'), JSON.stringify(a)),
     calls: () => (existsSync(p('claude-calls.jsonl')) ? readFileSync(p('claude-calls.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : []),
     status: () => { sh('git pull -q --rebase origin main', tablet); return JSON.parse(readFileSync(join(tablet, 'run-status.json'), 'utf8')); },
@@ -162,4 +173,52 @@ test('poll.sh: a run request pushed while the notes agent works is not lost (↻
   const st = w.status();
   assert.equal(st.requestId, 'req-late');
   assert.equal(st.state, 'done');
+});
+
+const problem = (id, check, version, count = 1, at = '2026-10-06T18:00:00Z') => ({ type: 'problem', reportId: id, deviceId: 'tab-1', fingerprint: `${check}|${version}|orion`,
+  check, kind: 'action', area: 'mode', expect: 'Kid: kid mode is on', saw: 'settings.mode: expected kid, saw parent',
+  mismatch: [{ what: 'settings.mode', expected: 'kid', actual: 'parent' }], code: ['core/background/messages.js kidHome'],
+  count, firstAt: at, lastAt: at, context: { app: { version, target: 'orion' } }, steps: [] });
+
+test('poll.sh: a problem the tablets reported wakes the fix agent once; its answer goes to fixes.json for the tablets', () => {
+  const w = world();
+  w.poll();
+  w.answer({ summary: 'Kid fixed.', version: '0.10.5', fixes: [{ key: 'action.kidHome|orion', state: 'fixed', version: '0.10.5', message: 'Kid waits for Orion to move the tab.' }] });
+  w.report([problem('r-1', 'action.kidHome', '0.10.4'), problem('r-2', 'action.kidHome', '0.10.4')]);
+  w.poll();
+  const calls = w.calls();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].cwd, w.p('app'));
+  assert.match(calls[0].prompt, /# KidTube: problems the tablets found by themselves/);
+  assert.match(calls[0].prompt, /"key": "action.kidHome\|orion"/);
+  assert.match(calls[0].prompt, /"count": 2/, 'two reports of one check: one problem');
+  const fixes = w.fixes();
+  assert.deepEqual(fixes.map((f) => [f.key, f.state, f.version]), [['action.kidHome|orion', 'fixed', '0.10.5']]);
+  assert.equal(fixes[0].message, 'Kid waits for Orion to move the tab.');
+  w.poll();
+  assert.equal(w.calls().length, 1, 'nothing new: no second run');
+  // The same problem again from a tablet that still has 0.10.4: fixed since, not worked on again.
+  w.report([problem('r-1', 'action.kidHome', '0.10.4', 5)]);
+  w.poll();
+  assert.equal(w.calls().length, 1);
+});
+
+test('problems.mjs: what is new, merged per check and browser; a fix holds for older versions; a comeback is a regression', async () => {
+  const { newProblems, recordFixes } = await import('../../agent/problems.mjs');
+  const now = Date.parse('2026-10-07T12:00:00Z');
+  const reports = [problem('a', 'action.kidHome', '0.10.4'), problem('b', 'action.kidHome', '0.10.5', 2), problem('c', 'yt.player', '0.10.5')];
+  let got = newProblems(reports, {}, [], now);
+  assert.deepEqual(got.map((g) => [g.key, g.count, g.versions]), [['action.kidHome|orion', 3, ['0.10.4', '0.10.5']], ['yt.player|orion', 1, ['0.10.5']]]);
+  const handled = { reports: { a: 1, b: 2, c: 1 }, runs: {} };
+  assert.equal(newProblems(reports, handled, [], now).length, 0, 'handled');
+  const fixes = recordFixes({}, { fixes: [{ key: 'action.kidHome|orion', state: 'fixed', version: '0.10.5', message: 'x' }, { key: 'bad', state: 'maybe' }] }, '2026-10-07T10:00:00Z').fixes;
+  assert.equal(fixes.length, 1, 'only known states');
+  got = newProblems([problem('d', 'action.kidHome', '0.10.4', 9)], {}, fixes, now);
+  assert.equal(got.length, 0, 'an older version than the fix: fixed since');
+  got = newProblems([problem('e', 'action.kidHome', '0.10.5')], {}, fixes, now);
+  assert.equal(got[0].regressionOf, '0.10.5', 'in the fixed version itself: it came back');
+  const left = recordFixes({}, { fixes: [{ key: 'yt.player|orion', state: 'not-reproduced', message: 'y' }] }, '2026-10-07T10:00:00Z').fixes;
+  assert.equal(newProblems([problem('f', 'yt.player', '0.10.5', 3)], {}, left, now).length, 0, 'not reproduced: left alone for a day');
+  assert.equal(newProblems([problem('f', 'yt.player', '0.10.5', 3)], {}, left, now + 25 * 3600000).length, 1);
+  assert.equal(newProblems([problem('g', 'yt.player', '0.10.5')], { runs: { 'yt.player|orion': '2026-10-07T11:00:00Z' } }, [], now).length, 0, 'two hours between runs');
 });
