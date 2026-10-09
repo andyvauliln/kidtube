@@ -29,6 +29,7 @@
       ],
       "js": [
         "core/ui/header.js",
+        "core/content/shell.js",
         "apps/kidtube/kid/render.js",
         "apps/kidtube/content/youtube.js"
       ],
@@ -58,7 +59,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "apps/kidtube/kid/*"
+        "apps/kidtube/kid/*",
+        "core/pages/check.html"
       ],
       "matches": [
         "*://www.youtube.com/*",

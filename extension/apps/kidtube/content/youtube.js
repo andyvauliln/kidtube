@@ -1,20 +1,20 @@
-// Runs on youtube.com and m.youtube.com. Covers YouTube with our screens and reports playback.
+// KidTube on youtube.com and m.youtube.com: covers YouTube with the kid's screens (his list, the strip beside the
+// player, the lock when the time is up) and reports playback. Runs after core/content/shell.js, which shows the
+// apps header and hands over the state (KidTubeShell); this script acts only while a KidTube profile runs.
 // It never decides what is allowed: the service worker does, and also guards every URL change.
 (() => {
-  const Z = '2147483647';
-  // Same as lib/ask.js. Content scripts are not modules, and Orion only returns sendMessage answers to the callback.
-  const ask = (msg) => new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(undefined), 8000);
-    try {
-      chrome.runtime.sendMessage(msg, (value) => { clearTimeout(timer); void chrome.runtime.lastError; resolve(value); });
-    } catch { clearTimeout(timer); resolve(undefined); }
-  });
+  const S = globalThis.KidTubeShell;
+  if (!S) return;
+  const { ask, Z } = S;
+  // A KidTube profile runs (not the apps header, not another app). Assumed until the state says otherwise,
+  // so YouTube is covered from the first moment.
+  let active = true;
   let page = null;             // 'home' | 'watch'
   let videoId = null;
   let frames = {};             // our screens by name: extension iframes, or in-page panels (below)
 
   const style = document.createElement('style');
-  // Links and suggestions drawn inside the player, and YouTube's bottom tabs: hidden, except at the apps header.
+  // Links and suggestions drawn inside the player, and YouTube's bottom tabs: hidden while KidTube runs.
   const hidden = document.createElement('style');
   hidden.textContent = `
     .ytp-ce-element, .ytp-endscreen-content, .ytp-pause-overlay, .ytp-chrome-top, .ytp-show-cards-title, .ytp-watermark,
@@ -23,10 +23,6 @@
     .ytwPlayerMiniplayerHost, ytm-pivot-bar-renderer { display: none !important; }`;
   style.textContent = `
     html.kidtube-on, html.kidtube-on body { overflow: hidden !important; overscroll-behavior: none !important; }
-    /* the apps header sits above YouTube: YouTube's page and its fixed top bar move down by its height */
-    html.kidtube-shell body { margin-top: var(--kidtube-h, 0px) !important; }
-    html.kidtube-shell #masthead-container, html.kidtube-shell ytm-mobile-topbar-renderer { top: var(--kidtube-h, 0px) !important; }
-    html.kidtube-shell ytd-mini-guide-renderer { top: calc(56px + var(--kidtube-h, 0px)) !important; }
     iframe.kidtube-frame { position: fixed !important; border: 0 !important; margin: 0 !important; padding: 0 !important;
       z-index: ${Z} !important; background: #e6f2ff; color-scheme: normal; display: block !important; }
     /* allowSkip off: the seek bar can't be dragged (the video element is also guarded below) */
@@ -37,7 +33,7 @@
   (document.head || document.documentElement).append(style, hidden);
   document.documentElement.classList.add('kidtube-on');
 
-  // Where our screens are drawn. Normally extension iframes (ui/*.html), which YouTube's CSS can't touch.
+  // Where the screens are drawn. Normally extension iframes (kid/*.html), which YouTube's CSS can't touch.
   // Orion doesn't show extension iframes on web pages (blank white), so its build (version_name "… Orion",
   // build/build-orion.mjs) draws the same screens in the page, inside a shadow root. Any other browser whose
   // home frame stays silent switches to that too.
@@ -127,16 +123,13 @@
     route();
   }
 
-  // --- in-page screens: the same screens as ui/home.html, strip.html and cover.html, drawn by ui/render.js ---------
-  // In a closed shadow root with ui/ui.css, so YouTube's CSS can't reach them and they look the same as the iframes.
+  // --- in-page screens: the same screens as kid/home.html, strip.html and cover.html, drawn by kid/render.js -------
+  // In a closed shadow root with kid/ui.css, so YouTube's CSS can't reach them and they look the same as the iframes.
   // Each panel is attached once and redrawn only when what it shows changes, so a list keeps its scroll position.
-  // Enough to position and paint the panels before ui.css arrives (or if it never does): the lock cover must
-  // cover YouTube and take taps from the first moment.
+  // Enough to position and paint the panels before ui.css arrives (or if it never does): they must cover
+  // YouTube and take taps from the first moment.
   const PANEL_CSS = `
-    .panel { position: fixed; pointer-events: auto; overflow: hidden; background: #e6f2ff; }
-    .lockcover { position: fixed; inset: 0; pointer-events: auto; background: #242c58; color: #fff; display: grid; place-items: center; text-align: center; padding: 24px; }
-    .lockcard { background: #fff; color: #1f2a44; border-radius: 28px; padding: 36px 28px 28px; max-width: 440px; }
-    .lockcard button { margin-top: 24px; height: 50px; border-radius: 25px; padding: 0 28px; background: #1f2a44; color: #fff; font: inherit; border: 0; }`;
+    .panel { position: fixed; pointer-events: auto; overflow: hidden; background: #e6f2ff; }`;
   let ui = null;
   function shadow() {
     if (!ui) {
@@ -176,93 +169,37 @@
     place(frame('lock', 'apps/kidtube/kid/home.html?locked=1'), 0, 0, innerWidth, innerHeight);
   }
 
-  // The apps header (ui/header.js) sits above YouTube where no app runs (state.shell.on: plain YouTube, where the
-  // parent signs in or switches the account) and in parent mode. Kid mode has no header.
-  // Locked (an app stopped because YouTube's account changed): YouTube is covered until a grown-up's PIN.
-  let shell = null, lockBox = null, headerHost = null, header = null, headerSize = null;
-  const isDark = () => document.documentElement.hasAttribute('dark') || document.documentElement.hasAttribute('darker-dark-theme');
-  function showHeader() {
-    if (!headerHost) {
-      headerHost = document.createElement('div');
-      headerHost.id = 'kidtube-header';
-      headerHost.style.cssText = `position:fixed!important;top:0!important;left:0!important;right:0!important;z-index:${Z}!important;display:block!important;margin:0!important`;
-      header = globalThis.KidTubeHeader.mount(headerHost, { dark: isDark() });
-      headerSize = new ResizeObserver(() => document.documentElement.style.setProperty('--kidtube-h', `${headerHost?.offsetHeight ?? 0}px`));
-      headerSize.observe(headerHost);
-    }
-    if (!headerHost.isConnected) document.documentElement.appendChild(headerHost);
-    document.documentElement.classList.add('kidtube-shell');
-  }
-  function hideHeader() {
-    if (!headerHost) return;
-    header.destroy(); headerSize.disconnect(); headerHost.remove();
-    header = headerHost = headerSize = null;
-    document.documentElement.classList.remove('kidtube-shell');
-    document.documentElement.style.removeProperty('--kidtube-h');
-  }
-  new MutationObserver(() => header?.setDark(isDark())).observe(document.documentElement, { attributes: true, attributeFilter: ['dark', 'darker-dark-theme'] });
-
-  function plainYouTube() {
+  // The apps header, another app or an account change: plain YouTube again (core/content/shell.js does the rest).
+  function standDown() {
+    active = false;
     Object.keys(frames).forEach(drop);
     page = null;
     document.documentElement.classList.remove('kidtube-on', 'kidtube-noskip');
     hidden.remove();
   }
-  function showShell() {
-    plainYouTube();
-    if (shell.locked) {
-      hideHeader();
-      if (!lockBox) {
-        lockBox = el('div', 'screen lockcover');
-        shadow().append(lockBox);
-      } else shadow();
-      const inner = el('div', 'lockcard');
-      inner.append(el('div', 'big', '🔒'), el('h1', '', 'Ask a grown-up'), el('p', '', shell.why || 'KidTube is locked.'),
-        K().button('', 'Unlock with the PIN', () => ask({ type: 'openApps' })));
-      lockBox.replaceChildren(inner);
-      silenceVideos();
-      return;
-    }
-    lockBox?.remove(); lockBox = null;
-    showHeader();
-  }
-  function hideShell() {
-    lockBox?.remove(); lockBox = null;
-    hideHeader();
+  function activate() {
+    active = true;
     (document.head || document.documentElement).append(hidden);
+    route();
   }
 
   // allowSkip off: no jumping forward and no speed above 1x. Going back is fine.
-  // parentMode: a parent opened this video from the parent page; no covers, no counting, skipping allowed.
-  // parentOn: parent mode (settings): YouTube's home becomes the parent's screens and nothing is covered.
-  let allowSkip = false, maxReached = 0, parentMode = false, parentOn = false;
-  async function loadRules() {
-    const st = await ask({ type: 'state' });
-    if (!st?.rules) return;
-    const wasShell = !!shell;
-    shell = st.shell?.on ? st.shell : null;
-    if (shell) return showShell();
-    if (wasShell) {   // an app was opened: it decides about this page again
-      hideShell();
-      ask({ type: 'recheck', url: location.href });
-    }
-    allowSkip = st.rules.allowSkip;
-    parentMode = !!st.parent;
-    const was = parentOn;
+  // parentOn: parent mode: YouTube's home becomes the parent's screens, a video plays with nothing covered.
+  let allowSkip = false, maxReached = 0, parentOn = false;
+  S.onState((st) => {
+    if (st.shell.on || st.app !== 'kidtube') { if (active) standDown(); return; }
+    if (!active) activate();
+    allowSkip = !!st.rules?.allowSkip;
     parentOn = !!st.parentMode;
     document.documentElement.classList.toggle('kidtube-noskip', !allowSkip);
-    // Parent mode just ended (switched off or timed out): the kid's rules check this page again.
-    if (was && !parentOn) ask({ type: 'recheck', url: location.href });
     if (parentOn && page === 'home') ask({ type: 'openParent' });
     if (page === 'watch') route();
-  }
+  });
 
-  // A parent watching (parent mode, or a video opened from the parent screens): nothing covered, nothing counted.
-  // Parent mode also has the header.
+  // A parent watching (parent mode): nothing covered, nothing counted. The header is shell.js's.
   function showParentView() {
     [...COVERS, 'strip', 'lock', 'home'].forEach(drop);
     document.documentElement.classList.remove('kidtube-on');
-    if (parentOn) showHeader(); else hideHeader();
   }
   function guardSkipping(v) {
     v.addEventListener('timeupdate', () => {
@@ -278,34 +215,29 @@
   }
 
   function route() {
-    if (shell) return;
+    if (!active) return;
     const u = new URL(location.href);
     const vid = u.pathname === '/watch' ? u.searchParams.get('v') : null;
     if (vid) {
-      if (page !== 'watch' || vid !== videoId) { page = 'watch'; videoId = vid; drop('home'); drop('lock'); played = 0; maxReached = 0; loadRules(); }
-      if (parentMode) return showParentView();
+      if (page !== 'watch' || vid !== videoId) { page = 'watch'; videoId = vid; drop('home'); drop('lock'); played = 0; maxReached = 0; S.refresh(); }
+      if (parentOn) return showParentView();
       document.documentElement.classList.add('kidtube-on');
-      hideHeader();
       layoutWatch();
     } else {
-      if (page !== 'home') { page = 'home'; videoId = null; parentMode = false; document.documentElement.classList.add('kidtube-on'); hideHeader(); if (parentOn) ask({ type: 'openParent' }); }
+      if (page !== 'home') { page = 'home'; videoId = null; document.documentElement.classList.add('kidtube-on'); if (parentOn) ask({ type: 'openParent' }); }
       showHome();
       silenceVideos();
     }
   }
 
   // Playback time: only while the video plays and the page is visible (PLAN.md §3.1).
-  let played = 0, last = performance.now(), hooked = new WeakSet(), beat = 0;
+  let played = 0, last = performance.now(), hooked = new WeakSet();
   setInterval(async () => {
-    if (++beat % (shell ? 5 : 30) === 0) loadRules();   // parent mode can time out without any storage change
-    if (shell) {   // ask YouTube again now and then: the account can change in another tab
-      if (beat % 10 === 0 && lastWho) reportAccount(...lastWho);
-      return;
-    }
+    if (!active) return;
     route();
     const now = performance.now(), dt = (now - last) / 1000;
     last = now;
-    if (page !== 'watch' || frames.lock || parentMode) return;
+    if (page !== 'watch' || frames.lock || parentOn) return;
     const v = player();
     if (!v) return;
     if (!hooked.has(v)) {
@@ -322,32 +254,7 @@
     }
   }, 1000);
 
-  // Who is signed in (content/main.js reads YouTube's config). The email comes from YouTube's own account
-  // switcher, asked from this page so it carries the YouTube sign-in; the background picks that account's data.
-  let accountSeen = false;
-  window.addEventListener('message', (e) => {
-    if (e.source !== window || e.data?.kidtube !== 'account') return;
-    accountSeen = true;
-    reportAccount(e.data.loggedIn, e.data.datasyncId);
-  });
-  // The page-world script may not run (Orion): read the same two values from YouTube's own page text.
-  setTimeout(() => {
-    if (accountSeen) return;
-    const text = [...document.scripts].map((x) => x.textContent).find((t) => t.includes('"LOGGED_IN"')) ?? '';
-    const loggedIn = text.match(/"LOGGED_IN":(true|false)/)?.[1];
-    if (loggedIn) reportAccount(loggedIn === 'true', text.match(/"DATASYNC_ID":"([^"]*)"/)?.[1] ?? '');
-  }, 4000);
-  let lastWho = null;
-  async function reportAccount(loggedIn, datasyncId) {
-    lastWho = [loggedIn, datasyncId];
-    let switcher = '';
-    if (loggedIn) {
-      try { switcher = (await (await fetch(`${location.origin}/getAccountSwitcherEndpoint`, { credentials: 'include' })).text()).slice(0, 400000); } catch {}
-    }
-    ask({ type: 'account', loggedIn: !!loggedIn, datasyncId: String(datasyncId ?? '').slice(0, 200), switcher });
-  }
-
-  // Player data from the page world (content/main.js): the real channel and length.
+  // Player data from the page world (core/content/youtube-page.js): the real channel and length.
   window.addEventListener('message', (e) => {
     if (e.source !== window || e.data?.kidtube !== 'details') return;
     const d = e.data;
@@ -356,7 +263,7 @@
 
   // Last line before the service worker's URL guard: swallow taps on links we don't own.
   const swallow = (e) => {
-    if (shell && !shell.locked) return;
+    if (!active) return;
     const a = e.target.closest?.('a[href]');
     if (!a) return;
     e.preventDefault();
@@ -366,10 +273,8 @@
 
   addEventListener('resize', () => (page === 'watch' ? route() : page === 'home' && showHome()));
   chrome.storage.onChanged.addListener((ch) => {
-    if (ch.data || ch.localConfig || ch.settings || ch.account || ch.shell) loadRules();
     if (ch.data || ch.watched || ch.today) for (const n of ['home', 'strip']) frames[n]?.refresh?.();
   });
-  loadRules();
   document.addEventListener('fullscreenchange', () => page === 'watch' && route());
   route();
 })();

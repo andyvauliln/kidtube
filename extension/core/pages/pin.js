@@ -71,8 +71,10 @@ async function done() {
   }
   const r = await ask({ type: 'setMode', mode: 'parent' });
   if (!r?.ok) { err.textContent = `It could not turn on parent mode: ${r?.error ?? 'KidTube’s background did not answer'}`; return; }
-  if (purpose === 'settings') { location.href = '../parent/parent.html#settings'; return; }
-  location.href = (await ask({ type: 'apps' }))?.home ?? 'https://m.youtube.com/';
+  const a = await ask({ type: 'apps' });
+  // Settings live in the app's parent screens (an app without them: its home).
+  if (purpose === 'settings' && a?.settings) { location.href = a.settings; return; }
+  location.href = a?.home ?? 'https://m.youtube.com/';
 }
 
 start();

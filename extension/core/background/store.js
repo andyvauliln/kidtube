@@ -1,29 +1,16 @@
 // The service worker's state: everything persistent lives in chrome.storage.local, and every change to the
 // current profile's state goes through withState(), so ticks, syncs and messages never race.
-import { mergeConfig } from '../lib/merge.js';
-import { applyPlan } from '../../apps/kidtube/lib/plan.js';
 import { profileFolder } from '../lib/account.js';
-import { DEFAULT_APP, appOf } from '../../apps/registry.js';
+import { DEFAULT_APP } from '../../apps/registry.js';
 import { DEFAULT_REPO } from './constants.js';
-
-// --- the files bundled with the extension --------------------------------------------------------------
-let bundled; // { config, queue, quizTypes }
-export async function loadBundled() {
-  if (!bundled) {
-    const [config, queue, quizTypes] = await Promise.all(['apps/kidtube/data/default-config.json', 'apps/kidtube/data/default-queue.json', 'apps/kidtube/data/quiz-types.json']
-      .map((f) => fetch(chrome.runtime.getURL(f)).then((r) => r.json())));
-    bundled = { config, queue, quizTypes };
-  }
-  return bundled;
-}
+import { allParts } from './apps.js';
 
 // --- the current profile's state --------------------------------------------------------------------------
-// localConfig: rules saved on the parent page that haven't reached GitHub yet.
-// seen: title/channel of videos he opened, for the parent's list after the queue has moved on.
-// pendingTalk: the talking friend's screen he is on (before or after a video).
-// planLog: the parent's changes to today's list and the planned videos (lib/plan.js).
-// history: what he watched, newest last (parent mode → History). notes: the parent's notes for the AI.
-export const KEYS = ['settings', 'data', 'watched', 'today', 'session', 'outbox', 'syncStatus', 'localConfig', 'seen', 'pendingTalk', 'quizTurn', 'transcripts', 'character', 'planLog', 'history', 'notes'];
+// settings: the PIN, the mode, the GitHub connection, the device id (DEVICE_SETTINGS move along with every switch).
+// data: what the last sync fetched for the profile (the app's files, their etags, profileFile).
+// syncStatus: when it last synced and what went wrong. Each app adds its own keys (apps.js stateKeys).
+const CORE_KEYS = ['settings', 'data', 'syncStatus'];
+export const stateKeys = () => [...CORE_KEYS, ...allParts().flatMap((p) => p.stateKeys ?? [])];
 
 let chain = Promise.resolve();
 // Runs fn after every earlier serial() call has finished.
@@ -39,29 +26,21 @@ export function serial(fn) {
 export function withState(fn, { account } = {}) {
   return serial(async () => {
     if (account !== undefined && ((await chrome.storage.local.get('account')).account?.key ?? null) !== account) return undefined;
-    const s = await chrome.storage.local.get(KEYS);
-    s.settings ??= {}; s.data ??= {}; s.watched ??= {}; s.outbox ??= []; s.syncStatus ??= {}; s.seen ??= {};
-    const before = Object.fromEntries(KEYS.map((k) => [k, JSON.stringify(s[k] ?? null)]));
+    const keys = stateKeys();
+    const s = await chrome.storage.local.get(keys);
+    s.settings ??= {}; s.data ??= {}; s.syncStatus ??= {};
+    for (const p of allParts()) p.prepare?.(s);
+    const before = Object.fromEntries(keys.map((k) => [k, JSON.stringify(s[k] ?? null)]));
     const result = await fn(s);
-    const changed = KEYS.filter((k) => JSON.stringify(s[k] ?? null) !== before[k]);
+    const changed = keys.filter((k) => JSON.stringify(s[k] ?? null) !== before[k]);
     if (changed.length) await chrome.storage.local.set(Object.fromEntries(changed.map((k) => [k, s[k] ?? null])));
     return result;
   });
 }
 
 // What the worker remembers only while it runs (lost on restart, which is fine):
-// host: the YouTube host he uses (m. or www.), for the URLs the worker sends tabs to.
+// host: the YouTube host in use (m. or www.), for the URLs the worker sends tabs to.
 export const live = { host: 'm.youtube.com' };
-
-// --- the rules in force: bundled defaults, GitHub's parent-config.json, the parent's unsent changes -------
-export async function effective(s) {
-  const b = await loadBundled();
-  let config = mergeConfig(mergeConfig(b.config, s.data?.config), s.localConfig);
-  const queue = applyPlan(s.data?.queue ?? b.queue, s.planLog);
-  // Questions of planned videos the parent moved onto today's list.
-  if (Object.keys(s.planLog?.items ?? {}).length) config = mergeConfig(config, { quiz: { items: s.planLog.items } });
-  return { config, queue };
-}
 
 // --- modes ----------------------------------------------------------------------------------------------
 // The apps header (shell): no app runs, so YouTube is plain YouTube with KidTube's header on top, where the
@@ -124,6 +103,3 @@ export async function profileBase() {
 export async function dataLocation(settings) {
   return { repo: settings.repo || DEFAULT_REPO, base: await profileBase() };
 }
-
-// Context documents (parent mode → Context) of the current profile's app.
-export const contextDocsOf = async () => appOf((await chrome.storage.local.get('account')).account).contextDocs;

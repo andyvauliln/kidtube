@@ -1,7 +1,8 @@
 // The talking friend's recorded voice (audio/*.mp3, kept in Cache Storage) and its picture (characters/*),
 // both from the private data repo.
 import { ghHeaders, contentsUrl, explainHttp, bytesToBase64 } from '../../../core/lib/github.js';
-import { withState, effective } from '../../../core/background/store.js';
+import { withState } from '../../../core/background/store.js';
+import { effective } from './config.js';
 
 export const AUDIO_CACHE = 'kidtube-audio';
 const audioKey = (path) => `https://kidtube.invalid/${path}`;

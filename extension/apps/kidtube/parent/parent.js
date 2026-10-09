@@ -103,7 +103,7 @@ async function refresh() {
   // These are KidTube's screens: a profile with another app goes to that app's page.
   if (r.app && r.app !== 'kidtube') { location.replace(chrome.runtime.getURL(APPS[r.app]?.page ?? 'core/pages/pin.html')); return; }
   // Parent mode is off (switched off in another tab, or an old link): the PIN page turns it on.
-  if (!r.parentMode) { location.replace('../apps/apps.html?for=parent'); return; }
+  if (!r.parentMode) { location.replace(chrome.runtime.getURL('core/pages/pin.html?for=parent')); return; }
   if ($('run').hidden) { $('run').hidden = false; showRun(); }
   $('nToday').textContent = r.today.filter((v) => !v.watchedAt).length;
   $('nPlanned').textContent = r.planned.length;

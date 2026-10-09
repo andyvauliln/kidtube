@@ -1,11 +1,12 @@
-// The kid's rules: what he may open, the video he is on, his time today, and the guard on every URL change.
-import { lockReason, nextOpening, localParts, nowIso } from '../../../core/lib/time.js';
+// The kid's rules: what he may open, the video he is on, his time today, and KidTube's part of the guard
+// on every URL change (core/background/guard.js hands it the YouTube pages).
+import { localParts, nowIso } from '../../../core/lib/time.js';
+import { homeUrl, watchUrl } from '../../../core/lib/youtube.js';
+import { parentMode } from '../../../core/background/store.js';
+import { APPS } from '../../registry.js';
+import { lockReason, nextOpening } from '../lib/schedule.js';
 import { visibleVideos, waitingIds } from '../lib/queue.js';
-import { classifyUrl, homeUrl, watchUrl } from '../../../core/lib/youtube.js';
-import { appOf } from '../../registry.js';
-import { PARENT_PAGE } from '../../../core/background/constants.js';
-import { effective, parentMode, shellOf, live } from '../../../core/background/store.js';
-import { externalGuard } from '../../../core/background/sites.js';
+import { effective } from './config.js';
 
 // Seconds he watched today (the day boundary is the config's time zone). Starts a new day when needed.
 export function todayPlayed(s, cfg, now = new Date()) {
@@ -68,13 +69,12 @@ export function leaveSession(s, cfg, reason) {
   endSession(s, s.session.ended ? 'ended' : reason);
 }
 
-// --- the view any screen asks for ----------------------------------------------------------
+// --- the view any screen asks for (the 'state' message; the core adds the mode and the apps header) ----------
 export async function viewState(s) {
   const { config, queue } = await effective(s);
   const now = new Date();
   const played = todayPlayed(s, config, now);
   const reason = lockNow(s, config, now);
-  const parent = parentMode(s);
   const ses = s.session;
   const min = config.minSecondsBeforeLeave ?? 0;
   const cap = config.time?.maxMinutesPerDay || 0;
@@ -84,11 +84,8 @@ export async function viewState(s) {
     minutesLeft: cap ? Math.max(0, Math.ceil(cap - played / 60)) : null,
     maxMinutes: cap || null,
     session: ses ? { videoId: ses.videoId, secondsUntilUnlock: ses.ended ? 0 : Math.max(0, Math.ceil(min - ses.playedSeconds)) } : null,
-    rules: { allowSkip: parent || !!config.allowSkip },
+    rules: { allowSkip: parentMode(s) || !!config.allowSkip },
     friend: config.presenter?.name || 'Zippy',
-    parent,
-    parentMode: parentMode(s),
-    shell: await shellOf(),
   };
 }
 
@@ -119,22 +116,10 @@ export function isOpenable(videoId, queue, cfg, s) {
 // --- navigation guard ----------------------------------------------------------------------
 const BLOCK_TARGET = { shorts: 'shorts', search: 'search', channel: 'channel', other: 'video', watch: 'video' };
 
-// Returns the URL to send the tab to, or null to let it be.
-export async function guard(s, tabId, href) {
-  const c = classifyUrl(href);
-  if (c.kind === 'internal') return null;
-  if (c.kind === 'external') return externalGuard(c.host);         // normally DNR blocks them; this is the fallback
-  if (c.kind === 'signin') return null;                             // Google signing in an account: let it finish
-  live.host = c.host || live.host;
-  const g = await chrome.storage.local.get(['shell', 'account']);
-  // The apps header: plain YouTube, so the parent can sign in or switch the account (locked: content.js covers it).
-  if ((await shellOf(g)).on) return null;
-  // A profile whose app isn't KidTube: YouTube shows that app's page instead (the blank test app: a white page),
-  // in parent mode too: KidTube's parent screens are not that app's screens.
-  const app = appOf(g.account);
-  if (app.page) return chrome.runtime.getURL(app.page);
+// A YouTube page (c: classifyUrl's answer). Returns the URL to send the tab to, or null to let it be.
+export async function guard(s, tabId, c, href) {
   // Parent mode: YouTube's home is the parent's screens; everything else on YouTube is open.
-  if (parentMode(s)) return c.kind === 'home' ? chrome.runtime.getURL(PARENT_PAGE) : null;
+  if (parentMode(s)) return c.kind === 'home' ? chrome.runtime.getURL(APPS.kidtube.parentPage) : null;
   const { config, queue } = await effective(s);
   const locked = lockNow(s, config);
   const ses = s.session;

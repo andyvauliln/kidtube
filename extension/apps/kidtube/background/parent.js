@@ -5,7 +5,8 @@ import { localParts } from '../../../core/lib/time.js';
 import { isVideoId, thumbUrl } from '../../../core/lib/youtube.js';
 import { appOf } from '../../registry.js';
 import { PLAN_ACTIONS, applyPlan, applyPlanEvent, entryFromRecord, applyPromptNotes } from '../lib/plan.js';
-import { effective, parentMode } from '../../../core/background/store.js';
+import { parentMode } from '../../../core/background/store.js';
+import { effective } from './config.js';
 import { newEvent, fullLang, todayPlayed } from './rules.js';
 
 export const getMemory = async () => (await chrome.storage.local.get('memory')).memory ?? null;

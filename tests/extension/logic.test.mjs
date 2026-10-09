@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { localParts, inAllowedWindow, nextOpening, lockReason } from '../../extension/core/lib/time.js';
+import { localParts } from '../../extension/core/lib/time.js';
+import { inAllowedWindow, nextOpening, lockReason } from '../../extension/apps/kidtube/lib/schedule.js';
 import { visibleVideos } from '../../extension/apps/kidtube/lib/queue.js';
 import { classifyUrl } from '../../extension/core/lib/youtube.js';
 

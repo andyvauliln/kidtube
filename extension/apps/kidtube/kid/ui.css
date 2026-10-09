@@ -1,7 +1,7 @@
 /* KidTube's kid screens: the home list, the strip beside the player, the lock screens and the talking friend.
    One file for the extension's pages (body.screen) and for the in-page panels Orion draws into a shadow root
-   (content.js fetches this file), so everything hangs off .screen, never html or body alone.
-   Built by ui/render.js. */
+   (content/youtube.js fetches this file), so everything hangs off .screen, never html or body alone.
+   Built by kid/render.js. */
 .screen {
   --sky: #e6f2ff; --sky-2: #f6faff; --ink: #1f2a44; --muted: #66758f; --card: #ffffff; --line: #d6e3f3;
   --sun: #ffc83d; --sun-ink: #7a5200; --coral: #ff6b5c; --coral-deep: #d9493c; --leaf: #4cc27b;
@@ -88,14 +88,6 @@ html, body { margin: 0; height: 100%; }
 .wait b { color: var(--ink); font-weight: 900; font-variant-numeric: tabular-nums; }
 .strip.locked .card { pointer-events: none; filter: grayscale(1); opacity: .45; }
 
-/* --- YouTube locked after an account change (content.js) ----------------------------------------------------- */
-.lockcover { position: fixed; inset: 0; display: grid; place-items: center; text-align: center; padding: 24px; pointer-events: auto;
-  background: radial-gradient(circle at 50% 15%, var(--night-2), var(--night) 70%); color: #fff; }
-.lockcard { background: #fff; color: var(--ink); border-radius: 28px; padding: 36px 28px 28px; max-width: 440px; box-shadow: 0 16px 48px rgba(0, 0, 0, .35); }
-.lockcard .big { font-size: 64px; line-height: 1; }
-.lockcard h1 { font-size: 26px; font-weight: 900; margin: 14px 0 8px; }
-.lockcard p { font-size: 16px; color: var(--muted); margin: 0; }
-.lockcard button { margin-top: 24px; height: 50px; border-radius: 25px; padding: 0 28px; background: var(--ink); color: #fff; font-weight: 800; font-size: 17px; }
 
 @media (prefers-reduced-motion: reduce) {
   .nudge, .star.nudge { animation: none; }

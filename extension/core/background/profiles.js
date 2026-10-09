@@ -6,13 +6,16 @@ import { accountFromSwitcher, profileFolder, chooserUrl } from '../lib/account.j
 import { APPS, DEFAULT_APP, appOf } from '../../apps/registry.js';
 import { ghHeaders, getRepoFile, explainHttp } from '../lib/github.js';
 import { homeUrl } from '../lib/youtube.js';
-import { nowIso } from '../lib/time.js';
-import { DEFAULT_REPO, DEVICE_SETTINGS, BACKUP_KEYS, LISTEN_KEYS, PARENT_PAGE } from './constants.js';
-import { KEYS, serial, withState, shellOf, headerOpen, parentMode, live } from './store.js';
+import { DEFAULT_REPO, DEVICE_SETTINGS, BACKUP_KEYS } from './constants.js';
+import { stateKeys, serial, withState, shellOf, headerOpen, parentMode, live } from './store.js';
 import { applySiteRules } from './sites.js';
 import { sync } from './sync.js';
+import { partOf, allParts } from './apps.js';
 
-const ACCOUNT_KEYS = [...KEYS, 'memory', 'helperInfo', 'contextDocs'];
+// Everything kept per profile: the state keys and the apps' other keys.
+const accountKeys = () => [...stateKeys(), ...allParts().flatMap((p) => p.profileKeys ?? [])];
+// The apps' keys that go into the settings file with the connection and the PIN (KidTube: the listening keys).
+const fileKeys = () => allParts().flatMap((p) => p.fileKeys ?? []);
 
 // A profile is an email with one app, so one email can have a profile in each app. KidTube's key is the email
 // itself (what YouTube reports, and what tablets before 0.9.6 have); another app's is "<app>:<email>".
@@ -67,12 +70,13 @@ export async function useProfile(info, { app, key, folder }) {
       await chrome.storage.local.set({ account: me, accounts });
       return { switched: false };
     }
-    const work = await chrome.storage.local.get(ACCOUNT_KEYS);
+    const keys = accountKeys();
+    const work = await chrome.storage.local.get(keys);
     const next = (await chrome.storage.local.get(`acct:${key}`))[`acct:${key}`] ?? {};
     const device = Object.fromEntries(DEVICE_SETTINGS.filter((k) => work.settings?.[k] != null).map((k) => [k, work.settings[k]]));
     next.settings = { ...(next.settings ?? {}), ...device };
     await chrome.storage.local.set({ [`acct:${cur.key}`]: work, ...next, account: me, accounts });
-    await chrome.storage.local.remove([`acct:${key}`, ...ACCOUNT_KEYS.filter((k) => !(k in next))]);
+    await chrome.storage.local.remove([`acct:${key}`, ...keys.filter((k) => !(k in next))]);
     return { switched: true };
   });
   if (r.switched) sync();
@@ -152,13 +156,10 @@ export async function headerView(force) {
     const here = accounts[keyFor(a.id, email)];
     const there = remote.list.find((p) => p.app === a.id && p.email === email);
     return { id: a.id, label: shortLabel(a), color: a.color, glyph: a.glyph, about: a.about,
-      has: !!(here || there), active: a.id === running, folder: here?.folder ?? there?.folder ?? null, parentScreens: !a.page };
+      has: !!(here || there), active: a.id === running, folder: here?.folder ?? there?.folder ?? null, parentScreens: !!a.parentPage };
   });
   return out;
 }
-
-// A new app starts with no list at all (not the built-in starter list): the helper fills it.
-const emptyQueue = () => ({ schemaVersion: 1, updatedAt: nowIso(), videos: [] });
 
 // The header's app tiles (mode: 'parent' unless asked, so the parent sees the app first) and Add app (create).
 // The profile is the signed-in email in that app; its folder in the repo is found, or given now.
@@ -177,12 +178,12 @@ export async function openApp(msg, tabId, host) {
   const parent = msg.create || msg.mode !== 'kid';
   await withState((s) => {
     Object.assign(s.settings, { mode: parent ? 'parent' : 'kid', parentUntil: 0 });
-    if (msg.create && !known && app.sync !== false) s.data.queue ??= emptyQueue();
+    if (msg.create && !known) partOf({ app: app.id }).created?.(s);   // the app's starting files
   });
   await chrome.storage.local.set({ shell: { on: false, locked: false } });
   await applySiteRules();
   if (msg.create && !r.switched) sync();   // (a switch syncs anyway) writes profile.json: the repo and the server's helper know it
-  const url = app.page ? chrome.runtime.getURL(app.page) : parent ? chrome.runtime.getURL(PARENT_PAGE) : homeUrl(host);
+  const url = app.page ? chrome.runtime.getURL(app.page) : parent ? chrome.runtime.getURL(app.parentPage) : homeUrl(host);
   if (tabId != null) await chrome.tabs.update(tabId, { url });
   return { ok: true, url, navigated: tabId != null };
 }
@@ -208,14 +209,14 @@ export async function connectGitHub(msg) {
   return { ok: true, repo, profiles: r.list.length };
 }
 
-// The settings file (the header's Save / Load): the GitHub connection and the PIN (BACKUP_KEYS), and the listening keys.
+// The settings file (the header's Save / Load): the GitHub connection and the PIN (BACKUP_KEYS), and the apps' fileKeys.
 // chrome.storage is erased when the extension is removed (Orion updates); this file brings them back.
 export async function exportSettings() {
   if (!(await headerOpen())) return { ok: false, error: 'Unlock with the PIN first.' };
-  const got = await chrome.storage.local.get(['settings', ...LISTEN_KEYS]);
+  const got = await chrome.storage.local.get(['settings', ...fileKeys()]);
   const settings = got.settings ?? {};
   const keep = Object.fromEntries(BACKUP_KEYS.filter((k) => settings[k]).map((k) => [k, settings[k]]));
-  const keys = Object.fromEntries(LISTEN_KEYS.filter((k) => got[k]).map((k) => [k, got[k]]));
+  const keys = Object.fromEntries(fileKeys().filter((k) => got[k]).map((k) => [k, got[k]]));
   return { ok: true, file: { kidtubeSettings: 1, savedAt: new Date().toISOString(), ...keep, ...keys } };
 }
 
@@ -224,7 +225,7 @@ export async function importSettings(file) {
   if (file?.kidtubeSettings !== 1) return { ok: false, error: 'That file is not a KidTube settings file.' };
   const { settings = {} } = await chrome.storage.local.get('settings');
   const strings = (names) => Object.fromEntries(names.filter((k) => typeof file[k] === 'string' && file[k]).map((k) => [k, file[k]]));
-  await chrome.storage.local.set({ settings: { ...settings, ...strings(BACKUP_KEYS) }, ...strings(LISTEN_KEYS) });
+  await chrome.storage.local.set({ settings: { ...settings, ...strings(BACKUP_KEYS) }, ...strings(fileKeys()) });
   await chrome.storage.local.remove('repoProfiles');
   const r = await sync();
   return { ok: true, errors: r?.errors ?? [] };
@@ -237,10 +238,12 @@ export async function leaveApp() {
   return { ok: true, open: homeUrl(live.host) };
 }
 
-// The PIN page: what runs now, whether it may skip the PIN, and where YouTube is.
+// The PIN page: what runs now, whether it may skip the PIN, where YouTube is, and the app's settings page.
 export async function pinPageView(s) {
   const { account } = await chrome.storage.local.get('account');
   const sh = await shellOf();
+  const app = appOf(account);
   return { ok: true, shell: sh, parentMode: parentMode(s), home: homeUrl(live.host),
-    running: sh.on ? null : { email: account?.email ?? null, app: shortLabel(appOf(account)) } };
+    settings: app.parentPage ? chrome.runtime.getURL(`${app.parentPage}#settings`) : null,
+    running: sh.on ? null : { email: account?.email ?? null, app: shortLabel(app) } };
 }

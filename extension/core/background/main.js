@@ -1,14 +1,17 @@
-// KidTube service worker: the rules live here. Content scripts and the iframes only ask and show.
-// The work is in sw/: store (state), session (the kid's rules and the URL guard), sites (other websites),
-// profiles (accounts and the apps header), parent (parent mode's data), sync (GitHub), transcripts, media,
-// updates, and messages (one handler per message type). This file only wires the browser's events to them.
+// The service worker: the rules live here. Content scripts and pages only ask and show.
+// This file registers the apps' background parts and wires the browser's events to the core modules
+// (README.md in this folder lists them); each app's own rules are in apps/<app>/background/.
 import { POLL_MINUTES, INSTALL_PAGE } from './constants.js';
-import { withState, effective } from './store.js';
-import { guard, leaveSession } from '../../apps/kidtube/background/rules.js';
+import { withState } from './store.js';
+import { registerApps, allParts } from './apps.js';
+import { guard } from './guard.js';
 import { applySiteRules } from './sites.js';
 import { sync } from './sync.js';
 import { latestRelease, autoUpdate } from './updates.js';
 import { handle } from './messages.js';
+import APP_BACKGROUNDS from '../../apps/backgrounds.js';
+
+registerApps(APP_BACKGROUNDS);
 
 // --- the tabs: every URL change goes through the guard -------------------------------------------
 chrome.tabs.onUpdated.addListener((tabId, info) => {
@@ -19,13 +22,10 @@ chrome.tabs.onUpdated.addListener((tabId, info) => {
 });
 
 chrome.tabs.onRemoved.addListener((tabId) => {
-  withState(async (s) => {
-    if (s.session?.tabId !== tabId) return;
-    leaveSession(s, (await effective(s)).config, 'closed');
-  });
+  withState(async (s) => { for (const p of allParts()) await p.tabRemoved?.(s, tabId); });
 });
 
-// --- messages from content scripts, iframes, options --------------------------------------
+// --- messages from content scripts, iframes and pages --------------------------------------
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   handle(msg, sender).then(reply, (e) => reply({ error: String(e) }));
   return true;
@@ -44,7 +44,7 @@ async function start() {
 
 chrome.runtime.onInstalled.addListener(async ({ reason } = {}) => {
   await start();
-  // A fresh install without a connection: open the install page, where content/backup.js gives it back.
+  // A fresh install without a connection: open the install page, where core/content/backup.js gives it back.
   const { settings = {} } = await chrome.storage.local.get('settings');
   if (reason === 'install' && !settings.token) chrome.tabs.create({ url: INSTALL_PAGE }).catch(() => {});
   // After an update the open YouTube tabs still run the old content script, cut off from KidTube: reload them.

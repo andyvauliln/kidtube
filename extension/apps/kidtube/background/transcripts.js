@@ -5,7 +5,8 @@ import { parseCaptions, captionsToText } from '../lib/captions.js';
 import { isVideoId } from '../../../core/lib/youtube.js';
 import { nowIso } from '../../../core/lib/time.js';
 import { getRepoFile, putRepoFile } from '../../../core/lib/github.js';
-import { withState, effective } from '../../../core/background/store.js';
+import { withState } from '../../../core/background/store.js';
+import { effective } from './config.js';
 
 const TRANSCRIPTS_PER_SYNC = 12;
 const RETRY_AFTER_MS = 24 * 60 * 60 * 1000;

@@ -9,12 +9,9 @@ export const PAGES_URL = 'https://andyvauliln.github.io/kidtube/';
 export const LATEST_URL = TARGET === 'orion' ? `${PAGES_URL}orion/latest.json` : `${PAGES_URL}latest.json`;
 export const INSTALL_PAGE = TARGET === 'orion' ? `${PAGES_URL}#orion` : PAGES_URL;
 
-export const PARENT_PAGE = 'apps/kidtube/parent/parent.html';
 export const PIN_PAGE = 'core/pages/pin.html';
 
 // Settings that belong to the tablet, not to a profile: they move along with every profile switch.
 export const DEVICE_SETTINGS = ['pinHash', 'pinSalt', 'pinFails', 'pinLockedUntil', 'deviceId', 'mode', 'parentUntil', 'repo', 'token'];
 // The settings file (the header's Save / Load) and the copy on the install page: the connection and the PIN.
 export const BACKUP_KEYS = ['repo', 'token', 'pinSalt', 'pinHash'];
-// The listening keys typed in Settings (chrome.storage.local, this tablet only).
-export const LISTEN_KEYS = ['voiceKey', 'geminiKey', 'groqKey'];

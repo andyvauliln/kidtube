@@ -58,7 +58,6 @@ test('parent mode: YouTube home opens the parent screens, any video plays, nothi
   assert.equal(fake.store.today?.playedSeconds ?? 0, 0);
   const st = await send({ type: 'state' });
   assert.equal(st.parentMode, true);
-  assert.equal(st.parent, true);
 });
 
 test('parent data: today, planned (helper order) and history by day', async () => {
