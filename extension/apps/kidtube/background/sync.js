@@ -37,7 +37,7 @@ async function pullContext(loc, token, etags) {
 }
 
 // keys.json (<app>/keys.json, beside the profile folders): listening keys the parent put in the private data repo,
-// for every tablet and profile of the app. Kept apart from the keys typed in Settings, which win (ui/voice.js).
+// for every tablet and profile of the app. Kept apart from the keys typed in Settings, which win (lib/voice.js).
 async function pullKeys(loc, token, etags) {
   const { repoKeys } = await chrome.storage.local.get('repoKeys');
   const headers = ghHeaders(token);

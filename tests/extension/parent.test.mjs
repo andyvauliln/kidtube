@@ -165,7 +165,7 @@ test('parent mode times out', async () => {
   assert.equal((await send({ type: 'state' })).parentMode, false);
 });
 
-// YouTube's page names its account (content.js sends the account switcher's answer).
+// YouTube's page names its account (core/content/shell.js sends the account switcher's answer).
 const switcherFor = (email) => `)]}'\n${JSON.stringify({ header: { email: { simpleText: email } }, items: [{ accountItem: { isSelected: true } }] })}`;
 const youtubeHas = (email, datasyncId = 'X||') => send(email ? { type: 'account', loggedIn: true, datasyncId, switcher: switcherFor(email) } : { type: 'account', loggedIn: false, datasyncId: '' });
 // A data repo with these profiles (<app>/<folder>/profile.json); every other GitHub call is a 404.

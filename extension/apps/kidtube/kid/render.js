@@ -1,8 +1,8 @@
 // The kid's screens, built once for every place they show: the extension's own pages (home.html, strip.html;
-// inside iframes on YouTube, or opened directly) and the in-page panels content.js draws where a browser
+// inside iframes on YouTube, or opened directly) and the in-page panels content/youtube.js draws where a browser
 // shows extension iframes blank (Orion). A plain script, not a module, so the content script can use it too:
 // it sets globalThis.KidTubeUI. No innerHTML anywhere: YouTube's Trusted Types policy refuses it.
-// Styles: ui/ui.css (everything hangs off .screen).
+// Styles: ui.css (everything hangs off .screen).
 (() => {
   if (globalThis.KidTubeUI) return;
   const NS = 'http://www.w3.org/2000/svg';
@@ -146,7 +146,7 @@
 
   // --- the screens ----------------------------------------------------------------------------------------
   // The home list (or the lock screen), drawn into root (a body or a panel). ask(msg) reaches the background.
-  // locked: always the lock screen (content.js covers the player with it when the time is up).
+  // locked: always the lock screen (content/youtube.js covers the player with it when the time is up).
   // Returns { refresh(), stop() }. Redraws only when what it shows changes, so the list keeps its scroll.
   function mountHome(root, { ask, locked = false, every = 30000 } = {}) {
     root.classList.add('screen', 'home');

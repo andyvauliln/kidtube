@@ -162,7 +162,7 @@ const NO_WORDS = /^[^\p{L}\p{N}]*$|^(thank you|thanks for watching|you|прод�
 const REFUSAL = /\b(can['’]?t|cannot|unable to) (hear|process|access|transcribe)\b|^(sure|sorry)\b.*\b(provide|audio)\b|\bprovide (the|an|more)\b.*\b(audio|recording|details)\b/i;
 
 // The keys typed in Settings (this tablet only, never in the rules), else the ones from the private data repo's
-// <app>/keys.json (repoKeys, see sync in sw.js).
+// <app>/keys.json (repoKeys, see pullKeys in background/sync.js).
 export async function listenKeys() {
   try {
     const { geminiKey = '', voiceKey = '', groqKey = '', repoKeys = {} } = await chrome.storage.local.get(['geminiKey', 'voiceKey', 'groqKey', 'repoKeys']);

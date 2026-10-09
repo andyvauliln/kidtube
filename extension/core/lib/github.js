@@ -1,6 +1,6 @@
 // GitHub's contents API for the private data repo: read and write one JSON file at a time.
 // loc = { repo: 'owner/name', base: 'kidtube/<folder>/' }: where the current profile's files are.
-// No state here: the service worker (sw/sync.js) decides what to read and when.
+// No state here: the service worker (core/background/sync.js and the apps' sync) decides what to read and when.
 
 export function ghHeaders(token, accept = 'application/vnd.github.raw+json') {
   const h = { Accept: accept, 'X-GitHub-Api-Version': '2022-11-28' };

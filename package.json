@@ -4,7 +4,10 @@
   "type": "module",
   "scripts": {
     "test": "node --test \"tests/**/*.test.mjs\"",
-    "validate": "node tools/validate.mjs"
+    "validate": "node tools/validate.mjs",
+    "orion:check": "node build/orion-check.mjs",
+    "orion:build": "node build/build-orion.mjs",
+    "release:quetta": "node build/pack.mjs extension --key ~/kidtube-key.pem"
   },
   "devDependencies": {
     "ajv": "^8.17.1",

@@ -1,5 +1,5 @@
-// Loaded before parent.js (a plain script): if the parent screens fail to start, show why on the page
-// instead of a white page — the iPad has no developer console. parent.js sets window.kidtubeParentReady.
+// Loaded first on the parent screens and the PIN page (a plain script): if the page fails to start, show why on
+// it instead of a white page — the iPad has no developer console. The page's script sets window.kidtubeParentReady.
 (() => {
   const show = (text) => {
     let box = document.getElementById('bootErr');

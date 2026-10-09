@@ -7,6 +7,24 @@ tablet's list (`kidtube-data`) and its notes for you in parent mode.
 It uses free AI models on OpenRouter and rotates between them. A paid model can be added later
 (`llm.paidModel` in `config.json`).
 
+## What is inside
+
+| Item | What it is |
+| --- | --- |
+| `daily.sh` | The daily run (crontab): Claude Code with `DAILY.md` + `SYSTEM.md`; falls back to `run.mjs` |
+| `DAILY.md`, `SYSTEM.md`, `PROMPT.md` | The daily session's steps, its rules and tools, and the helper's prompt |
+| `kt.mjs` | The toolkit Claude calls (`node agent/kt.mjs <command>`, JSON out): data, YouTube search, Gemini, voices, checks, save |
+| `poll.sh` | Every minute (crontab): new parent notes → the notes agent (`NOTES.md`); a run request → the helper |
+| `notes.mjs`, `NOTES.md` | Finds the parent's new notes (no AI); the notes agent's instructions |
+| `run.mjs` | The old fixed program, the fallback when Claude can't run |
+| `runlog.mjs` | Adds each run's time, turns and cost to `runs.json` |
+| `config.json` | Profiles, apps, models, voices, limits |
+| `lib/` | The toolkit's modules (see `lib/README.md`) |
+| `cloud/` | A GitHub Actions job to run the helper in the cloud instead of this server |
+
+The helper is KidTube's (one app). It reads two modules of the extension: `extension/core/lib/merge.js` and
+`extension/apps/kidtube/lib/plan.js`, so the tablet and the helper apply rules and plan changes the same way.
+
 ## How it runs (since 0.6.0)
 
 Cron starts `agent/daily.sh` at 03:30 UTC. It runs **Claude Code (Opus 5.5, effort medium; `orchestrator.model` and `.effort` in config.json)**: `claude -p DAILY.md --append-system-prompt SYSTEM.md`. `SYSTEM.md` has the rules and tools, `DAILY.md` the steps, and the skills `helper-find-videos`, `helper-write-words` and `helper-notes` the details of three steps. Searches run in the `video-scout` subagent (Haiku).

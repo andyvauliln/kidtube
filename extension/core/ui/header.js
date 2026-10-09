@@ -1,6 +1,6 @@
-// The apps header: KidTube's bar above YouTube (content.js) and above an app's own pages (parent screens, blank).
+// The apps header: KidTube's bar above YouTube (core/content/shell.js) and above an app's own pages (parent screens, blank).
 // One bar for every state: signed out → Sign in; signed in → the account, Switch, and either the GitHub connection
-// (first time) or this account's apps with + Add app. Hidden in kid mode (content.js and the pages decide).
+// (first time) or this account's apps with + Add app. Hidden in kid mode (shell.js and the pages decide).
 // A plain script, not a module, so the YouTube content script can use it too: it sets globalThis.KidTubeHeader.
 // No innerHTML anywhere: YouTube's Trusted Types policy refuses it.
 (() => {
@@ -167,7 +167,7 @@
     return b;
   }
 
-  // The settings file (Save / Load): the GitHub connection and the PIN (sw.js exportSettings).
+  // The settings file (Save / Load): the GitHub connection and the PIN (background/profiles.js exportSettings).
   function saveFile(root, file) {
     const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' });
     const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'kidtube-settings.json' });
@@ -176,13 +176,13 @@
   }
 
   // --- the header -------------------------------------------------------------------------------------------
-  // host: an element to draw into (its shadow root). dark: YouTube's own theme (content.js); on KidTube's pages, the system's.
+  // host: an element to draw into (its shadow root). dark: YouTube's own theme (shell.js); on KidTube's pages, the system's.
   // Returns { refresh(force), setDark(on), destroy() }.
   function mount(host, { dark = !!globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches } = {}) {
     const root = host.shadowRoot ?? host.attachShadow({ mode: 'closed' });
     host.classList.toggle('dark', dark);
     // The account menu and Add app drop down over the page below, its sticky toolbar too (the parent tabs):
-    // lift the bar above the page's own layers. On YouTube content.js already pins it on top.
+    // lift the bar above the page's own layers. On YouTube shell.js already pins it on top.
     if (!host.style.position) { host.style.position = 'relative'; host.style.zIndex = '100'; }
     const style = el('style', '', CSS);
     const box = el('div', 'kt');

@@ -4,7 +4,7 @@
 // extension/ stays the one source (developed for Quetta). The Orion build differs only in:
 //   lib/target.js  TARGET = 'orion' (no blocking rules, manual updates, its own latest.json)
 //   manifest.json  no update_url / minimum_chrome_version, no declarativeNetRequest permission,
-//                  version_name "<version> Orion" (content.js then draws its screens in the page, not in iframes)
+//                  version_name "<version> Orion" (apps/kidtube/content/youtube.js then draws its screens in the page, not in iframes)
 // Orion is released only when asked, so site/orion/latest.json records the commit it was built from.
 import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
 import { createHash } from 'node:crypto';
@@ -33,7 +33,7 @@ export function orionManifest(manifest) {
   m.permissions = (m.permissions ?? []).filter((p) => !p.startsWith('declarativeNetRequest'));
   // Orion 0.8.3/0.8.4 would not install ("something went wrong") once this content script was added.
   if (m.content_scripts) m.content_scripts = m.content_scripts.filter((c) => !c.js?.includes('core/content/backup.js'));
-  // content.js reads this to draw its screens in the page: Orion shows extension iframes blank.
+  // apps/kidtube/content/youtube.js reads this to draw its screens in the page: Orion shows extension iframes blank.
   m.version_name = `${m.version} Orion`;
   return m;
 }

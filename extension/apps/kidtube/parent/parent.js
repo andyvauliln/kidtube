@@ -1,5 +1,5 @@
 // Parent mode: today's list, the planned videos and what he watched, each video's details and its quiz.
-// Changes go to the background (sw.js → planChange), which applies them on this tablet at once and logs them for the helper.
+// Changes go to the background (background/parent.js planChange), which applies them on this tablet at once and logs them for the helper.
 import { ask } from '../../../core/lib/ask.js';
 import { APPS } from '../../registry.js';
 import { say, listen, recordedUrl } from '../lib/voice.js';
@@ -92,7 +92,7 @@ hooks.afterUndo = () => refresh();
 hooks.afterRun = () => showRun();
 
 
-// --- the apps header (ui/header.js), the Parent | Kid switch, loading ----------------------------------
+// --- the apps header (core/ui/header.js), the Parent | Kid switch, loading ----------------------------------
 globalThis.KidTubeHeader.mount($('appHeader'));
 $('mode').replaceChildren(globalThis.KidTubeHeader.modeSwitch('parent'));
 
@@ -488,7 +488,7 @@ async function renderContext() {
   view.replaceChildren(chips, notes, body);
 }
 
-// --- Settings: its own view here (settings/settings.js; no second PIN in parent mode) ---------------------
+// --- Settings: its own view here (settings.js; no second PIN in parent mode) ---------------------
 
 function renderSettings() {
   const box = el('div');

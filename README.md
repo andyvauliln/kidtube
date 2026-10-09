@@ -1,20 +1,58 @@
-# KidTube for Quetta
+# KidTube
 
-A YouTube wrapper for a child's Android tablet. A Chrome MV3 extension runs in Quetta and does what JSON files on GitHub say. A separately scheduled cloud agent rewrites those files.
+A safe YouTube for a child's tablet. A browser extension shows only the videos on the child's list, with time
+limits, a talking friend and questions after a video. A daily helper on a server plans the list. The parent
+steers everything from parent mode on the tablet.
 
-- **PLAN.md**: the plan, the check of the original brief (C1–C24), data contracts, milestones
-- **RESEARCH.md**: background research
-- `schemas/`: JSON Schemas for `parent-config.json`, `queue.json`, `activity/YYYY-MM-DD.json`, `memory.json`
-- `tools/validate.mjs`: schema and cross-file checks (`npm run validate -- <data-dir>`)
-- `build/keygen.mjs`, `build/pack.mjs`: signing key, CRX3 packer, `updates.xml` and `latest.json`
-- `extension/`: the product. `sw.js` wires the browser's events to `sw/` (store, session = the kid's rules and the URL guard, sites, profiles and the apps header, parent mode's data, GitHub sync, transcripts, media, updates, messages = one handler per message type); `lib/` holds the pure helpers shared with the tools and tests; `ui/` the kid's screens (`render.js` + `ui.css` draw them both in the extension pages and in the in-page panels on Orion), the talking friend and the apps header; `content/` the scripts on youtube.com; `parent/`, `settings/`, `apps/` the parent screens, the settings view and the one PIN page
-- `build/build-orion.mjs`, `build/orion-check.mjs`: the Orion (iPad/iPhone/Mac) build of the same extension, published in `site/orion/`, and its API compatibility check (see `docs/ORION.md`; Claude skill `update-orion`)
-- `tools/video-info.mjs`: real title, channel and length for queue entries (`--search "query"`)
-- `fixtures/`: good seed data (also the starting point for the private `kidtube-data` repo) and one bad fixture per check item
-- `data-repo-template/`: CI workflow for the private data repo (live at andyvauliln/kidtube-data)
+The extension is a small platform for apps: the **core** (accounts, the apps header, the PIN, sync, updates) runs
+every **app** (today: KidTube on YouTube, and a blank test app). See `extension/README.md`.
+
+## How the parts talk
+
+```
+ tablet (Quetta / Orion)                    GitHub                         this server
+ ┌──────────────────────┐   sync   ┌──────────────────────┐   git   ┌──────────────────────┐
+ │ extension/           │ <──────> │ kidtube-data (private)│ <─────> │ agent/ (daily helper) │
+ │  core + apps/kidtube │          │  <app>/<profile>/...  │         │  Claude Code + kt.mjs │
+ └──────────────────────┘          └──────────────────────┘         └──────────────────────┘
+            ^ installs and updates from
+ ┌──────────────────────┐
+ │ site/ (GitHub Pages)  │  install page, updates.xml, latest.json, the current release
+ └──────────────────────┘
+```
+
+The parts never call each other. Everything goes through files in the private data repo. The file formats are
+in `schemas/`.
+
+## Folders
+
+| Folder | What is inside |
+| --- | --- |
+| `extension/` | The browser extension: `core/` for every app, `apps/` for each app |
+| `agent/` | The daily helper on the server (plans the list, writes the friend's words, records voices) |
+| `schemas/` | JSON Schemas of the files in the data repo |
+| `site/` | What GitHub Pages publishes: the install page and the releases |
+| `build/` | Release tools: pack and sign for Quetta, the Orion build, the Orion API check |
+| `tools/` | Developer tools: the data validator, real video details from YouTube |
+| `tests/` | `node --test` tests, by area, with fixtures |
+| `data-repo-template/` | Starter files and CI for the private data repo |
+| `docs/` | Longer texts: how it works, configuration, Orion, plans |
+
+Each folder has a `README.md` that says how it works and what is inside.
+
+## Commands
 
 ```bash
 npm install
-npm test
-node tools/validate.mjs fixtures/good/data
+npm test                              # all tests
+npm run validate -- tests/fixtures/good/data
+npm run orion:check                   # chrome.* APIs the Orion build can't use
+npm run release:quetta                # sign and pack into site/ (needs ~/kidtube-key.pem)
+npm run orion:build                   # the Orion release into site/orion/ (Claude skill: update-orion)
 ```
+
+## Publishing
+
+`site/` is published by `.github/workflows/pages.yml` on every push to `main` that changes it. GitHub Pages must
+use **Source: GitHub Actions** (repo Settings → Pages). Until 0.10.0 Pages served `main /docs`; switch the source
+once, when this layout reaches `main`, or installed tablets stop finding `updates.xml`.

@@ -6,7 +6,7 @@ html { -webkit-text-size-adjust: 100%; }
 body { margin: 0; background: var(--bg); color: var(--ink); font: 16px/1.45 Roboto, system-ui, -apple-system, "Segoe UI", sans-serif; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 
-/* --- the toolbar: tabs, run status, version, Parent | Kid. The apps header (ui/header.js) above it scrolls away. --- */
+/* --- the toolbar: tabs, run status, version, Parent | Kid. The apps header (core/ui/header.js) above it scrolls away. --- */
 header { position: sticky; top: 0; z-index: 5; background: var(--card); border-bottom: 1px solid var(--line); }
 .toolbar { display: flex; align-items: center; gap: 8px 12px; max-width: var(--width); margin: 0 auto; padding: 0 12px 0 8px; }
 .toolbar .tabs { flex: 1 1 auto; min-width: 0; }

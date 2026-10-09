@@ -1,4 +1,4 @@
-// The kid's home screen (his list), or the lock screen (?locked=1). Drawn by ui/render.js, the same code that
+// The kid's home screen (his list), or the lock screen (?locked=1). Drawn by render.js, the same code that
 // draws the in-page screens on Orion; this file only connects it to the page and the background.
 import { ask } from '../../../core/lib/ask.js';
 
