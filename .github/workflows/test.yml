@@ -10,4 +10,4 @@ jobs:
       - run: sudo apt-get install -y --no-install-recommends ffmpeg   # the voices test turns a WAV into an mp3
       - run: npm ci
       - run: npm test
-      - run: node tools/validate.mjs fixtures/good/data extension/default-config.json
+      - run: node tools/validate.mjs tests/fixtures/good/data extension/apps/kidtube/data/default-config.json

@@ -31,7 +31,7 @@ import { createGemini } from './lib/gemini.mjs';
 import { createVoices, audioPath, groqFor, groqTag, langOf } from './lib/voices.mjs';
 import { search } from '../tools/video-info.mjs';
 import { locate } from './lib/profile.mjs';
-import { mergeConfig } from '../extension/lib/merge.js';
+import { mergeConfig } from '../extension/core/lib/merge.js';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const home = (p) => p.replace(/^~(?=\/)/, homedir());

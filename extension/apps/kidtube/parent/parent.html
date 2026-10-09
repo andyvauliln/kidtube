@@ -1,0 +1,36 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KidTube parent</title>
+<link rel="stylesheet" href="parent.css">
+<link rel="stylesheet" href="./settings.css">
+<body>
+  <div id="appHeader"></div>
+  <header>
+    <div class="toolbar">
+      <nav class="tabs" id="tabs">
+        <a href="#today" data-tab="today">Today <b id="nToday"></b></a>
+        <a href="#planned" data-tab="planned">Planned <b id="nPlanned"></b></a>
+        <a href="#history" data-tab="history">History</a>
+        <a href="#context" data-tab="context">Context</a>
+        <a href="#prompt" data-tab="prompt">Prompt</a>
+        <a href="#settings" data-tab="settings">Settings</a>
+      </nav>
+      <div class="tools">
+        <span id="run" class="run" hidden></span>
+        <span id="ver" class="ver"></span>
+        <span id="mode"></span>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <div id="notesCard" class="box notecard" hidden></div>
+    <div id="view"></div>
+  </main>
+  <script src="boot.js"></script>
+  <script src="../../../core/ui/header.js"></script>
+  <script type="module" src="parent.js"></script>
+</body>
+</html>

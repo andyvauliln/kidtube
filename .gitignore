@@ -1,7 +1,8 @@
 node_modules/
 *.pem
 *.crx
-!docs/*.crx
+!site/*.crx
 dist/
-!docs/*.zip
+!site/*.zip
+!site/orion/*.zip
 .screenshots/

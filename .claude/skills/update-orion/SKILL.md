@@ -7,11 +7,11 @@ description: Build and publish the Orion (iPad/iPhone/Mac) version of KidTube fr
 
 `extension/` is the one source. It is developed and released for Quetta (Android) as usual. The Orion build is made from that same code **only when the user asks**, so Orion's version can lag behind Quetta's.
 
-The Orion build differs only in two ways, both done by `tools/build-orion.mjs`:
+The Orion build differs only in two ways, both done by `build/build-orion.mjs`:
 - `lib/target.js` gets `TARGET = 'orion'`. Code that must behave differently checks `TARGET` (today: no blocking rules, manual updates, its own `orion/latest.json`).
 - The manifest has no `update_url`, no `minimum_chrome_version`, and no `declarativeNetRequest` permission.
 
-The published files are in `docs/orion/`: `kidtube-orion-<version>.zip`, the same file as `kidtube-orion.zip` (a link that never changes, always the newest build) and `latest.json`, which records `sourceCommit` and `sourceHash`. The install page (`docs/index.html#orion`) links to them.
+The published files are in `site/orion/`: `kidtube-orion-<version>.zip`, the same file as `kidtube-orion.zip` (a link that never changes, always the newest build) and `latest.json`, which records `sourceCommit` and `sourceHash`. The install page (`site/index.html#orion`) links to them.
 
 ## Steps
 
@@ -20,14 +20,14 @@ The published files are in `docs/orion/`: `kidtube-orion-<version>.zip`, the sam
    - If `extension/` has uncommitted changes, ask the user whether they belong in this release. Then commit them, or stop. The build refuses a dirty `extension/`.
 
 2. **What changed since the last Orion build.**
-   - Read `docs/orion/latest.json`; it has the previous `version` and `sourceCommit`.
+   - Read `site/orion/latest.json`; it has the previous `version` and `sourceCommit`.
    - Run `git log --oneline <sourceCommit>..HEAD -- extension/` and `git diff --stat <sourceCommit> HEAD -- extension/`.
    - If nothing changed in `extension/`, tell the user Orion is already up to date and stop.
    - Otherwise, summarize the changes for the user in a few plain bullets.
 
 3. **Check Orion compatibility.**
-   - Run `node tools/orion-check.mjs`.
-     - `✗` (error): a `chrome.*` API Orion lacks. Fix it before releasing. Either put it behind `TARGET !== 'orion'` (import from `lib/target.js`), or make it optional with `?.` and a fallback. Then add it to `HANDLED` in `tools/orion-check.mjs` with a one-line reason.
+   - Run `node build/orion-check.mjs`.
+     - `✗` (error): a `chrome.*` API Orion lacks. Fix it before releasing. Either put it behind `TARGET !== 'orion'` (import from `lib/target.js`), or make it optional with `?.` and a fallback. Then add it to `HANDLED` in `build/orion-check.mjs` with a one-line reason.
      - `?` (warning): partial or not in Orion's table. Look at the call; prefer a fallback. Tell the user it needs a check on the iPad.
    - Read the diff for things the API check can't see. Mention any that appear:
      - manifest changes: permissions, content scripts, `world`, `web_accessible_resources`;
@@ -43,14 +43,14 @@ The published files are in `docs/orion/`: `kidtube-orion-<version>.zip`, the sam
    - If the build says `bump "version"`, raise the patch number in `extension/manifest.json` (0.6.2 → 0.6.3). Commit it as `<version>: version for the Orion build`.
    - That version is also used by the next Quetta release.
 
-6. **Build.** Run `node tools/build-orion.mjs`. It prints the new `latest.json`; check `version` and `zipUrl`.
+6. **Build.** Run `node build/build-orion.mjs`. It prints the new `latest.json`; check `version` and `zipUrl`.
 
-7. **Record it.** Add a section to the top of `docs/orion/CHANGES.md`: `## <version> (YYYY-MM-DD)`, then plain bullets the parent understands, from step 2.
+7. **Record it.** Add a section to the top of `site/orion/CHANGES.md`: `## <version> (YYYY-MM-DD)`, then plain bullets the parent understands, from step 2.
 
 8. **Commit and push.**
-   - Commit `docs/orion/` and any source fixes as `orion <version>: <short summary>`.
+   - Commit `site/orion/` and any source fixes as `orion <version>: <short summary>`.
    - Push to `origin main` over HTTPS (see the GitHub access memory).
-   - GitHub Pages serves `docs/`. Within a few minutes, `curl -s https://andyvauliln.github.io/kidtube/orion/latest.json` should show the new version; check it.
+   - GitHub Pages publishes `site/` (workflow `.github/workflows/pages.yml`). Within a few minutes, `curl -s https://andyvauliln.github.io/kidtube/orion/latest.json` should show the new version; check it.
 
 9. **Tell the user:**
    - the version, and what changed (step 2);
@@ -59,6 +59,6 @@ The published files are in `docs/orion/`: `kidtube-orion-<version>.zip`, the sam
 
 ## Don't
 
-- Don't release Quetta from this skill. `docs/latest.json`, `updates.xml` and the `.crx` are the Quetta release (`tools/pack.mjs` with the signing key).
-- Don't copy Orion-only changes into a separate source tree. All differences live in `extension/` behind `TARGET`, or in `orionManifest()` in `tools/build-orion.mjs`.
-- Don't refresh `tools/orion-apis.json` without saying so. It is a dated snapshot of Kagi's table. When updating it, regenerate from the sheet and change `snapshot`.
+- Don't release Quetta from this skill. `site/latest.json`, `updates.xml` and the `.crx` are the Quetta release (`build/pack.mjs` with the signing key).
+- Don't copy Orion-only changes into a separate source tree. All differences live in `extension/` behind `TARGET`, or in `orionManifest()` in `build/build-orion.mjs`.
+- Don't refresh `build/orion-apis.json` without saying so. It is a dated snapshot of Kagi's table. When updating it, regenerate from the sheet and change `snapshot`.

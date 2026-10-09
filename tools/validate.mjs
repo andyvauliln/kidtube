@@ -11,12 +11,12 @@ import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
-import { mergeConfig } from '../extension/lib/merge.js';
+import { mergeConfig } from '../extension/core/lib/merge.js';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const SCHEMA_DIR = join(ROOT, 'schemas');
-const DEFAULT_CONFIG_PATH = join(ROOT, 'extension', 'default-config.json');
-const QUIZ_TYPES_PATH = join(ROOT, 'extension', 'quiz-types.json');
+const DEFAULT_CONFIG_PATH = join(ROOT, 'extension/apps/kidtube/data/default-config.json');
+const QUIZ_TYPES_PATH = join(ROOT, 'extension/apps/kidtube/data/quiz-types.json');
 
 const ajv = new Ajv2020({ allErrors: true, strict: false });
 addFormats(ajv);

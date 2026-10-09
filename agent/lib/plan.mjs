@@ -5,7 +5,7 @@
 // status: idea (suggested) | planned | today | watched | no (parent said no)
 // required: null | 'yes' (must watch, any day) | 'today' (must watch on `day`, or as soon as possible)
 
-import { applyPlanEvent, applyPromptNotes } from '../../extension/lib/plan.js';
+import { applyPlanEvent, applyPromptNotes } from '../../extension/apps/kidtube/lib/plan.js';
 
 export { applyPromptNotes };
 

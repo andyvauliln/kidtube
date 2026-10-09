@@ -1,0 +1,453 @@
+// The settings view (the parent screens' Settings tab): a note for the AI, update, status, rules, the talking friend
+// and the PIN. Everything else has one place only: the account, the GitHub connection and the settings file are in
+// the apps header, Parent | Kid in the toolbar, the helper's prompt in the Prompt tab.
+import { hashPin } from '../../../core/lib/pin.js';
+import { say, listen, recordAnswer, transcribeAnswer, FREE_LISTEN_MODELS, PAID_LISTEN_MODELS } from '../lib/voice.js';
+import { ask as send } from '../../../core/lib/ask.js';
+import { el as make } from './kit.js';
+
+const MARKUP = `
+  <nav class="secnav noswipe" aria-label="Settings sections">
+    <button type="button" data-sec="sec-update">Update</button>
+    <button type="button" data-sec="sec-status">Status</button>
+    <button type="button" data-sec="sec-time">Time and list</button>
+    <button type="button" data-sec="sec-sites">Websites</button>
+    <button type="button" data-sec="sec-friend">Talking friend</button>
+    <button type="button" data-sec="sec-hearing">Hearing</button>
+    <button type="button" data-sec="sec-pin">PIN</button>
+  </nav>
+
+  <section id="sec-update">
+    <h2>Update</h2>
+    <p class="muted">Gets the newest video list, rules and app version, and sends your notes for the AI.</p>
+    <button class="primary" id="update">Update now</button>
+    <p id="updateOut" class="muted"></p>
+    <a class="install" id="install" hidden>Get the new version (install page)</a>
+  </section>
+
+  <section id="sec-status">
+    <h2>Status</h2>
+    <dl id="status"></dl>
+    <button id="resetToday">Reset today’s minutes</button>
+    <p class="hint">Gives back today’s minutes and undoes “no more videos today”.</p>
+  </section>
+
+  <section id="sec-time" class="rules">
+    <h2>Time and list</h2>
+    <p class="muted">Changes work on this tablet right away and are saved to GitHub, where the helper sees them.</p>
+
+    <label>Watching hours</label>
+    <div id="windows"></div>
+    <button id="addWindow">+ Add hours</button>
+
+    <div class="two">
+      <div><label for="maxMinutes">Minutes per day</label><input id="maxMinutes" type="number" min="0" max="1440" inputmode="numeric">
+        <p class="hint">0 = no limit. Paused time doesn't count.</p></div>
+      <div><label for="queueSize">Videos on the home screen</label><input id="queueSize" type="number" min="1" max="30" inputmode="numeric">
+        <p class="hint">Also how many videos the helper plans per day.</p></div>
+    </div>
+
+    <div class="two">
+      <div><label for="minLeave">Must watch before switching (seconds)</label><input id="minLeave" type="number" min="0" max="3600" inputmode="numeric"></div>
+      <div><label for="closeAfter">Back to the list after (seconds)</label><input id="closeAfter" type="number" min="0" inputmode="numeric">
+        <p class="hint">0 = off, the video plays to the end.</p></div>
+    </div>
+
+    <div class="two">
+      <div><label for="minLen">Shortest video (minutes)</label><input id="minLen" type="number" min="0" step="0.5" inputmode="decimal"></div>
+      <div><label for="maxLen">Longest video (minutes)</label><input id="maxLen" type="number" min="0" step="0.5" inputmode="decimal">
+        <p class="hint">0 = no limit.</p></div>
+    </div>
+
+    <label for="requiredFirst">Must-watch videos (⭐, chosen by you or the helper)</label>
+    <select id="requiredFirst">
+      <option value="first">⭐ videos first, the others wait</option>
+      <option value="mix">one ⭐ video, then one he picks, and so on</option>
+      <option value="off">⭐ is only a mark, he picks freely</option>
+    </select>
+
+    <label class="check"><span>Allow skipping inside a video <small>Off: he can't jump forward or speed it up. Going back is always allowed.</small></span><input type="checkbox" id="allowSkip"></label>
+  </section>
+
+  <section id="sec-sites" class="rules">
+    <h2>Websites and channels</h2>
+    <label class="check"><span>Block other websites in this browser <small>youtube.com and KidTube’s own pages always stay open.</small></span><input type="checkbox" id="blockSites"></label>
+    <label for="sites">Websites that stay open (one per line)</label>
+    <textarea id="sites" placeholder="youtube.com"></textarea>
+    <p class="hint">A site also allows its subdomains.</p>
+
+    <label for="channels">Blocked channels (channel ids starting with UC, one per line)</label>
+    <textarea id="channels" placeholder="UC…"></textarea>
+  </section>
+
+  <section id="sec-friend" class="rules">
+    <h2>Talking friend</h2>
+    <label class="check"><span>Says hello before each video</span><input type="checkbox" id="intro"></label>
+    <label class="check"><span>Says what we learned after each video</span><input type="checkbox" id="outro"></label>
+    <label class="check"><span>Asks questions after the video <small>The helper writes the words and the questions for each video. Without them the friend says a short hello and “well done”.</small></span><input type="checkbox" id="quizOn"></label>
+    <div class="two">
+      <div><label for="onFail">After <span id="attemptsLabel">3</span> wrong answers</label>
+        <select id="onFail">
+          <option value="continue">he goes on to the next video</option>
+          <option value="rewatch">he watches the same video again (once a day)</option>
+          <option value="stopForToday">no more videos today</option>
+        </select></div>
+      <div><label for="maxAttempts">Tries per question</label><input id="maxAttempts" type="number" min="1" max="10" inputmode="numeric"></div>
+    </div>
+    <p class="hint">“No more videos today” can be undone with Reset today’s minutes.</p>
+    <div class="two">
+      <div><label for="friendName">Name</label><input id="friendName" maxlength="30"></div>
+      <div><label for="pitch">Voice: low ↔ squeaky</label><input id="pitch" type="range" min="0.5" max="2" step="0.1"></div>
+    </div>
+    <label for="catchphrase">Catchphrase (said at the start and the end)</label>
+    <input id="catchphrase" maxlength="60" placeholder="Pika pika!">
+    <label for="friendImage">Picture: a link (https://…) or a file in the data repo (repo:characters/name.svg)</label>
+    <input id="friendImage" placeholder="empty = the built-in cloud friend">
+    <label class="check"><span>Use the helper’s recorded voice when there is one <small>The daily helper can record the friend’s lines (Gemini or OpenRouter, set on the server). Off: the tablet’s own voice says everything.</small></span><input type="checkbox" id="recorded"></label>
+    <button id="tryVoice">🔊 Try the voice</button>
+  </section>
+
+  <section id="sec-hearing" class="rules">
+    <h2>Hearing his answers</h2>
+    <label for="listenProvider">How his spoken answers are heard</label>
+    <select id="listenProvider">
+      <option value="cloud">Record and send: free Groq and Gemini first, then paid OpenRouter (more accurate)</option>
+      <option value="device">The tablet’s own speech recognition</option>
+    </select>
+    <div id="cloudListen" hidden>
+      <p class="hint">His answer is recorded and sent to the first model that works: Groq’s free Whisper, the free Gemini models, then the paid OpenRouter ones. A model that hits its limit rests a minute and the next one answers. If none work, the tablet’s own recognition is used. A key typed here stays on this tablet only. An empty field uses the key in the data repo’s kidtube/keys.json, if there is one.</p>
+      <label for="groqKey">Groq API key (free, from console.groq.com; tried first)</label>
+      <input id="groqKey" type="password" autocomplete="off" placeholder="gsk_…">
+      <label for="geminiKey">Gemini API key (free tier, from aistudio.google.com)</label>
+      <input id="geminiKey" type="password" autocomplete="off" placeholder="AIza…">
+      <label for="freeModels">Free Gemini models, tried first, in order (one per line)</label>
+      <textarea id="freeModels" placeholder="gemini-3.5-flash-lite"></textarea>
+      <label for="voiceKey">OpenRouter key (paid, when the free ones fail)</label>
+      <input id="voiceKey" type="password" autocomplete="off" placeholder="sk-or-v1-…">
+      <label for="listenModels">Paid OpenRouter models, tried next, in order (one per line)</label>
+      <textarea id="listenModels" placeholder="openai/gpt-audio-mini"></textarea>
+      <p class="hint">OpenRouter: make a separate key with a small monthly limit (for example $1); about $0.0001 per answer. On Gemini’s free tier Google may use what is sent to improve its products.</p>
+      <button id="tryCloud">🎤 Try it: say a word</button>
+      <p id="cloudOut" class="hint"></p>
+    </div>
+    <button id="tryMic">🎤 Try the microphone</button>
+    <p id="micOut" class="hint">Press “Try the microphone” once and allow it, so the questions can hear him.</p>
+  </section>
+
+  <div class="savebar" id="savebar" hidden>
+    <span id="rulesOut" class="muted">Unsaved changes</span>
+    <button class="primary" id="saveRules">Save rules</button>
+  </div>
+
+  <section id="sec-pin">
+    <h2>PIN</h2>
+    <p class="muted">The same PIN for every account and app on this tablet. The apps header’s account menu saves it to a file, with the GitHub connection.</p>
+    <button id="changePin">Change PIN</button>
+    <div id="pinForm" hidden>
+      <label for="newPin">New PIN (4–8 digits)</label>
+      <input id="newPin" class="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8">
+      <label for="newPin2">The same PIN again</label>
+      <input id="newPin2" class="pin" type="password" inputmode="numeric" autocomplete="off" maxlength="8">
+      <button class="primary" id="savePin">Save PIN</button>
+    </div>
+    <p id="pinOut" class="muted"></p>
+  </section>
+`;
+
+async function getSettings() {
+  return (await chrome.storage.local.get('settings')).settings ?? {};
+}
+async function patchSettings(patch) {
+  const settings = { ...(await getSettings()), ...patch };
+  await chrome.storage.local.set({ settings });
+}
+const el = (tag, text, cls) => make(tag, cls, text);
+
+export function mountSettings(root) {
+  root.classList.add('settings');
+  root.innerHTML = MARKUP;
+  const $ = (id) => root.querySelector(`#${id}`);
+  let voiceLang = 'en-US';
+
+  // --- update, status --------------------------------------------------------------
+
+  async function renderStatus() {
+    const st = await send({ type: 'status' });
+    if (!st) return;
+    const rows = [
+      ['Version', st.version],
+      ['Videos he can open', `${st.visible} (${st.queueSource})`],
+      ['Watched today', `${st.playedMinutesToday} of ${st.maxMinutesPerDay || '∞'} min`],
+      ['Data repo', `${st.repo}${st.hasToken ? '' : ' · no token yet'}`],
+      ['This profile’s folder', st.folder ?? 'given on the first sync (open YouTube once)'],
+      ['Last sync', st.sync?.at ? new Date(st.sync.at).toLocaleString() : 'never'],
+      ['List updated', st.queueUpdatedAt ? new Date(st.queueUpdatedAt).toLocaleString() : '—'],
+      ['Waiting to upload', `${st.outbox} events`],
+      ['Transcripts on GitHub', `${st.transcripts.uploaded} of ${st.transcripts.total} videos${st.transcripts.missing ? ` (${st.transcripts.missing} without captions)` : ''}`],
+    ];
+    $('status').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', k), el('dd', v)]));
+    for (const n of st.sync?.notes ?? []) $('status').append(el('dt', 'Note'), el('dd', n));
+    for (const e of st.sync?.errors ?? []) $('status').append(el('dt', 'Problem'), el('dd', e, 'err'));
+  }
+
+  $('update').addEventListener('click', async () => {
+    $('update').disabled = true;
+    $('updateOut').textContent = 'Checking…';
+    try {
+      await send({ type: 'sync', notes: true });   // your notes for the AI go too
+      const r = await send({ type: 'checkUpdate' });
+      const parts = [`Installed ${r.installed}`];
+      if (r.latest) parts.push(`newest ${r.latest}`);
+      if (r.check?.status === 'update_available') parts.push('downloading the new version, the app will restart');
+      if (r.check?.status === 'throttled' && r.installPage) parts.push('the browser asks to wait: KidTube tries again within a few minutes');
+      if (r.check?.status === 'manual' && r.installPage) parts.push('install the new .zip by hand (link below)');
+      parts.push(r.sync?.errors?.length ? `sync problem: ${r.sync.errors.join('; ')}` : 'video list and rules are up to date');
+      $('updateOut').textContent = parts.join(' · ');
+      $('install').hidden = !r.installPage;
+      if (r.installPage) $('install').href = r.installPage;
+    } finally {
+      $('update').disabled = false;
+      renderStatus();
+    }
+  });
+
+  $('resetToday').addEventListener('click', async () => { await send({ type: 'resetToday' }); renderStatus(); });
+
+  // The old PIN stays until the new one is saved.
+  $('changePin').addEventListener('click', () => {
+    $('pinForm').hidden = !$('pinForm').hidden;
+    $('pinOut').textContent = '';
+    if (!$('pinForm').hidden) $('newPin').focus();
+  });
+  $('savePin').addEventListener('click', async () => {
+    const pin = $('newPin').value.trim();
+    $('pinOut').className = 'err';
+    if (!/^\d{4,8}$/.test(pin)) return ($('pinOut').textContent = 'Use 4 to 8 digits.');
+    if (pin !== $('newPin2').value.trim()) return ($('pinOut').textContent = 'The two PINs are different.');
+    const salt = btoa(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(16))));
+    await patchSettings({ pinSalt: salt, pinHash: await hashPin(pin, salt), pinFails: 0 });
+    $('newPin').value = $('newPin2').value = '';
+    $('pinForm').hidden = true;
+    $('pinOut').className = 'ok';
+    $('pinOut').textContent = 'New PIN saved ✓';
+  });
+
+  // --- Rules (parent-config.json) -------------------------------------------------------------
+
+  const DAY_NAMES = [['mon', 'Mo'], ['tue', 'Tu'], ['wed', 'We'], ['thu', 'Th'], ['fri', 'Fr'], ['sat', 'Sa'], ['sun', 'Su']];
+
+  function windowEditor(w = { days: DAY_NAMES.map(([d]) => d), from: '16:00', to: '18:30' }) {
+    const box = el('div', '', 'win');
+    const days = el('div', '', 'days');
+    for (const [d, label] of DAY_NAMES) {
+      const l = document.createElement('label');
+      const cb = document.createElement('input');
+      cb.type = 'checkbox'; cb.value = d; cb.checked = w.days.includes(d);
+      l.append(cb, label);
+      days.append(l);
+    }
+    const times = el('div', '', 'two');
+    const from = Object.assign(document.createElement('input'), { type: 'time', value: w.from, className: 'from' });
+    const to = Object.assign(document.createElement('input'), { type: 'time', value: w.to, className: 'to' });
+    times.append(from, to);
+    const del = el('button', 'Remove');
+    del.onclick = () => { box.remove(); sayRules('Unsaved changes'); };
+    box.append(days, times, del);
+    return box;
+  }
+
+  // The save bar appears as soon as a rule changes (and while some rules are saved on this tablet only).
+  const savebar = $('savebar');
+  function sayRules(text, cls = 'muted', show = true) {
+    $('rulesOut').className = cls;
+    $('rulesOut').textContent = text;
+    savebar.hidden = !show;
+  }
+  let drawing = false;
+  for (const sec of root.querySelectorAll('section.rules')) {
+    for (const t of ['input', 'change']) sec.addEventListener(t, () => { if (!drawing) sayRules('Unsaved changes'); });
+  }
+  root.querySelectorAll('.secnav button').forEach((b) => b.addEventListener('click', () => {
+    $(b.dataset.sec).scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }));
+
+  async function renderRules() {
+    drawing = true;
+    const { config: c, pending } = await send({ type: 'getRules' });
+    $('windows').replaceChildren(...(c.time?.allowed ?? []).map(windowEditor));
+    $('maxMinutes').value = c.time?.maxMinutesPerDay ?? 0;
+    $('queueSize').value = c.queueSize ?? 10;
+    $('minLeave').value = c.minSecondsBeforeLeave ?? 0;
+    $('closeAfter').value = c.closeAfterSeconds ?? 0;
+    $('minLen').value = (c.minVideoDurationSeconds ?? 0) / 60;
+    $('maxLen').value = (c.maxVideoDurationSeconds ?? 0) / 60;
+    $('requiredFirst').value = c.requiredFirst ?? 'first';
+    $('allowSkip').checked = !!c.allowSkip;
+    $('blockSites').checked = !!c.blockOutboundLinks;
+    $('sites').value = (c.allowedSiteDomains ?? []).join('\n');
+    $('channels').value = (c.blockedChannelIds ?? []).join('\n');
+    const p = c.presenter ?? {};
+    $('intro').checked = !!p.intro;
+    $('outro').checked = !!p.outro;
+    $('quizOn').checked = !!c.quiz?.enabled;
+    $('onFail').value = c.quiz?.onFail ?? 'continue';
+    $('maxAttempts').value = c.quiz?.maxAttempts ?? 3;
+    $('attemptsLabel').textContent = $('maxAttempts').value;
+    $('friendName').value = p.name ?? 'Zippy';
+    $('pitch').value = p.voice?.pitch ?? 1.9;
+    $('friendImage').value = p.imageUrl ?? '';
+    $('catchphrase').value = p.catchphrase ?? '';
+    $('recorded').checked = p.voice?.recorded !== false;
+    // "openrouter" is the older name of "cloud".
+    $('listenProvider').value = p.voice?.listen?.provider === 'device' ? 'device' : 'cloud';
+    $('freeModels').value = (p.voice?.listen?.freeModels ?? FREE_LISTEN_MODELS).join('\n');
+    $('listenModels').value = (p.voice?.listen?.models ?? PAID_LISTEN_MODELS).join('\n');
+    $('cloudListen').hidden = $('listenProvider').value !== 'cloud';
+    chrome.storage.local.get(['voiceKey', 'geminiKey', 'groqKey', 'repoKeys']).then(({ voiceKey, geminiKey, groqKey, repoKeys = {} }) => {
+      $('voiceKey').value = voiceKey ?? '';
+      $('groqKey').value = groqKey ?? '';
+      if (repoKeys.groq) $('groqKey').placeholder = 'Empty: the key from the data repo is used';
+      $('geminiKey').value = geminiKey ?? '';
+      // An empty field uses the key from the data repo (kidtube/keys.json).
+      if (repoKeys.gemini) $('geminiKey').placeholder = 'Empty: the key from the data repo is used';
+      if (repoKeys.openrouter) $('voiceKey').placeholder = 'Empty: the key from the data repo is used';
+    });
+    voiceLang = p.voice?.lang || 'en-US';
+    if (pending) sayRules('Some rules are saved on this tablet only and will go to GitHub on the next sync.'); else savebar.hidden = true;
+    drawing = false;
+  }
+
+  $('addWindow').addEventListener('click', () => { $('windows').append(windowEditor()); sayRules('Unsaved changes'); });
+
+  function readRules() {
+    const errors = [];
+    const allowed = [...$('windows').querySelectorAll('.win')].map((w, i) => {
+      const days = [...w.querySelectorAll('.days input:checked')].map((x) => x.value);
+      const from = w.querySelector('.from').value, to = w.querySelector('.to').value;
+      if (!days.length) errors.push(`Hours #${i + 1}: pick at least one day.`);
+      if (!from || !to || from >= to) errors.push(`Hours #${i + 1}: the start must be before the end (no hours past midnight).`);
+      return { days, from, to };
+    });
+    if (!allowed.length) errors.push('Add at least one block of watching hours, or he can never watch.');
+    const int = (id, min, max) => {
+      const n = Number($(id).value);
+      if (!Number.isFinite(n) || n < min || n > max) errors.push(`${$(id).labels[0].textContent}: use a number from ${min} to ${max}.`);
+      return Math.round(n);
+    };
+    const domain = (line) => line.trim().toLowerCase().replace(/^[a-z]+:\/\//, '').replace(/[/?#].*$/, '').replace(/^www\./, '');
+    const sites = [...new Set($('sites').value.split(/[\s,]+/).map(domain).filter(Boolean))];
+    for (const d of sites) if (!/^[a-z0-9.-]+\.[a-z]{2,}$/.test(d)) errors.push(`Website “${d}” doesn't look like a site name (example: wikipedia.org).`);
+    const channels = [...new Set($('channels').value.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean))];
+    for (const ch of channels) if (!/^UC[A-Za-z0-9_-]{22}$/.test(ch)) errors.push(`Channel “${ch}” is not a channel id (24 characters starting with UC).`);
+    const patch = {
+      time: { allowed, maxMinutesPerDay: int('maxMinutes', 0, 1440) },
+      queueSize: int('queueSize', 1, 30),
+      minSecondsBeforeLeave: int('minLeave', 0, 3600),
+      closeAfterSeconds: int('closeAfter', 0, 86400),
+      minVideoDurationSeconds: Math.round(Number($('minLen').value) * 60) || 0,
+      maxVideoDurationSeconds: Math.round(Number($('maxLen').value) * 60) || 0,
+      requiredFirst: $('requiredFirst').value,
+      allowSkip: $('allowSkip').checked,
+      blockOutboundLinks: $('blockSites').checked,
+      allowedSiteDomains: sites.length ? sites : ['youtube.com'],
+      blockedChannelIds: channels,
+      presenter: {
+        intro: $('intro').checked, outro: $('outro').checked,
+        name: $('friendName').value.trim() || 'Zippy',
+        imageUrl: $('friendImage').value.trim(),
+        catchphrase: $('catchphrase').value.trim(),
+        voice: { pitch: Number($('pitch').value), recorded: $('recorded').checked,
+          listen: { provider: $('listenProvider').value, freeModels: freeModels(), models: listenModels() } },
+      },
+      quiz: { enabled: $('quizOn').checked, onFail: $('onFail').value, maxAttempts: int('maxAttempts', 1, 10) },
+    };
+    if (patch.presenter.imageUrl && !/^(https:\/\/\S+|repo:[A-Za-z0-9_./-]+\.(svg|png|jpg|jpeg|webp|gif))$/.test(patch.presenter.imageUrl)) {
+      errors.push('The picture must be a link starting with https:// or a repo file like repo:characters/friend.svg');
+    }
+    if (patch.maxVideoDurationSeconds && patch.minVideoDurationSeconds > patch.maxVideoDurationSeconds) errors.push('The shortest video is longer than the longest.');
+    return { patch, errors };
+  }
+
+  $('saveRules').addEventListener('click', async () => {
+    const { patch, errors } = readRules();
+    if (errors.length) { sayRules(errors.join(' '), 'err'); return; }
+    $('saveRules').disabled = true;
+    sayRules('Saving…');
+    try {
+      const r = await send({ type: 'saveRules', patch });
+      if (r?.saved === 'github') sayRules('Saved on the tablet and on GitHub ✓', 'ok');
+      else sayRules(`Working on this tablet now. ${r?.error ?? ''}`);
+    } finally {
+      $('saveRules').disabled = false;
+      renderStatus();
+    }
+  });
+
+  // --- Talking friend: try the voice and the microphone ------------------------------------------
+
+  $('maxAttempts').addEventListener('input', () => { $('attemptsLabel').textContent = $('maxAttempts').value || '3'; });
+
+  const modelList = (id, re) => [...new Set($(id).value.split(/[\s,]+/).map((x) => x.trim()).filter((x) => re.test(x)))].slice(0, 6);
+  const listenModels = () => modelList('listenModels', /^[a-z0-9._-]+\/[A-Za-z0-9._:-]+$/);
+  const freeModels = () => modelList('freeModels', /^[a-z0-9][a-z0-9._-]*$/);
+  // Asked when chosen, so the extension doesn't need these permissions for everyone. Never waited for: both
+  // services allow these calls anyway (CORS), and the prompt may never answer (Orion, a dismissed dialog).
+  const askCloudAccess = () => chrome.permissions?.request?.({ origins: ['https://generativelanguage.googleapis.com/*', 'https://openrouter.ai/*'] }).catch(() => false);
+  $('listenProvider').addEventListener('change', async () => {
+    const cloud = $('listenProvider').value === 'cloud';
+    $('cloudListen').hidden = !cloud;
+    if (cloud) askCloudAccess();
+  });
+  // A typed key is stored on this tablet only: never in the rules, never on GitHub.
+  const saveKeys = () => chrome.storage.local.set({ voiceKey: $('voiceKey').value.trim(), geminiKey: $('geminiKey').value.trim(), groqKey: $('groqKey').value.trim() });
+  $('voiceKey').addEventListener('change', saveKeys);
+  $('geminiKey').addEventListener('change', saveKeys);
+  $('groqKey').addEventListener('change', saveKeys);
+  $('tryCloud').addEventListener('click', async () => {
+    askCloudAccess();
+    await saveKeys();
+    const { repoKeys = {} } = await chrome.storage.local.get('repoKeys');
+    const keys = { groq: $('groqKey').value.trim() || repoKeys.groq || '', gemini: $('geminiKey').value.trim() || repoKeys.gemini || '', openrouter: $('voiceKey').value.trim() || repoKeys.openrouter || '' };
+    if (!keys.groq && !keys.gemini && !keys.openrouter) { $('cloudOut').textContent = 'Enter a Groq, Gemini or OpenRouter key.'; return; }
+    $('cloudOut').textContent = 'Listening… say a word now.';
+    const audio = await recordAnswer({ seconds: 4 });
+    if (audio === null) { $('cloudOut').textContent = 'The microphone is not allowed here. Press “Try the microphone” first.'; return; }
+    $('cloudOut').textContent = 'Sending…';
+    let used = null;
+    const heard = await transcribeAnswer(audio, { keys, freeModels: freeModels(), models: listenModels(), lang: voiceLang, onUsed: (u) => { used = u; } });
+    const by = used ? ` — ${used.model} (${used.free ? 'free' : 'paid'}, ${(used.ms / 1000).toFixed(1)} s)` : '';
+    $('cloudOut').textContent = heard === null ? 'It didn’t work: check the keys, the models and the internet.' : heard.length ? `Heard: “${heard[0]}”${by}` : `Nothing was heard. Try again a bit louder.${by}`;
+  });
+
+  $('tryVoice').addEventListener('click', () => {
+    const name = $('friendName').value.trim() || 'Zippy';
+    say({ text: `Hi! I'm ${name}. Let's watch a video and learn something new!` }, { lang: voiceLang, pitch: Number($('pitch').value), rate: 1.05 });
+  });
+
+  // Allowing the microphone here also allows it on the friend's screen (same extension).
+  $('tryMic').addEventListener('click', async () => {
+    $('micOut').className = 'hint';
+    $('micOut').textContent = 'Say something…';
+    try {
+      const stream = await navigator.mediaDevices?.getUserMedia({ audio: true });
+      stream?.getTracks().forEach((t) => t.stop());
+    } catch (e) {
+      $('micOut').className = 'err';
+      $('micOut').textContent = `The microphone is blocked (${e.name}). Allow it for KidTube in the browser's site settings. Until then he answers by typing.`;
+      return;
+    }
+    const heard = await listen(voiceLang);
+    if (heard === null) {
+      $('micOut').className = 'err';
+      $('micOut').textContent = 'The microphone works, but this browser has no speech recognition. He will answer by typing.';
+    } else if (!heard.length) {
+      $('micOut').textContent = 'Didn’t hear anything. Try again a bit louder.';
+    } else {
+      $('micOut').className = 'ok';
+      $('micOut').textContent = `Works ✓ I heard: “${heard[0]}”`;
+    }
+  });
+
+  // --- first draw ---------------------------------------------------------------------------------
+  return Promise.all([renderStatus(), renderRules()]);
+}

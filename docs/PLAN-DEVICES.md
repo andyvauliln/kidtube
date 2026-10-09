@@ -33,7 +33,7 @@ The same KidTube runs on his **Android** devices and his **iPhone/iPad**, with o
 
 So a device that was closed or frozen still shows today's list and sends what he did.
 
-**Code** (`extension/sw.js` unless noted):
+**Code** (`extension/core/background/main.js` unless noted):
 1. **Sync when stale.** When any screen asks for `state` (`sw.js:219`) and the last sync (`syncStatus.at`) is older than 15 min, start a sync and answer right away from the cached data. The home screen already redraws when new data arrives (`ui/home.js`, `storage.onChanged`).
 2. **One sync at a time.** If a sync is already running, a new request joins it instead of queueing another. Today `sync()` (`sw.js:522`) queues every request.
 3. **Sync on return to the screen.** On `visibilitychange` to visible, `ui/home.js` and `content/content.js` ask for `state` at once, so a resumed Orion syncs immediately rather than within 30 s.
@@ -56,7 +56,7 @@ So a device that was closed or frozen still shows today's list and sends what he
 
 **Tests:** guard used when `userAgentData` is missing (extend `tests/orion.test.mjs`); validator accepts the new optional fields.
 
-**Done when:** tests pass; 0.6.2 is packed (`tools/pack.mjs`) and on the install page.
+**Done when:** tests pass; 0.6.2 is packed (`build/pack.mjs`) and on the install page.
 
 ### P3. Test on a real iPhone/iPad (go/no-go)
 
@@ -84,7 +84,7 @@ Only needed if he really uses more than one device. Skip it otherwise.
 - Add `devices`: a map from `deviceId` to that device's header. Each device updates only its own entry. `device` stays (the last writer) so older files and the backup program keep working, and `schemaVersion` stays 1.
 - The helper uses only the question types **every** device seen in the last 7 days can show (an intersection), instead of `devices.at(-1)` (`agent/kt.mjs:85`, `agent/run.mjs:134`).
 
-**Shared minutes and watched list** (`extension/sw.js`):
+**Shared minutes and watched list** (`extension/core/background/main.js`):
 - On each sync, read today's `activity/<day>.json` (with an ETag, so usually free). From the **other** devices' events, take:
   - the seconds watched, which go into `today.playedSeconds` for the lock;
   - the videos that count as watched, which leave the list.
@@ -100,7 +100,7 @@ Only needed if he really uses more than one device. Skip it otherwise.
 
 ### P5. Set-up guides and docs
 
-- **Install page** (`docs/index.html`): one card per device, each with the lockdown steps:
+- **Install page** (`site/index.html`): one card per device, each with the lockdown steps:
   - **Android tablet or phone:** Quetta + KidTube; Family Link blocks the Play Store and other browsers and the YouTube app; screen pinning on Quetta.
   - **iPhone or iPad:** Orion + KidTube; Screen Time: Safari off, YouTube app and other browsers off, *Allowed Websites Only* (`youtube.com`, `accounts.google.com`, `andyvauliln.github.io` + `allowedSiteDomains`); Guided Access on Orion with the toolbar disabled.
 - **`HOW-IT-WORKS.md`:** when a device syncs (P1); the Orion table with P3 results; how two devices share minutes (P4).

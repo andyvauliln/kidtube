@@ -11,7 +11,7 @@ The question: what does it take for KidTube to run in **Orion**, Kagi's browser 
   - no App Store,
   - no repackaging.
 - **This is already started.** Version 0.6.1 (commit `80503d4`) added:
-  - Orion steps on the install page (`docs/index.html`);
+  - Orion steps on the install page (`site/index.html`);
   - a fallback when the browser has no blocking rules: other sites are sent back to the list (`externalGuard`, `sw.js:807`);
   - a short Orion table in `HOW-IT-WORKS.md`.
 - **Nothing has been confirmed on a real iPad yet.** I found no record of a test on a device in the repo. Several pieces depend on Orion behaviour that isn't documented (see [Unknowns](#unknowns-test-on-the-ipad)).
@@ -84,18 +84,18 @@ KidTube keeps **one source**, `extension/`. It is developed and released for Que
 
 | What differs | How | Where |
 | --- | --- | --- |
-| Behaviour | `TARGET` is `'quetta'` in the source; the Orion build rewrites it to `'orion'`. Code checks it only where Orion really differs. | `extension/lib/target.js` |
-| No blocking rules | `applySiteRules` returns early on Orion; `externalGuard` always does the job | `extension/sw.js` |
-| Updates | No `requestUpdateCheck` on Orion; the parent page compares with `orion/latest.json` and links to `#orion` on the install page | `extension/sw.js` (`checkUpdate`) |
-| Which build wrote the activity | `device.target`: `quetta` or `orion` | `extension/sw.js` (`flushOutbox`), `schemas/activity.schema.json` |
-| Manifest | No `update_url`, no `minimum_chrome_version`, no `declarativeNetRequest` permission | `orionManifest()` in `tools/build-orion.mjs` |
-| Release | `docs/orion/kidtube-orion-<version>.zip` + `docs/orion/latest.json` (with the commit and a hash of the source), separate from Quetta's `docs/latest.json` | `tools/build-orion.mjs` |
-| Compatibility check | Every `chrome.*` API in use, looked up in a snapshot of Kagi's support table; fails on an API Orion lacks unless it is handled for the Orion build | `tools/orion-check.mjs`, `tools/orion-apis.json`, `tests/orion-build.test.mjs` |
+| Behaviour | `TARGET` is `'quetta'` in the source; the Orion build rewrites it to `'orion'`. Code checks it only where Orion really differs. | `extension/core/lib/target.js` |
+| No blocking rules | `applySiteRules` returns early on Orion; `externalGuard` always does the job | `extension/core/background/main.js` |
+| Updates | No `requestUpdateCheck` on Orion; the parent page compares with `orion/latest.json` and links to `#orion` on the install page | `extension/core/background/main.js` (`checkUpdate`) |
+| Which build wrote the activity | `device.target`: `quetta` or `orion` | `extension/core/background/main.js` (`flushOutbox`), `schemas/activity.schema.json` |
+| Manifest | No `update_url`, no `minimum_chrome_version`, no `declarativeNetRequest` permission | `orionManifest()` in `build/build-orion.mjs` |
+| Release | `site/orion/kidtube-orion-<version>.zip` + `site/orion/latest.json` (with the commit and a hash of the source), separate from Quetta's `site/latest.json` | `build/build-orion.mjs` |
+| Compatibility check | Every `chrome.*` API in use, looked up in a snapshot of Kagi's support table; fails on an API Orion lacks unless it is handled for the Orion build | `build/orion-check.mjs`, `build/orion-apis.json`, `tests/orion-build.test.mjs` |
 
 Rules that keep this working:
 - **New Orion differences go behind `TARGET`** in `extension/`, never into the built files.
 - **One version number means one set of files.** The build refuses to reuse a version for different code; bump `version` in `extension/manifest.json`.
-- **Quetta releases stay as they were** (`tools/pack.mjs` with the signing key). Building Orion never touches `docs/latest.json`, `updates.xml` or the `.crx`.
+- **Quetta releases stay as they were** (`build/pack.mjs` with the signing key). Building Orion never touches `site/latest.json`, `updates.xml` or the `.crx`.
 
 ## What to change
 

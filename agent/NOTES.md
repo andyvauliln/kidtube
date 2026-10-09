@@ -28,8 +28,8 @@ One note can be several kinds. Several notes can be one change.
 One version number for both browsers:
 
 1. Raise the patch number in `extension/manifest.json` (0.8.9 → 0.8.10). Commit the change with it: `<version>: <short summary>`.
-2. **Quetta:** `node tools/pack.mjs extension --key ~/kidtube-key.pem --out docs --base-url https://andyvauliln.github.io/kidtube`. Then commit `docs/` as `quetta <version>: release`.
-3. **Orion:** follow the `update-orion` skill (orion-check, `node tools/build-orion.mjs`, a section in `docs/orion/CHANGES.md` the parent understands). Commit as `orion <version>: <short summary>`.
+2. **Quetta:** `node build/pack.mjs extension --key ~/kidtube-key.pem --out site --base-url https://andyvauliln.github.io/kidtube`. Then commit `site/` as `quetta <version>: release`.
+3. **Orion:** follow the `update-orion` skill (orion-check, `node build/build-orion.mjs`, a section in `site/orion/CHANGES.md` the parent understands). Commit as `orion <version>: <short summary>`.
 4. `git push origin main`. If it is rejected: `git pull --rebase origin main`, test again, push.
 
 The tablet then sees the new version: Quetta installs it by itself within about 15 minutes (or at once when a parent screen opens) and reloads YouTube; Orion shows "⬆ Download". Say so in the summary: on Quetta the parent does nothing.

@@ -42,7 +42,7 @@ Changed in parent mode → Settings (the extension's options page leads there af
 
 ### 1.2a Profiles (0.9.0)
 
-A profile = one YouTube (Google) account email, with one app (`kidtube` for now). Its files are in its own folder of the data repo, `<app>/<folder>/`, where the folder is the email's name part (`johnnypitt.ind@gmail.com` → `kidtube/johnnypitt.ind/`), given once and never changed. Since 0.9.8 the YouTube account picks the profiles: the apps header lists that email's apps (see docs/PLAN-PROFILES.md). On its first sync a profile writes `profile.json` into its folder; the server then adds the default `parent-config.json` and an empty `queue.json`. App registry: `extension/lib/apps.js` (tablet), `apps` in `agent/config.json` (server). Apps: `kidtube`, and `blank` (a test app: YouTube shows a white page, nothing syncs but `profile.json`; its Parent | Kid switch is top right).
+A profile = one YouTube (Google) account email, with one app (`kidtube` for now). Its files are in its own folder of the data repo, `<app>/<folder>/`, where the folder is the email's name part (`johnnypitt.ind@gmail.com` → `kidtube/johnnypitt.ind/`), given once and never changed. Since 0.9.8 the YouTube account picks the profiles: the apps header lists that email's apps (see docs/PLAN-PROFILES.md). On its first sync a profile writes `profile.json` into its folder; the server then adds the default `parent-config.json` and an empty `queue.json`. App registry: `extension/apps/registry.js` (tablet), `apps` in `agent/config.json` (server). Apps: `kidtube`, and `blank` (a test app: YouTube shows a white page, nothing syncs but `profile.json`; its Parent | Kid switch is top right).
 
 ### 1.3 Files the tablet reads from kidtube-data (in the profile's folder)
 

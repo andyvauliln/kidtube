@@ -18,7 +18,7 @@
     "https://andyvauliln.github.io/*"
   ],
   "background": {
-    "service_worker": "sw.js",
+    "service_worker": "core/background/main.js",
     "type": "module"
   },
   "content_scripts": [
@@ -28,9 +28,9 @@
         "*://m.youtube.com/*"
       ],
       "js": [
-        "ui/header.js",
-        "ui/render.js",
-        "content/content.js"
+        "core/ui/header.js",
+        "apps/kidtube/kid/render.js",
+        "apps/kidtube/content/youtube.js"
       ],
       "run_at": "document_start"
     },
@@ -40,7 +40,7 @@
         "*://m.youtube.com/*"
       ],
       "js": [
-        "content/main.js"
+        "core/content/youtube-page.js"
       ],
       "run_at": "document_start",
       "world": "MAIN"
@@ -50,7 +50,7 @@
         "https://andyvauliln.github.io/kidtube/*"
       ],
       "js": [
-        "content/backup.js"
+        "core/content/backup.js"
       ],
       "run_at": "document_idle"
     }
@@ -58,7 +58,7 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "ui/*"
+        "apps/kidtube/kid/*"
       ],
       "matches": [
         "*://www.youtube.com/*",
@@ -66,7 +66,7 @@
       ]
     }
   ],
-  "options_page": "options/options.html",
+  "options_page": "core/pages/options.html",
   "optional_host_permissions": [
     "https://openrouter.ai/*",
     "https://generativelanguage.googleapis.com/*"
