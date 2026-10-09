@@ -2,6 +2,7 @@
 // Opens as an extension page (ui/avatar-lab.html) or from any static web server pointed at extension/.
 import { createMeshFriend, hasWebGL2 } from './mesh.js';
 import { say } from './voice.js';
+import { parseMoods, moodTrack, MOODS } from '../lib/moods.js';
 
 const $ = (id) => document.getElementById(id);
 let friend = null, busy = false;
@@ -26,12 +27,17 @@ function babbleWav(seconds = 4, rate = 16000) {
   return URL.createObjectURL(new Blob([head, data], { type: 'audio/wav' }));
 }
 
-// The talk screen's speak(): talking on, the line (recording or tablet voice), talking off.
-async function speak(line) {
+// The talk screen's speak(): talking on, the line (recording or tablet voice) with its [mood] tags, talking off.
+async function speak(raw, audioUrl) {
   if (!friend || busy) return;
+  const { text, moods, unknown } = parseMoods(raw);
   busy = true;
+  log(`Moods: ${moods.map((m) => `${m.mood} at "${text.slice(m.at, m.at + 18)}…"`).join(', ') || 'none'}${unknown.length ? `\nUnknown tags (ignored): ${unknown.join(', ')}` : ''}`);
   friend.talking(true);
-  try { await say(line, { lang: 'en-US', pitch: 1.6 }, { onWord: () => friend.word(), onAudio: (a) => friend.audio(a) }); }
+  const reach = moodTrack(moods, (m) => { friend.mood(m); $('mood').textContent = `Mood now: ${m}`; });
+  reach(0);
+  const follow = (a) => a.addEventListener('timeupdate', () => { if (a.duration) reach((a.currentTime / a.duration) * text.length); });
+  try { await say({ text, audioUrl }, { lang: 'en-US', pitch: 1.6 }, { onWord: () => friend.word(), onAudio: (a) => { friend.audio(a); follow(a); }, onSentence: reach }); }
   finally { friend.talking(false); busy = false; }
 }
 
@@ -54,11 +60,15 @@ async function load() {
 
 $('avatar').onchange = () => { $('folder').hidden = !!$('avatar').value; };
 $('load').onclick = load;
-$('say').onclick = () => speak({ text: $('text').value });
-$('babble').onclick = () => speak({ text: $('text').value, audioUrl: babbleWav() });
-$('file').onchange = () => { const f = $('file').files[0]; if (f) speak({ text: f.name, audioUrl: URL.createObjectURL(f) }); };
-$('happy').onclick = () => friend?.react('happy');
-$('sad').onclick = () => friend?.react('sad');
+$('say').onclick = () => speak($('text').value);
+$('babble').onclick = () => speak($('text').value, babbleWav(Math.min(12, Math.max(3, Math.round(parseMoods($('text').value).text.length / 14)))));
+$('file').onchange = () => { const f = $('file').files[0]; if (f) speak($('text').value, URL.createObjectURL(f)); };
+// One button per mood, as the helper's tags use them.
+for (const m of MOODS) {
+  const b = Object.assign(document.createElement('button'), { textContent: m });
+  b.onclick = () => { friend?.mood(m); $('mood').textContent = `Mood now: ${m}`; };
+  $('moods').append(b);
+}
 $('wave').onclick = () => friend?.wave();
 $('stop').onclick = () => speechSynthesis?.cancel();
 

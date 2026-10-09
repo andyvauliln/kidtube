@@ -30,21 +30,22 @@
     <div class="row"><select id="avatar"><option value="../avatars/miko-qipao">Miko (test sample)</option><option value="">Other folder…</option></select></div>
     <input id="folder" placeholder="../avatars/name or https://…/avatar" hidden>
     <button id="load">Load</button>
-    <label for="text">Words</label>
-    <textarea id="text">Hi! I'm your friend! Now we're going to watch a video about dinosaurs. Watch carefully, because at the end I will ask you a question!</textarea>
+    <label for="text">Words, with the helper's mood tags: [happy] [excited] [surprised] [curious] [thinking] [calm] [sad] [playful]</label>
+    <textarea id="text">[excited] Hi! I'm your friend! [surprised] Did you know some dinosaurs were as tall as a house? [curious] Which one was the biggest? [thinking] Watch carefully, because at the end I will ask you!</textarea>
     <div class="row">
       <button class="go" id="say">🗣 Say it (tablet voice)</button>
       <button class="go" id="babble">🔊 Test recording</button>
     </div>
-    <label for="file">Or play your own recording (mp3, wav, ogg)</label>
+    <label for="file">Or play your own recording of the words (mp3, wav, ogg)</label>
     <input id="file" type="file" accept="audio/*">
+    <label>Moods, one at a time</label>
+    <div class="row" id="moods"></div>
     <div class="row">
-      <button id="happy">😀 Happy</button>
-      <button id="sad">😢 Sad</button>
       <button id="wave">👋 Wave</button>
       <button id="stop">⏹ Stop the tablet voice</button>
     </div>
     <div class="meter"><i id="level"></i></div>
+    <div id="mood">Mood now: none</div>
     <div id="status">Loading…</div>
   </div>
 </main>

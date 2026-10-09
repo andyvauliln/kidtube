@@ -34,8 +34,9 @@ function speakOne(text, voice, onWord) {
 }
 
 // line: { text, audioUrl? }. Resolves when it has finished. onWord is called at each spoken word, when the engine says so;
-// onAudio gets a recording's <audio> just before it plays (the mesh friend measures its loudness).
-export async function say(line, voice = {}, { onWord, onAudio } = {}) {
+// onAudio gets a recording's <audio> just before it plays (the mesh friend measures its loudness);
+// onSentence(at) is called with the character position of each sentence the device's voice starts.
+export async function say(line, voice = {}, { onWord, onAudio, onSentence } = {}) {
   if (line.audioUrl) {
     const ok = await new Promise((resolve) => {
       const a = new Audio(line.audioUrl);
@@ -48,7 +49,13 @@ export async function say(line, voice = {}, { onWord, onAudio } = {}) {
   }
   if (!('speechSynthesis' in window)) return wait(1500 + String(line.text).length * 60);
   speechSynthesis.cancel();
-  for (const s of sentences(line.text)) await speakOne(s, voice, onWord);
+  let from = 0;
+  for (const s of sentences(line.text)) {
+    const at = String(line.text).indexOf(s, from);
+    if (at >= 0) from = at + s.length;
+    onSentence?.(Math.max(0, at));
+    await speakOne(s, voice, onWord);
+  }
 }
 
 export const canListen = () => !!(window.SpeechRecognition || window.webkitSpeechRecognition);

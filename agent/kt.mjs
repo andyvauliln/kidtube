@@ -29,6 +29,7 @@ import { buildQuiz, templateCatalog } from './lib/quiz.mjs';
 import { tooHard } from './lib/prompts.mjs';
 import { createGemini } from './lib/gemini.mjs';
 import { createVoices, audioPath } from './lib/voices.mjs';
+import { parseMoods, moodLine, MOODS } from './lib/moods.mjs';
 import { search } from '../tools/video-info.mjs';
 import { locate } from './lib/profile.mjs';
 import { mergeConfig } from '../extension/lib/merge.js';
@@ -248,9 +249,13 @@ const commands = {
     const w = parse(json, 'words');
     const ru = (v.lang ?? 'en').startsWith('ru');
     const problems = [];
-    if (!w.intro?.trim() || w.intro.length > 450) problems.push('intro: 1–450 characters');
-    if (!w.outro?.trim() || w.outro.length > 600) problems.push('outro: 1–600 characters');
-    if (ru && !/[а-яё]/i.test(w.intro ?? '')) problems.push('the video is Russian: intro and outro in Russian');
+    // [mood] tags before sentences: taken out of the text, kept as { at, mood } for the avatar.
+    const intro = parseMoods(w.intro), outro = parseMoods(w.outro);
+    if (!intro.text || intro.text.length > 450) problems.push('intro: 1–450 characters');
+    if (!outro.text || outro.text.length > 600) problems.push('outro: 1–600 characters');
+    const unknown = [...intro.unknown, ...outro.unknown];
+    if (unknown.length) problems.push(`unknown mood tags ${unknown.map((t) => `[${t}]`).join(', ')}: use ${MOODS.map((m) => `[${m}]`).join(' ')}`);
+    if (ru && !/[а-яё]/i.test(intro.text)) problems.push('the video is Russian: intro and outro in Russian');
     const hard = tooHard(w.quiz);
     if (hard) problems.push(`answer too hard for a 4-year-old: "${hard}" (1–2 everyday words or a number up to 20)`);
     const pc = readJson(paths.config);
@@ -261,7 +266,7 @@ const commands = {
     if (problems.length) return fail(problems.join('; '));
     const tr = transcript(dataDir, id);
     v.content = { source: tr?.available ? 'transcript' : 'title', at: iso(), summary: String(w.summary ?? ''), learned: (w.learned ?? []).map(String).slice(0, 6),
-      intro: w.intro.trim(), outro: w.outro.trim(), talkAbout: (w.talkAbout ?? []).map(String).slice(0, 6), quizIds: ids, items,
+      intro: intro.text, outro: outro.text, ...(intro.moods.length ? { introMoods: intro.moods } : {}), ...(outro.moods.length ? { outroMoods: outro.moods } : {}), talkAbout: (w.talkAbout ?? []).map(String).slice(0, 6), quizIds: ids, items,
       ...(tr?.available && typeof w.tooHard === 'string' && w.tooHard.trim() ? { tooHard: w.tooHard.trim().slice(0, 300) } : {}) };
     s.rewritten.push(id);
     s.touched.push(id);
@@ -306,7 +311,7 @@ const commands = {
         videoId: id, title: v.title.slice(0, 200), channelId: v.channelId, ...(v.channelTitle ? { channelTitle: v.channelTitle.slice(0, 200) } : {}),
         durationSeconds: v.durationSeconds, thumbnailUrl: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`, addedAt: v.addedAt ?? iso(),
         ...(v.lang && v.lang !== 'en' ? { lang: v.lang } : {}), ...(v.required ? { required: true } : {}),
-        ...(v.content?.intro ? { intro: { text: v.content.intro } } : {}), ...(v.content?.outro ? { outro: { text: v.content.outro } } : {}),
+        ...(v.content?.intro ? { intro: moodLine(v.content.intro, v.content.introMoods) } : {}), ...(v.content?.outro ? { outro: moodLine(v.content.outro, v.content.outroMoods) } : {}),
         ...(v.content?.quizIds?.length ? { quizIds: v.content.quizIds } : {}), ...(v.why ? { note: v.why.slice(0, 500) } : {}),
       };
     });

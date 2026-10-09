@@ -100,3 +100,22 @@ test('loudness helpers', () => {
   const ls = Array.from({ length: 60 }, () => v.level(1 / 60));
   assert.ok(Math.min(...ls) < 0.3 && Math.max(...ls) > 0.6, 'it opens and closes');
 });
+
+test('moods become the avatar’s emotions and motions', async () => {
+  const e = fakeEngine();
+  const f = await createMeshFriend(box, { base: 'a', load: e.load });
+  for (const m of ['surprised', 'curious', 'thinking', 'excited', 'calm', 'playful', 'nonsense']) f.mood(m);
+  assert.deepEqual(e.calls.slice(1), [['setEmotion', 'surprised'], ['setEmotion', 'neutral'], ['play', 'tilt'], ['setEmotion', 'neutral'], ['play', 'think'],
+    ['setEmotion', 'happy', { playMotion: false }], ['play', 'giggle'], ['setEmotion', 'relaxed'], ['setEmotion', 'happy', { playMotion: false }], ['play', 'wink']]);
+});
+
+test('the device voice tells where each sentence starts, so a mood can start with it', async () => {
+  globalThis.window = globalThis;
+  globalThis.SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } };
+  globalThis.speechSynthesis = { cancel() {}, getVoices: () => [], speak: (u) => setTimeout(() => u.onend(), 1) };
+  const { say } = await import('../extension/ui/voice.js');
+  const starts = [];
+  const text = 'Wow, a spider! How many legs? Count them.';
+  await say({ text }, {}, { onSentence: (at) => starts.push(text.slice(at)) });
+  assert.deepEqual(starts, ['Wow, a spider! How many legs? Count them.', 'How many legs? Count them.', 'Count them.']);
+});

@@ -575,11 +575,11 @@ async function handle(msg, sender) {
         const ru = lang.startsWith('ru');
         if (msg.mode === 'intro') {
           if (p.catchphrase) lines.push({ text: p.catchphrase, ...(p.catchphraseAudioRef ? { audioRef: p.catchphraseAudioRef } : {}) });
-          lines.push(v.intro ?? { text: ru
+          lines.push(v.intro ?? { moods: [{ at: 0, mood: 'excited' }], text: ru
             ? `Привет! Я ${name}! Сейчас мы посмотрим: ${v.title}. ${hasQuiz ? 'Смотри внимательно, в конце я задам тебе вопрос!' : 'Давай узнаем что-то новое!'}`
             : `Hi! I'm ${name}! Now we're going to watch: ${v.title}. ${hasQuiz ? 'Watch carefully, because at the end I will ask you a question!' : 'Let’s find out something new!'}` });
         } else if (p.outro) {
-          lines.push(v.outro ?? { text: ru ? `Это было: ${v.title}. Молодец, что досмотрел до конца!` : `That was: ${v.title}. Well done for watching it all!` });
+          lines.push(v.outro ?? { moods: [{ at: 0, mood: 'happy' }], text: ru ? `Это было: ${v.title}. Молодец, что досмотрел до конца!` : `That was: ${v.title}. Well done for watching it all!` });
         }
         const items = msg.mode === 'outro' ? (t?.quizIds ?? []).map((quizId) => ({ quizId, ...config.quiz.items[quizId] })).filter((i) => i.prompt) : [];
         const { quizTypes } = await loadBundled();

@@ -21,6 +21,7 @@ import { search } from '../tools/video-info.mjs';
 import { helperInfo } from './lib/info.mjs';
 import { createGemini } from './lib/gemini.mjs';
 import { locate } from './lib/profile.mjs';
+import { parseMoods, moodLine } from './lib/moods.mjs';
 
 const ROOT = dirname(dirname(fileURLToPath(import.meta.url)));
 const home = (p) => p.replace(/^~(?=\/)/, homedir());
@@ -223,7 +224,10 @@ async function run() {
     try {
       const out = await llm.json(`words for ${id}`, contentPrompt({ video: v, transcript: tr, friend, about, want, templates: usable, quizOn, maxQuestions: D.maxQuestions }));
       const { items, ids } = quizOn ? buildQuiz(id, out.quiz, v.lang === 'ru' ? 'ru' : null, { max: D.maxQuestions }) : { items: {}, ids: [] };
-      v.content = { source, at: iso(), summary: String(out.summary ?? ''), learned: list(out.learned), intro: out.intro.trim().slice(0, 600), outro: out.outro.trim().slice(0, 600), talkAbout: list(out.talkAbout), quizIds: ids, items,
+      // unknown [mood] tags are just dropped here
+      const intro = parseMoods(out.intro), outro = parseMoods(out.outro);
+      v.content = { source, at: iso(), summary: String(out.summary ?? ''), learned: list(out.learned), intro: intro.text.slice(0, 600), outro: outro.text.slice(0, 600),
+        ...(intro.moods.length ? { introMoods: intro.moods } : {}), ...(outro.moods.length ? { outroMoods: outro.moods } : {}), talkAbout: list(out.talkAbout), quizIds: ids, items,
         ...(source === 'transcript' && typeof out.tooHardFor4 === 'string' && out.tooHardFor4.trim() ? { tooHard: out.tooHardFor4.trim().slice(0, 300) } : {}) };
       written++;
     } catch (e) { problems.push(e.message); }
@@ -240,8 +244,8 @@ async function run() {
       durationSeconds: v.durationSeconds, thumbnailUrl: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`, addedAt: v.addedAt ?? iso(),
       ...(v.lang && v.lang !== 'en' ? { lang: v.lang } : {}),
       ...(v.required ? { required: true } : {}),
-      ...(v.content?.intro ? { intro: { text: v.content.intro } } : {}),
-      ...(v.content?.outro ? { outro: { text: v.content.outro } } : {}),
+      ...(v.content?.intro ? { intro: moodLine(v.content.intro, v.content.introMoods) } : {}),
+      ...(v.content?.outro ? { outro: moodLine(v.content.outro, v.content.outroMoods) } : {}),
       ...(v.content?.quizIds?.length ? { quizIds: v.content.quizIds } : {}),
       ...(v.why ? { note: v.why.slice(0, 500) } : {}),
     };

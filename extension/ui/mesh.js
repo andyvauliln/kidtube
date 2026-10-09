@@ -32,6 +32,18 @@ export function fakeVoice() {
   };
 }
 
+// The helper's [mood] tags (agent/lib/moods.mjs) as the engine's emotions (a face, sometimes with a motion) and motions.
+export const MOODS = {
+  happy: (a) => a.setEmotion('happy'),                                         // smile and nod
+  excited: (a) => { a.setEmotion('happy', { playMotion: false }); a.play('giggle'); },
+  surprised: (a) => a.setEmotion('surprised'),
+  curious: (a) => { a.setEmotion('neutral'); a.play('tilt'); },
+  thinking: (a) => { a.setEmotion('neutral'); a.play('think'); },
+  calm: (a) => a.setEmotion('relaxed'),
+  sad: (a) => a.setEmotion('sad'),                                             // sad face and a sigh
+  playful: (a) => { a.setEmotion('happy', { playMotion: false }); a.play('wink'); },
+};
+
 // box: the element to fill; base: the avatar folder URL. load: the engine (a test passes a fake one).
 export async function createMeshFriend(box, { base, load = () => import('../vendor/mesh-avatar/mesh-avatar.js') } = {}) {
   if (!hasWebGL2()) throw new Error('no WebGL2 here');
@@ -95,6 +107,8 @@ export async function createMeshFriend(box, { base, load = () => import('../vend
     word() { if (talkingNow) fake?.word(); },
     // happy: smiling face and a nod; sad: a sad face and a sigh. Both end a moment after the next line.
     react(kind) { avatar.setEmotion(kind === 'happy' ? 'happy' : kind === 'sad' ? 'sad' : 'neutral'); },
+    // A mood for the words that follow (see MOODS); an unknown one is ignored.
+    mood(name) { MOODS[name]?.(avatar); },
     wave() { avatar.play('greet'); },
     destroy() {
       destroyed = true;

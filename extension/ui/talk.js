@@ -6,6 +6,7 @@ import { createMeshFriend } from './mesh.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { checkPin } from '../lib/pin.js';
 import { ask as send } from '../lib/ask.js';
+import { moodTrack } from '../lib/moods.js';
 
 const $ = (id) => document.getElementById(id);
 const q = new URLSearchParams(location.search);
@@ -27,14 +28,23 @@ function talking(on) {
   rig?.talking(on);
 }
 
+// A built-in line with the friend's face for it.
+const withMood = (line, mood) => (line.moods ? line : { ...line, moods: [{ at: 0, mood }] });
+
 // lang: the language of this line (a question can differ from the video); default the video's.
 async function speak(line, lang = script.lang) {
   if (skipAll) return;
   $('bubble').textContent = line.text;
   talking(true);
+  // line.moods from the helper's [mood] tags: each starts when the voice reaches its character
+  // (the device's voice: at its sentence; a recording: by how far it has played).
+  const reach = moodTrack(line.moods, (m) => rig?.mood?.(m));
+  reach(0);
+  const len = String(line.text).length;
+  const follow = (a) => { a.addEventListener('timeupdate', () => { if (a.duration) reach((a.currentTime / a.duration) * len); }); };
   // A recording made by the helper plays instead of the tablet's own voice (when the parent allows it).
   const recorded = script.recorded !== false && line.audioRef ? await recordedUrl(line.audioRef) : null;
-  try { await say(recorded ? { ...line, audioUrl: recorded } : line, { ...script.voice, lang: lang || script.voice?.lang }, { onWord: () => rig?.word(), onAudio: (a) => rig?.audio?.(a) }); }
+  try { await say(recorded ? { ...line, audioUrl: recorded } : line, { ...script.voice, lang: lang || script.voice?.lang }, { onWord: () => rig?.word(), onAudio: (a) => { rig?.audio?.(a); follow(a); }, onSentence: reach }); }
   finally { talking(false); if (recorded) URL.revokeObjectURL(recorded); }
 }
 
@@ -197,7 +207,7 @@ async function ask(item) {
   }
   if (skipAll) return { ...result, result: 'skippedByParent' };
   const skipped = new Promise((r) => { skipNow = r; });
-  await speak({ text: item.prompt, audioUrl: item.audioUrl, audioRef: item.audioRef }, item.lang);
+  await speak(withMood({ text: item.prompt, audioUrl: item.audioUrl, audioRef: item.audioRef }, 'curious'), item.lang);
   $('bubble').textContent = item.prompt;
   while (result.attempts < script.maxAttempts) {
     const a = skipAll ? 'skip' : await Promise.race([getAnswer(item), skipped]);
@@ -235,14 +245,15 @@ async function run() {
   rig?.wave();
   for (const line of script.lines) await speak(line);
   if (mode === 'outro' && script.items.length) {
-    if (!script.lines.length) await speak(phrase(script.lang, 'hello', script.name));
+    if (!script.lines.length) await speak(withMood(phrase(script.lang, 'hello', script.name), 'happy'));
     const results = [];
     for (const item of script.items) results.push(await ask(item));
     const { next } = await send({ type: 'quizResults', videoId, results });
     const allGood = results.every((r) => r.result !== 'failed');
-    await speak(phrase(script.lang, next === 'rewatch' ? 'rewatch' : next === 'stopForToday' ? 'stop' : allGood ? 'great' : 'tried'));
+    const end = next === 'rewatch' ? 'rewatch' : next === 'stopForToday' ? 'stop' : allGood ? 'great' : 'tried';
+    await speak(withMood(phrase(script.lang, end), { rewatch: 'curious', stop: 'calm', great: 'excited', tried: 'happy' }[end]));
   }
-  if (mode === 'outro' && script.catchphrase) await speak({ text: script.catchphrase, audioRef: script.catchphraseAudioRef });
+  if (mode === 'outro' && script.catchphrase) await speak(withMood({ text: script.catchphrase, audioRef: script.catchphraseAudioRef }, 'playful'));
   finish();
 }
 
