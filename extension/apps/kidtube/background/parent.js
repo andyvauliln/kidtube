@@ -14,7 +14,7 @@ export const getMemory = async () => (await chrome.storage.local.get('memory')).
 // --- notes for the AI --------------------------------------------------------------------------------------
 // The tablet keeps no history of notes: one stays in its list until the server says the AI worked on it
 // (notes-done.json, agent/poll.sh), then it is deleted. id: the event's id, to match that list.
-export function addNote(list, ev) {
+function addNote(list, ev) {
   list.push({ id: ev.eventId, at: ev.at, text: ev.comment ?? ev.text });
   list.splice(0, Math.max(0, list.length - 20));
 }
@@ -121,7 +121,7 @@ export function records(memory, planLog, queue) {
   return recs;
 }
 
-export function cardOf(id, v = {}, r = {}, s) {
+function cardOf(id, v = {}, r = {}, s) {
   return {
     videoId: id, title: v.title || r.title || s.seen?.[id]?.title || 'Video', channelTitle: v.channelTitle ?? r.channelTitle ?? '',
     durationSeconds: v.durationSeconds || r.durationSeconds || null, thumbnailUrl: thumbUrl(id), lang: v.lang ?? r.lang ?? 'en',
@@ -160,7 +160,7 @@ export async function parentData(s) {
 }
 
 // What he watched, by day: this tablet's own log, plus what the helper knows from the other devices and earlier.
-export function historyDays(s, recs, config) {
+function historyDays(s, recs, config) {
   const rows = [...(s.history ?? [])].map((h) => ({ ...h }));
   const has = (id, at) => rows.some((h) => h.videoId === id && h.at.slice(0, 10) === at.slice(0, 10));
   for (const [id, at] of Object.entries(s.watched)) if (!has(id, at)) rows.push({ videoId: id, at });

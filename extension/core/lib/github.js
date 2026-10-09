@@ -56,4 +56,4 @@ export function bytesToBase64(bytes) {
   return btoa(bin);
 }
 
-export const toBase64 = (text) => bytesToBase64(new TextEncoder().encode(text));
+const toBase64 = (text) => bytesToBase64(new TextEncoder().encode(text));

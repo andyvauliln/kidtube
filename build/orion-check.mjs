@@ -17,7 +17,7 @@ export const HANDLED = {
 
 const EVENT_METHODS = new Set(['addListener', 'removeListener', 'hasListener']);
 
-export function orionStatus(api) {
+function orionStatus(api) {
   const parts = api.split('.');
   // storage.local.get → storage.StorageArea.get (that is how the table names it)
   if (parts[0] === 'storage' && ['local', 'session', 'sync', 'managed'].includes(parts[1]) && parts[2]) {

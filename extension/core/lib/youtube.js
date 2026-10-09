@@ -1,5 +1,5 @@
 // A YouTube video id: 11 characters of [A-Za-z0-9_-].
-export const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
+const VIDEO_ID = /^[A-Za-z0-9_-]{11}$/;
 export const isVideoId = (id) => VIDEO_ID.test(id ?? '');
 export const thumbUrl = (videoId) => `https://i.ytimg.com/vi/${videoId}/mqdefault.jpg`;
 

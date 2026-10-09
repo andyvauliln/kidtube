@@ -104,7 +104,7 @@ export const TEMPLATES = {
 };
 
 // A short stable id piece from a video id (video ids have capitals and "_", quiz ids can't).
-export function videoKey(videoId) {
+function videoKey(videoId) {
   let h = 0;
   for (const c of videoId) h = (h * 31 + c.charCodeAt(0)) >>> 0;
   return h.toString(36);

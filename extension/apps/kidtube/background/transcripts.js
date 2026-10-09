@@ -11,7 +11,7 @@ import { effective } from './config.js';
 const TRANSCRIPTS_PER_SYNC = 12;
 const RETRY_AFTER_MS = 24 * 60 * 60 * 1000;
 
-export async function fetchTranscript(videoId) {
+async function fetchTranscript(videoId) {
   const page = await fetch(`https://www.youtube.com/watch?v=${videoId}&hl=en`, { credentials: 'include' });
   const html = await page.text();
   const key = html.match(/"INNERTUBE_API_KEY":\s*"([A-Za-z0-9_-]+)"/)?.[1];

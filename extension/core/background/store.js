@@ -83,7 +83,7 @@ export async function folderShown() {
 }
 
 // Profiles from before 0.9.0 have no folder yet: the current one gets it on the first sync.
-export async function profileBase() {
+async function profileBase() {
   return serial(async () => {
     const { account, accounts = {} } = await chrome.storage.local.get(['account', 'accounts']);
     if (!account?.key) return null;

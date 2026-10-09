@@ -1,7 +1,7 @@
 // Turns YouTube's caption XML (old <text start dur> or srv3 <p t d>) into lines of plain text.
 const ENTITIES = { amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ' };
 
-export function decodeEntities(s) {
+function decodeEntities(s) {
   return s.replace(/&(#x[0-9a-f]+|#\d+|[a-z]+);/gi, (m, e) => {
     if (e[0] === '#') {
       const n = e[1] === 'x' || e[1] === 'X' ? parseInt(e.slice(2), 16) : Number(e.slice(1));

@@ -102,7 +102,7 @@ export function watchedToday(s, queue, cfg) {
 }
 
 // The list he sees, with ⭐ videos marked and the ones that must wait greyed out.
-export function kidList(s, queue, cfg) {
+function kidList(s, queue, cfg) {
   const videos = visibleVideos(queue, cfg, s.watched);
   const waiting = waitingIds(videos, cfg, watchedToday(s, queue, cfg));
   return videos.map((v) => (waiting.has(v.videoId) ? { ...v, waiting: true } : v));

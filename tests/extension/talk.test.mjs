@@ -11,7 +11,6 @@ const queue = JSON.parse(readFileSync('extension/apps/kidtube/data/default-queue
 const [A, B, C] = queue.videos.map((v) => v.videoId);
 const TAB = 7;
 const send = (msg, url = 'https://m.youtube.com/') => new Promise((resolve) => fake.listeners.message[0](msg, { tab: { id: TAB, url } }, resolve));
-const sendFrom = (tabId, msg) => new Promise((resolve) => fake.listeners.message[0](msg, { tab: { id: tabId, url: 'https://m.youtube.com/' } }, resolve));
 async function navigate(url, tabId = TAB) {
   fake.nav.updates.length = 0;
   fake.listeners.tabUpdated[0](tabId, { url });

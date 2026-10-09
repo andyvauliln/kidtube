@@ -12,7 +12,7 @@ export { applyPromptNotes };
 export const OPEN = new Set(['idea', 'planned', 'today']);
 
 // Fields each tablet plan change sets (parent mode).
-export const PLAN_FIELDS = { today: ['status', 'approved'], notToday: ['status'], drop: ['status'], restore: ['status'], required: ['required'], approve: ['approved', 'status'] };
+const PLAN_FIELDS = { today: ['status', 'approved'], notToday: ['status'], drop: ['status'], restore: ['status'], required: ['required'], approve: ['approved', 'status'] };
 
 // Folds tablet activity into the records. Returns what the model should hear about.
 export function applyActivity(videos, events, { minSecondsBeforeLeave = 120 } = {}) {

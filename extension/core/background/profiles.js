@@ -19,9 +19,9 @@ const fileKeys = () => allParts().flatMap((p) => p.fileKeys ?? []);
 
 // A profile is an email with one app, so one email can have a profile in each app. KidTube's key is the email
 // itself (what YouTube reports, and what tablets before 0.9.6 have); another app's is "<app>:<email>".
-export const keyFor = (app, base) => (!app || app === DEFAULT_APP ? base : `${app}:${base}`);
+const keyFor = (app, base) => (!app || app === DEFAULT_APP ? base : `${app}:${base}`);
 const baseOf = (key) => key.replace(new RegExp(`^(${Object.keys(APPS).join('|')}):`), '');
-export const shortLabel = (a) => a.label.replace(/ \(.*/, '');
+const shortLabel = (a) => a.label.replace(/ \(.*/, '');
 
 // Tablets from 0.9.2 to 0.9.5 keyed a Blank profile by its email alone: give it its "<app>:" key, so that the
 // same email can also have a KidTube profile. Call inside serial().
@@ -56,7 +56,7 @@ function profileRecord(accounts, key, info, app, folder) {
 
 // Makes the profile <key> (an email in one app) the current one: the current profile's data goes to
 // "acct:<its key>", the new one's comes back (a new profile starts empty). The header's Open and Create.
-export async function useProfile(info, { app, key, folder }) {
+async function useProfile(info, { app, key, folder }) {
   const r = await serial(async () => {
     await migrateProfileKeys();
     const g = await chrome.storage.local.get(['account', 'accounts']);

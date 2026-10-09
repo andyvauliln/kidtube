@@ -24,7 +24,7 @@ for (const f of readdirSync(SCHEMA_DIR).filter((f) => f.endsWith('.schema.json')
   ajv.addSchema(JSON.parse(readFileSync(join(SCHEMA_DIR, f), 'utf8')));
 }
 
-export function kindOf(path) {
+function kindOf(path) {
   const name = basename(path);
   if (name === 'default-config.json') return 'default-config';
   if (name === 'parent-config.json') return 'parent-config';
@@ -60,7 +60,7 @@ function isValidTimeZone(tz) {
   }
 }
 
-export function checkConfig(cfg) {
+function checkConfig(cfg) {
   const errs = [];
   if (cfg.timezone != null && cfg.timezone !== 'local' && !isValidTimeZone(cfg.timezone)) errs.push(`/timezone "${cfg.timezone}" is not an IANA time zone`);
   (cfg.time?.allowed ?? []).forEach((w, i) => {
@@ -115,7 +115,7 @@ export function checkQueue(queue, eff) {
   return errs;
 }
 
-export function checkActivity(act, fileName) {
+function checkActivity(act, fileName) {
   const errs = [];
   if (fileName && basename(fileName) !== `${act.date}.json`) errs.push(`/date ${act.date} does not match file name ${basename(fileName)}`);
   const seen = new Set();
@@ -152,7 +152,7 @@ export function validateFile(path, ctx = {}) {
   return { path, kind, data, errors };
 }
 
-export function loadQuizTypes() {
+function loadQuizTypes() {
   return JSON.parse(readFileSync(QUIZ_TYPES_PATH, 'utf8'));
 }
 

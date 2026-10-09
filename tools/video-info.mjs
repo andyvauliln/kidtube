@@ -5,7 +5,7 @@
 const UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128 Safari/537.36';
 const HEADERS = { 'User-Agent': UA, 'Accept-Language': 'en-US,en;q=0.9', Cookie: 'CONSENT=YES+1' };
 
-export function parseVideoId(s) {
+function parseVideoId(s) {
   const m = String(s).match(/(?:v=|youtu\.be\/|shorts\/|^)([A-Za-z0-9_-]{11})(?:$|[&?#/])/);
   return m ? m[1] : null;
 }
