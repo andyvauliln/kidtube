@@ -24,6 +24,9 @@ export function installFakeChrome() {
       onUpdated: on('tabUpdated'), onRemoved: on('tabRemoved'),
       update: async (id, { url }) => { nav.updates.push(url); },
       create: async ({ url }) => { nav.created = [...(nav.created ?? []), url]; return { id: 99 }; },
+      // The open tabs (nav.tabs: [{ id, url }]); remove() takes them away and notes the ids.
+      query: async () => structuredClone(nav.tabs ?? []),
+      remove: async (ids) => { nav.removed = [...(nav.removed ?? []), ...[].concat(ids)]; nav.tabs = (nav.tabs ?? []).filter((t) => !nav.removed.includes(t.id)); },
     },
     alarms: { create: () => {}, onAlarm: on('alarm') },
     declarativeNetRequest: { updateDynamicRules: async (r) => { fake.rules = r.addRules; } },

@@ -9,6 +9,7 @@ import { applySiteRules } from './sites.js';
 import { sync } from './sync.js';
 import { latestRelease, autoUpdate } from './updates.js';
 import { handle } from './messages.js';
+import { keepOneTab } from './tabs.js';
 import APP_BACKGROUNDS from '../../apps/backgrounds.js';
 
 registerApps(APP_BACKGROUNDS);
@@ -16,6 +17,7 @@ registerApps(APP_BACKGROUNDS);
 // --- the tabs: every URL change goes through the guard -------------------------------------------
 chrome.tabs.onUpdated.addListener((tabId, info) => {
   if (!info.url) return;
+  keepOneTab(tabId, info.url);
   withState((s) => guard(s, tabId, info.url)).then((target) => {
     if (target && target !== info.url) chrome.tabs.update(tabId, { url: target });
   });

@@ -13,10 +13,25 @@ const CORE_KEYS = ['settings', 'data', 'syncStatus'];
 export const stateKeys = () => [...CORE_KEYS, ...allParts().flatMap((p) => p.stateKeys ?? [])];
 
 let chain = Promise.resolve();
-// Runs fn after every earlier serial() call has finished.
+// A step that hasn't finished after this long (a browser API that never answers) no longer holds the others up:
+// without this one stuck step would leave every screen without an answer ("can't reach its background").
+// The check page shows the last such step (bgStuck).
+const STUCK_MS = 20000;
+// Runs fn after every earlier serial() call has finished (or got stuck).
 export function serial(fn) {
-  const run = chain.then(fn);
-  chain = run.catch(() => {});
+  const from = (new Error().stack ?? '').split('\n').slice(2, 4).map((l) => l.trim()).join(' ← ');
+  let release;
+  const next = new Promise((r) => { release = r; });
+  let timer;
+  const run = chain.then(() => {
+    timer = setTimeout(() => {
+      release();
+      chrome.storage.local.set({ bgStuck: { at: new Date().toISOString(), from } }).catch(() => {});
+    }, STUCK_MS);
+    return fn();
+  });
+  run.catch(() => {}).then(() => { clearTimeout(timer); release(); });   // the next one starts once this one is done
+  chain = next;
   return run;
 }
 

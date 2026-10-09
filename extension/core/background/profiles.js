@@ -143,7 +143,9 @@ export async function headerView(force) {
   const sh = await shellOf(g);
   const settings = g.settings ?? {};
   const email = g.ytAccount?.email ?? null;
-  const github = { connected: !!settings.token, repo: settings.repo || DEFAULT_REPO };
+  // Only the token's start and end reach the page: enough to see which one is saved.
+  const t = settings.token || '';
+  const github = { connected: !!t, repo: settings.repo || DEFAULT_REPO, tokenHint: t ? `${t.slice(0, t.length > 20 ? 11 : 2)}…${t.slice(-4)}` : null };
   const running = !sh.on && g.account && (!email || g.account.email === email) ? appOf(g.account).id : null;
   const out = { ok: true, shell: sh, open: await headerOpen(g), mode: parentMode(g) ? 'parent' : 'kid', running,
     email, seen: !!g.ytAccount, signedIn: !!g.ytAccount?.loggedIn, github, apps: [], error: null,
@@ -182,7 +184,9 @@ export async function openApp(msg, tabId, host) {
   });
   await chrome.storage.local.set({ shell: { on: false, locked: false } });
   await applySiteRules();
-  if (msg.create && !r.switched) sync();   // (a switch syncs anyway) writes profile.json: the repo and the server's helper know it
+  // A switch syncs anyway. Else (the first profile on this tablet, or the same one again) sync now too: its lists and
+  // rules come from GitHub at once, and a new profile writes profile.json, so the server's helper knows it.
+  if (!r.switched) sync();
   const url = app.page ? chrome.runtime.getURL(app.page) : parent ? chrome.runtime.getURL(app.parentPage) : homeUrl(host);
   if (tabId != null) await chrome.tabs.update(tabId, { url });
   return { ok: true, url, navigated: tabId != null };
@@ -205,8 +209,10 @@ export async function connectGitHub(msg) {
     await chrome.storage.local.remove('repoProfiles');
     return { ok: false, error: r.error };
   }
-  sync();
-  return { ok: true, repo, profiles: r.list.length };
+  // Everything of the running profile comes again from GitHub now (none runs yet at a fresh header: the app's Open does it).
+  const { account } = await chrome.storage.local.get('account');
+  await sync();
+  return { ok: true, repo, profiles: r.list.length, synced: !!account };
 }
 
 // The settings file (the header's Save / Load): the GitHub connection and the PIN (BACKUP_KEYS), and the apps' fileKeys.

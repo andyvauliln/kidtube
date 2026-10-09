@@ -62,7 +62,11 @@ $('form').addEventListener('submit', async (e) => {
 // The PIN is right (or not needed): do what this page was opened for.
 async function done() {
   const err = $('err');
-  if (purpose === 'kid') return ask({ type: 'kidHome' });
+  if (purpose === 'kid') {
+    const r = await ask({ type: 'kidHome' });
+    if (r?.url) setTimeout(() => { if (location.href !== r.url) location.href = r.url; }, 1500);
+    return;
+  }
   if (purpose === 'unlock') {
     const r = await ask({ type: 'leaveApp' });
     if (r?.ok) location.href = r.open;

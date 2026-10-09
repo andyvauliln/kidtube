@@ -90,8 +90,9 @@ const HANDLERS = {
     await withState((s) => { Object.assign(s.settings, { mode: 'kid', parentUntil: 0 }); });
     await applySiteRules();
     const app = appOf((await chrome.storage.local.get('account')).account);
-    if (tabId != null) await chrome.tabs.update(tabId, { url: app.page ? chrome.runtime.getURL(app.page) : homeUrl(live.host) });
-    return { ok: true };
+    const url = app.page ? chrome.runtime.getURL(app.page) : homeUrl(live.host);
+    if (tabId != null) await chrome.tabs.update(tabId, { url });
+    return { ok: true, url };
   },
 
   // core/content/backup.js on the install page: take the copy back, or refresh it.

@@ -208,3 +208,17 @@ test('Quetta asks for a newer release itself, and reloads YouTube after the upda
   globalThis.fetch = realFetch;
   assert.deepEqual(reloaded, [3, 4]);
 });
+
+test('one tab: a tab that opens YouTube or a KidTube page closes the other such tabs, not other sites or the tools', async () => {
+  fake.tabs.query = async () => structuredClone(fake.nav.tabs ?? []);   // (the update test above put its own in)
+  fake.nav.removed = [];
+  fake.nav.tabs = [{ id: 1, url: 'https://www.youtube.com/' }, { id: 2, url: 'ext://apps/kidtube/parent/parent.html' }, { id: 3, url: 'https://github.com/' },
+    { id: 4, url: 'ext://core/pages/check.html' }, { id: 5, url: 'https://accounts.youtube.com/accounts/SetSID' }, { id: TAB, url: TAB_URL }];
+  await navigate(TAB_URL);
+  assert.deepEqual(fake.nav.removed.sort(), [1, 2]);
+  fake.nav.removed = [];
+  fake.listeners.tabUpdated[0](3, { url: 'https://github.com/settings' });
+  await new Promise((r) => setTimeout(r, 20));
+  assert.deepEqual(fake.nav.removed, []);
+  fake.nav.tabs = [];
+});

@@ -54,6 +54,10 @@
       row(!!st, 'Kid list from the background (state)', st ? `${st.videos?.length ?? 0} videos, lock: ${short(st.lock)}` : `answer: ${short(st)}`);
     } catch (e) { row(false, 'Kid list from the background (state)', e.message ?? e); }
     try {
+      const { bgStuck } = await chrome.storage.local.get('bgStuck');
+      row(bgStuck ? false : true, 'Background steps', bgStuck ? `one got stuck at ${bgStuck.at}: ${bgStuck.from}` : 'none got stuck');
+    } catch (e) { row(null, 'Background steps', e.message ?? e); }
+    try {
       const r = await fetch(chrome.runtime.getURL('apps/kidtube/data/default-config.json'));
       row(r.ok, 'Reading its own files (fetch)', `status ${r.status}`);
     } catch (e) { row(false, 'Reading its own files (fetch)', e.message ?? e); }

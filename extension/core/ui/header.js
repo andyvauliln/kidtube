@@ -233,7 +233,7 @@
       busy = '';
       if (r?.ok) {
         ui.github = false; ui.token = ''; ui.repo = null;
-        say(`Connected to ${r.repo} ✓`, 'ok');
+        say(`Connected to ${r.repo} ✓ ${r.synced ? 'Your lists and rules are loaded.' : 'Open an app to load its lists and rules.'}`, 'ok');
         refresh(true);
       } else say(r?.error ?? 'Could not connect. Check the repo and the token.', 'err');
     }
@@ -251,7 +251,7 @@
       let file;
       try { file = JSON.parse(await f.text()); } catch { return say('That file is not a KidTube settings file.', 'err'); }
       const r = await act('Loading…', { type: 'importSettings', file });
-      if (r?.ok) { ui.github = false; say('Settings loaded ✓ (the PIN is the one from the file)', 'ok'); refresh(true); }
+      if (r?.ok) { ui.github = false; say(`Settings loaded ✓ The token, the repo and the PIN are the ones from the file.${r.errors?.length ? '' : ' The data is loaded from GitHub.'}`, 'ok'); refresh(true); }
     });
 
     function accountMenu() {
@@ -287,19 +287,27 @@
       repo.setAttribute('autocapitalize', 'off');
       repo.addEventListener('input', () => { ui.repo = repo.value; });
       const token = Object.assign(el('input'), { type: 'password', autocomplete: 'off', value: ui.token,
-        placeholder: data.github.connected ? 'saved · type a new one to change it' : 'github_pat_…' });
-      token.addEventListener('input', () => { ui.token = token.value; go.disabled = !!busy || (!token.value.trim() && !data.github.connected); });
+        placeholder: data.github.connected ? `saved: ${data.github.tokenHint ?? '…'}` : 'github_pat_…' });
+      token.addEventListener('input', () => {
+        ui.token = token.value;
+        go.disabled = !!busy || (!token.value.trim() && !data.github.connected);
+        go.lastChild.textContent = goLabel();
+      });
       token.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !go.disabled) connect(); });
       const l1 = el('label', '', 'Data repo'), l2 = el('label', '', 'GitHub token');
       l1.append(repo); l2.append(token);
       const fields = el('div', 'fields');
       fields.append(l1, l2);
-      const go = button('btn primary', busy === 'Connecting…' ? busy : 'Connect', connect);
+      // Connected and no new token typed: the same button loads everything from GitHub again with the saved one.
+      const goLabel = () => (busy === 'Connecting…' ? busy : data.github.connected && !ui.token.trim() ? 'Load from GitHub' : 'Connect');
+      const go = button('btn primary', goLabel(), connect);
       go.disabled = !!busy || (!ui.token.trim() && !data.github.connected);
       const side = el('div', 'side');
       side.append(go, button('btn', 'Load from file', () => picker.click(), PATH.upload), button('btn', 'Save to file', exportFile, PATH.download));
       if (!first) side.append(button('btn', 'Cancel', () => { ui.github = false; ui.token = ''; ui.repo = null; ui.note = ''; draw(); }));
-      card.append(el('h2', '', first ? 'Connect your data on GitHub' : 'GitHub connection'), lead, fields, side);
+      card.append(el('h2', '', first ? 'Connect your data on GitHub' : 'GitHub connection'), lead, fields);
+      if (data.github.connected) card.append(el('p', 'status ok', `Token saved on this tablet: ${data.github.tokenHint ?? '…'}. Type a new one only to change it.`));
+      card.append(side);
       if (ui.note) card.append(el('p', `status ${ui.noteKind}`, ui.note));
       return card;
     }
@@ -420,7 +428,11 @@
     const toKid = async () => {
       const { settings = {} } = await chrome.storage.local.get('settings');
       if (!settings.pinHash) { location.href = chrome.runtime.getURL('core/pages/pin.html?for=kid'); return; }
-      ask({ type: 'kidHome' });
+      // The page sees parent mode end before the background moves the tab: it must not go to the PIN page then.
+      globalThis.kidtubeLeaving = true;
+      const r = await ask({ type: 'kidHome' });
+      // A browser that didn't move the tab (or a reply that came before it did): go there from here.
+      if (r?.url) setTimeout(() => { if (location.href !== r.url) location.href = r.url; }, 1500);
     };
     for (const [m, label, go] of [['parent', 'Parent', () => ask({ type: 'parentGate' })], ['kid', 'Kid', toKid]]) {
       const b = el('button', m === mode ? 'on' : '', label);
