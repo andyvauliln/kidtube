@@ -176,6 +176,61 @@ test('a page’s own result: a failure with the page’s steps; a pass; nonsense
   assert.equal((await send({ type: 'checks' })).ok, false, 'the results only for KidTube’s pages');
 });
 
+test('the reports go to GitHub: problems/<day>.json at the top of the data repo, one entry per report, no secrets', async () => {
+  const files = {}, puts = [];
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    const m = String(url).match(/api\.github\.com\/repos\/me\/kidtube-data\/contents\/(.+)$/);
+    if (!m) return realFetch(url, init);
+    const path = decodeURIComponent(m[1]);
+    if (init.method === 'PUT') {
+      const body = JSON.parse(init.body);
+      files[path] = { text: Buffer.from(body.content, 'base64').toString('utf8'), sha: `sha-${puts.length}` };
+      puts.push({ path, message: body.message, sha: body.sha ?? null });
+      return { ok: true, status: 200, json: async () => ({}) };
+    }
+    if (!files[path]) return { ok: false, status: 404, json: async () => ({}), headers: { get: () => null } };
+    return { ok: true, status: 200, json: async () => ({ sha: files[path].sha, content: Buffer.from(files[path].text).toString('base64') }) };
+  };
+  try {
+    const before = (await view()).reports.length;
+    assert.ok(before > 0);
+    const r = await fromPage({ type: 'sendChecks' });
+    assert.equal(r.ok, true);
+    assert.equal(r.sent, before);
+    const day = new Date().toISOString().slice(0, 10);
+    const path = Object.keys(files).find((p) => p.startsWith('problems/'));
+    assert.ok(path?.startsWith('problems/') && path.endsWith('.json'), path);
+    const file = JSON.parse(files[path].text);
+    assert.equal(file.schemaVersion, 1);
+    assert.ok(file.reports.every((x) => x.type === 'problem' && x.reportId && x.deviceId?.startsWith('tab-') && x.fingerprint && !('sent' in x)));
+    for (const secret of [TOKEN, PIN_HASH, EMAIL]) assert.ok(!files[path].text.includes(secret), secret);
+    assert.ok((await view()).reports.every((x) => x.sent === x.count && x.sentAt));
+    assert.equal((await fromPage({ type: 'sendChecks' })).sent, 0, 'nothing new: nothing sent');
+    // The same problem again: the same entry counts up, and goes again.
+    await fromPage({ type: 'checkResult', result: { id: 'parent.loads', status: 'fail', expect: 'x', mismatch: [{ what: 'answer to "parentData"', expected: 'the lists', actual: 'no answer in 8 s' }] } });
+    await fromPage({ type: 'checkResult', result: { id: 'parent.loads', status: 'fail', expect: 'x', mismatch: [{ what: 'answer to "parentData"', expected: 'the lists', actual: 'no answer in 8 s' }] } });
+    await fromPage({ type: 'sendChecks' });
+    const again = JSON.parse(files[`problems/${day}.json`].text).reports.filter((x) => x.check === 'parent.loads');
+    assert.equal(again.length, 1);
+    assert.equal(again[0].count, 2);
+    assert.ok(puts.at(-1).sha, 'the second write updates the file (its sha)');
+  } finally { globalThis.fetch = realFetch; }
+});
+
+test('the banner: a new report is shown once where the parent is, never in kid mode', async () => {
+  await fromPage({ type: 'setMode', mode: 'kid' });
+  await fromPage({ type: 'checkResult', result: { id: 'kid.list', status: 'fail', expect: 'His list comes from the background', mismatch: [{ what: 'answer to "state"', expected: 'his list', actual: 'no answer in 8 s' }] } });
+  assert.equal((await send({ type: 'checkAlert' })).alert, null, 'kid mode: no banner for him');
+  await fromPage({ type: 'setMode', mode: 'parent' });
+  const a = (await fromPage({ type: 'checkAlert' })).alert;
+  assert.equal(a.check, 'kid.list');
+  assert.equal(a.expect, 'His list comes from the background');
+  assert.match(a.saw, /answer to "state": expected his list, saw no answer in 8 s/);
+  assert.equal(a.willSend, true);
+  assert.equal((await fromPage({ type: 'checkAlert' })).alert, null, 'once');
+});
+
 test('parent mode sees which reports are new; Clear empties them', async () => {
   await fromPage({ type: 'clearChecks' });
   await fromPage({ type: 'checkResult', result: { id: 'parent.loads', status: 'fail', expect: 'x', mismatch: [{ what: 'answer to "parentData"', expected: 'the lists', actual: 'no answer in 8 s' }] } });

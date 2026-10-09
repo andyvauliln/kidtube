@@ -1,6 +1,6 @@
 # Plan: checks inside KidTube, reports and fast fixes
 
-*Status 2026-10-09: F1 and most of F2 are built in 0.10.4 (`extension/core/checks/`, `core/ui/watch.js`); the reports stay on the tablet until F3.*
+*Status 2026-10-09: F1, most of F2 and the tablet side of F3 are built in 0.10.4 (`extension/core/checks/`, `core/ui/watch.js`): reports go to `problems/<day>.json` in the data repo, with a 15-second banner. Next: F4, the server reads them.*
 
 *Written 2026-10-09, starting from version 0.10.2. Background: [HOW-IT-WORKS.md](../HOW-IT-WORKS.md), [ORION.md](../ORION.md), `agent/NOTES.md`, `agent/poll.sh`.*
 

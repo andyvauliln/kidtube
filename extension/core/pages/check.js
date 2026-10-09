@@ -106,7 +106,7 @@
     const box = document.getElementById('reports');
     box.replaceChildren(...[...reports].reverse().map((r) => {
       const d = mk('div', null, 'report');
-      d.append(mk('h3', `❌ ${r.check}${r.count > 1 ? ` (×${r.count})` : ''}`), mk('div', `${r.expect}`, 'muted'), mk('div', `Last: ${new Date(r.lastAt).toLocaleString()} · ${r.context?.profile?.mode ?? '?'} mode · ${r.context?.page?.url ?? 'background'}`, 'muted'));
+      d.append(mk('h3', `❌ ${r.check}${r.count > 1 ? ` (×${r.count})` : ''}`), mk('div', `${r.expect}`, 'muted'), mk('div', `Last: ${new Date(r.lastAt).toLocaleString()} · ${r.context?.profile?.mode ?? '?'} mode · ${r.context?.page?.url ?? 'background'} · ${(r.sent ?? 0) >= r.count ? `sent to the server ${r.sentAt ? new Date(r.sentAt).toLocaleTimeString() : ''}` : 'not sent yet'}`, 'muted'));
       const t = mk('table');
       for (const m of r.mismatch ?? []) {
         const tr = mk('tr');
@@ -134,6 +134,12 @@
     const text = JSON.stringify(reports, null, 2);
     try { await navigator.clipboard.writeText(text); document.getElementById('chkOut').textContent = `Copied ${reports.length} report(s).`; }
     catch { const ta = Object.assign(document.createElement('textarea'), { value: text }); ta.style.cssText = 'width:100%;height:12em'; document.getElementById('reports').prepend(ta); ta.select(); }
+  });
+  document.getElementById('sendReports').addEventListener('click', async () => {
+    const out = document.getElementById('chkOut');
+    out.textContent = 'Sending…';
+    try { const r = await ask({ type: 'sendChecks' }, 30000); out.textContent = r?.ok ? `Sent ${r.sent} report(s).` : (r?.error ?? 'No answer.'); } catch (e) { out.textContent = e.message; }
+    showChecks();
   });
   document.getElementById('clearReports').addEventListener('click', async () => { await ask({ type: 'clearChecks' }, 6000).catch(() => {}); showChecks(); });
 })();

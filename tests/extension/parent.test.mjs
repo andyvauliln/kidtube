@@ -390,6 +390,7 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
     const realNow = Date.now;
     Date.now = () => realNow() + 11 * 60000;
     try { assert.equal((await fromPage({ type: 'runStatus' })).state, 'late'); } finally { Date.now = realNow; }
+    await fromPage({ type: 'clearChecks' });   // its report (server.run) is about the moved clock, not a problem
     // The server worked on notes under its own id after the request: the tablet stops waiting.
     files['run-status.json'] = { json: { schemaVersion: 1, requestId: 'notes-x', state: 'done', message: 'ok', startedAt: new Date(Date.now() + 1000).toISOString(), finishedAt: new Date(Date.now() + 2000).toISOString() } };
     await fromPage({ type: 'sync' });

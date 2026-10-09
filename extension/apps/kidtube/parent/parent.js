@@ -38,6 +38,7 @@ async function showDock(fresh = false) {
   const v = version?.ok ? version : null;
   const ver = $('ver');
   ver.textContent = v ? `v${v.installed}` : '';
+  showProblems();
   ver.title = v?.latest ? `Newest: ${v.latest}` : 'Could not check for a newer version';
   if (!r?.ok) return;
   const working = r.state === 'queued' || r.state === 'running';
@@ -65,6 +66,26 @@ async function showDock(fresh = false) {
     if (now?.state === 'late' && before !== 'late') toast(now.message);
   }, 30000);
 }
+// The checks' reports (core/checks/): how many, and whether the server has them. A tap opens the details.
+async function showProblems() {
+  const c = await ask({ type: 'checks' });
+  const list = c?.reports ?? [];
+  const box = $('probs');
+  if (!list.length) return box.replaceChildren();
+  const sent = list.every((r) => (r.sent ?? 0) >= r.count);
+  const b = btn(`⚠ ${list.length} problem${list.length === 1 ? '' : 's'} · ${sent ? 'sent, waiting for a fix' : 'not sent yet'}`,
+    () => { window.open(chrome.runtime.getURL('core/pages/check.html'), '_blank'); }, 'small');
+  b.title = list.map((r) => `${r.expect}: ${r.saw}`).join('\n').slice(0, 600);
+  box.replaceChildren(b);
+}
+// A new report, or one sent: at most once every 2 s (the results are written often).
+let problemsTimer = null;
+chrome.storage.onChanged.addListener((ch) => {
+  if (!ch.checkAlert && !ch.checks) return;
+  clearTimeout(problemsTimer);
+  problemsTimer = setTimeout(showProblems, 2000);
+});
+
 async function updateApp(v) {
   if (v.target === 'orion') {
     // The install page, not the .zip itself: opening it refreshes the copy of your connection (content/backup.js).

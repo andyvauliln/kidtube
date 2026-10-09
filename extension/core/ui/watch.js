@@ -6,6 +6,7 @@
 //   watchTaps(root, where)     the rule "no dead buttons": after a tap, something on the page must change within 5 s
 //   noAnswer(msg, ms)          the rule "the background answers": an ask that got nothing back
 //   step(s)                    something the parent or he did (a tap, a page shown), sent with a failure
+//   banner(alert)              a new report, for 15 s (pulled from the background where the parent is)
 // Uncaught errors in KidTube's own code are reported by themselves (the rule "no silent errors").
 (() => {
   if (globalThis.KidTubeWatch) return;
@@ -153,7 +154,57 @@
     pageError(`(async) ${e.reason?.message ?? e.reason}`, null, null, stack);
   });
 
+  // --- the banner: a new report, shown for 15 s where the parent is (the background says no in kid mode) ----------
+  const BANNER_MS = 15000;
+  const BANNER_CSS = `
+    :host { all: initial; }
+    .b { position: fixed; top: 12px; left: 50%; transform: translateX(-50%); width: min(560px, calc(100vw - 24px)); box-sizing: border-box;
+      background: #fff8e1; color: #3e2f00; border: 1px solid #f0c36d; border-radius: 14px; box-shadow: 0 8px 28px rgba(0,0,0,.22);
+      padding: 12px 14px 14px; font: 14px/1.4 Roboto, system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; }
+    b { display: block; font-size: 15px; margin-bottom: 2px; }
+    .saw { color: #6b5500; font-size: 13px; word-break: break-word; }
+    .sent { margin-top: 6px; font-weight: 500; }
+    .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 8px; }
+    button { font: inherit; font-weight: 500; border: 0; border-radius: 16px; height: 32px; padding: 0 14px; cursor: pointer; background: #f3e2b3; color: inherit; }
+    .bar { position: absolute; left: 0; bottom: 0; height: 3px; background: #e0a800; animation: t ${BANNER_MS}ms linear forwards; }
+    @keyframes t { from { width: 100%; } to { width: 0; } }`;
+  function banner(a) {
+    const host = document.createElement('div');
+    host.style.cssText = 'position:fixed!important;inset:0 0 auto 0!important;z-index:2147483647!important;display:block!important';
+    const root = host.attachShadow({ mode: 'closed' });
+    const mk = (tag, cls, text) => { const n = document.createElement(tag); if (cls) n.className = cls; if (text != null) n.textContent = text; return n; };
+    const box = mk('div', 'b');
+    box.setAttribute('role', 'alert');
+    const details = mk('button', '', 'Details');
+    details.addEventListener('click', () => { window.open(chrome.runtime.getURL('core/pages/check.html'), '_blank'); });
+    const close = mk('button', '', 'Close');
+    const row = mk('div', 'row');
+    row.append(details, close);
+    box.append(mk('b', '', `⚠ Something did not work: ${a.expect}`), mk('div', 'saw', String(a.saw ?? '').slice(0, 220)),
+      mk('div', 'sent', a.willSend ? 'The report goes to the server now. A fix comes as a new version.' : 'The report is saved on this tablet. Connect GitHub to send it to the server.'),
+      row, mk('div', 'bar'));
+    const style = mk('style', '', BANNER_CSS);
+    root.append(style, box);
+    const remove = () => host.remove();
+    close.addEventListener('click', remove);
+    setTimeout(remove, BANNER_MS);
+    (document.body || document.documentElement).append(host);
+  }
+  let asking = false;
+  function pullAlert() {
+    if (asking || location.href.startsWith(`${base}core/pages/check.html`)) return;
+    asking = true;
+    try {
+      chrome.runtime.sendMessage({ type: 'checkAlert' }, (r) => { void chrome.runtime.lastError; asking = false; if (r?.alert) banner(r.alert); });
+    } catch { asking = false; }
+  }
+  // Only the top page asks (a page's frames would show it twice).
+  if (window.top === window) {
+    setTimeout(pullAlert, 1500);
+    try { chrome.storage.onChanged.addListener((ch) => { if (ch.checkAlert?.newValue && !ch.checkAlert.newValue.shown) pullAlert(); }); } catch {}
+  }
+
   if (ownPage) step({ kind: 'page', label: document.title });
   addEventListener('hashchange', () => step({ kind: 'page', label: location.hash }));
-  globalThis.KidTubeWatch = { check, watchTaps, noAnswer, step, send, Expect };
+  globalThis.KidTubeWatch = { check, watchTaps, noAnswer, step, send, Expect, banner };
 })();

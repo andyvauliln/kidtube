@@ -62,6 +62,14 @@ Name the value in `what` (`settings.mode`, `answer.error`), not a feeling. Put w
   "steps": [{ "at": "…", "kind": "message", "type": "setMode", "ok": true }, { "kind": "tap", "label": "Switch", "page": true }] }
 ```
 
-The same fingerprint within 6 hours counts up (`count`) instead of a new report. The reports stay on the tablet
-for now: **Check this browser** shows them and copies them. Sending them to the server comes next
-(`docs/plans/FAST-FIX.md`, phase F3).
+The same fingerprint within 6 hours counts up (`count`) instead of a new report.
+
+## Where a report goes
+
+1. **The data repo**, 10 s after it is made and with every sync: `problems/<YYYY-MM-DD>.json` at the top of the repo
+   (not in a profile's folder: the apps header has no profile). One entry per `reportId`; a repeat updates its entry.
+   No GitHub token: it waits on the tablet. The server reads these files (`docs/plans/FAST-FIX.md`, F4).
+2. **A banner for 15 seconds** (`core/ui/watch.js`), on the first page where the parent is: parent mode, or the
+   unlocked apps header. Never in kid mode: he does not see it, the parent sees it the next time.
+3. **The parent page's bottom bar**: "⚠ N problems · sent, waiting for a fix" (or "not sent yet"); a tap opens
+   **Check this browser** with every report, **Send the reports now**, **Copy** and **Clear**.

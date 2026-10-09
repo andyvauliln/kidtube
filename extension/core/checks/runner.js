@@ -7,6 +7,8 @@
 // and sync.js report through it, so there is no import cycle.
 import { TARGET } from '../lib/target.js';
 import { Expect, redact, safeUrl, fingerprint, clip } from './kit.js';
+import { getRepoFile, putRepoFile } from '../lib/github.js';
+import { DEFAULT_REPO } from '../background/constants.js';
 
 // --- what is registered ---------------------------------------------------------------------------------------
 const START = [];        // { id, area, expect, code, net, run(t, ctx) }
@@ -23,7 +25,8 @@ export const actionChecks = () => ({ ...ACTIONS });
 
 // --- the results, kept in chrome.storage.local "checks" -----------------------------------------------------------
 // results: the newest result of each check. reports: the failures, newest last (one per fingerprint; a repeat
-// counts up). start: the last run of the start checks. seen: when parent mode last showed the reports.
+// counts up; sent: the count GitHub has). start: the last run of the start checks. seen: when parent mode last showed
+// the reports. device: this tablet's id in the reports.
 const MAX_REPORTS = 30, REPEAT_MS = 6 * 3600000;
 let book = null, saving = null;
 async function load() {
@@ -123,19 +126,73 @@ async function addReport(b, r, res, { sender, pageSteps = [], page = null } = {}
   if (old && Date.now() - Date.parse(old.lastAt) < REPEAT_MS) {
     old.count += 1;
     old.lastAt = res.at;
+    sendSoon();
     return old;
   }
   await stepsLoaded;
   const context = await contextNow(sender);
   if (page) context.page = { ...(context.page ?? {}), ...redact(page) };
+  b.device ??= `tab-${crypto.randomUUID().slice(0, 8)}`;
   const report = {
-    type: 'problem', fingerprint: fp, check: r.id, kind: r.kind, area: r.area, auto: true,
+    type: 'problem', reportId: crypto.randomUUID(), deviceId: b.device, fingerprint: fp, check: r.id, kind: r.kind, area: r.area, auto: true,
     expect: r.expect, saw: res.saw, mismatch: res.mismatch, evidence: redact(r.evidence ?? {}), code: r.code ?? [],
     firstAt: res.at, lastAt: res.at, count: 1, context,
     steps: [...stepsNow(), ...redact(pageSteps).map((s) => ({ ...s, page: true }))].sort((a, x) => String(a.at).localeCompare(String(x.at))).slice(-MAX_STEPS),
   };
   b.reports = [...b.reports.filter((x) => x !== old), report].slice(-MAX_REPORTS);
+  // The banner (core/ui/watch.js): a page where the parent is shows it for 15 s, once (never in kid mode).
+  chrome.storage.local.set({ checkAlert: { reportId: report.reportId, at: report.firstAt, check: report.check, expect: report.expect, saw: report.saw, shown: false } }).catch(() => {});
+  sendSoon();
   return report;
+}
+
+// --- sending the reports to the data repo: problems/<day>.json at its top, one file for every tablet and profile ----
+// (the apps header has no profile, and a problem can come before one exists). The server reads them (agent/poll.sh).
+let sendTimer = null, sendRun = null;
+export function sendSoon(ms = 10000) { clearTimeout(sendTimer); sendTimer = setTimeout(() => sendReports().catch(() => {}), ms); }
+export function sendReports() {
+  sendRun ??= (async () => {
+    const b = await load();
+    const todo = b.reports.filter((r) => (r.sent ?? 0) < r.count);
+    if (!todo.length) return { ok: true, sent: 0 };
+    const { settings = {} } = await chrome.storage.local.get('settings');
+    if (!settings.token) return { ok: false, error: 'No GitHub token: the reports stay on this tablet.' };
+    const loc = { repo: settings.repo || DEFAULT_REPO, base: '' };
+    const days = {};
+    for (const r of todo) (days[r.firstAt.slice(0, 10)] ??= []).push(r);
+    let sent = 0;
+    for (const [day, list] of Object.entries(days)) {
+      const path = `problems/${day}.json`;
+      for (let attempt = 0; attempt < 3; attempt++) {
+        const cur = await getRepoFile(loc, settings.token, path);
+        const file = cur?.json?.schemaVersion === 1 ? cur.json : { schemaVersion: 1, date: day, reports: [] };
+        for (const r of list) {
+          const { sent: _s, sentAt: _a, ...out } = r;
+          const i = file.reports.findIndex((x) => x.reportId === r.reportId);
+          if (i >= 0) file.reports[i] = out; else file.reports.push(out);
+        }
+        file.updatedAt = new Date().toISOString();
+        if (await putRepoFile(loc, settings.token, path, file, cur?.sha, `problems ${day}: ${list.map((r) => r.check).join(', ')}`.slice(0, 200))) {
+          const at = new Date().toISOString();
+          for (const r of list) { r.sent = r.count; r.sentAt = at; }
+          sent += list.length;
+          break;
+        }
+      }
+    }
+    save();
+    return { ok: true, sent };
+  })().finally(() => { sendRun = null; });
+  return sendRun;
+}
+
+// The banner's report, once: null when there is none, or it was shown already. The caller decides who may see it.
+export async function takeAlert() {
+  const { checkAlert } = await chrome.storage.local.get('checkAlert');
+  if (!checkAlert || checkAlert.shown) return null;
+  await chrome.storage.local.set({ checkAlert: { ...checkAlert, shown: true } });
+  const { settings = {} } = await chrome.storage.local.get('settings');
+  return { ...checkAlert, willSend: !!settings.token };
 }
 
 // Runs one check with its own time limit (a browser API that never answers is a failure, not a hang).
@@ -190,7 +247,7 @@ const AREA = (type) => (HEADER_TYPES.has(type) ? 'header' : 'background');
 const from = (sender) => (sender?.url ? safeUrl(sender.url) : sender?.tab ? `content ${safeUrl(sender.tab.url)}` : 'unknown');
 
 export async function observe(type, msg, ctx, run) {
-  if (type === 'checkResult' || type === 'checks' || type === 'runChecks') return run();
+  if (['checkResult', 'checks', 'runChecks', 'checkAlert', 'sendChecks', 'clearChecks'].includes(type)) return run();
   if (ctx.sender?.tab?.id != null && !String(ctx.sender.url ?? '').startsWith(chrome.runtime.getURL(''))) heardFrom.set(ctx.sender.tab.id, Date.now());
   const def = ACTIONS[type];
   let before = null;

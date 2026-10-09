@@ -27,6 +27,8 @@ header { position: sticky; top: 0; z-index: 5; background: var(--card); border-b
 .run { display: inline-flex; min-width: 0; }
 .run button { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .run button.working { color: var(--accent); font-weight: 600; opacity: 1; }
+.probs { display: inline-flex; min-width: 0; }
+.probs button { color: #8a5a00; background: #fff3cd; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
 .grow { flex: 1; }
 
 /* --- type, buttons, fields --------------------------------------------------------------------------------- */

@@ -7,7 +7,7 @@ import { withState, dataLocation } from './store.js';
 import { applySiteRules } from './sites.js';
 import { partOf } from './apps.js';
 import { Expect } from '../checks/kit.js';
-import { probe } from '../checks/runner.js';
+import { probe, sendReports } from '../checks/runner.js';
 
 // profile.json: who this folder belongs to. The helper on the server finds new profiles by it.
 async function writeProfileFile(loc, token) {
@@ -81,6 +81,7 @@ async function doSync() {
     t.eq('sync errors', [], status.errors);
     probe('gh.sync', { area: 'sync', expect: 'A sync with GitHub ends without errors', code: ['core/background/sync.js doSync', 'apps/kidtube/background/sync.js syncKidTube'] }, t).catch(() => {});
   }
+  if (token) sendReports().catch(() => {});   // reports that could not go before (offline, no token yet)
   return status;
 }
 
