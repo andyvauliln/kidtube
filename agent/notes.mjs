@@ -6,7 +6,8 @@
 //   node agent/notes.mjs done FILE [--data DIR]            → adds them to notes-done.json in the data folder: the tablet
 //                                                            deletes those notes from its lists (it keeps no history)
 // A note: a message or a note about a list / Settings (wish), a note about a video (parentNote with a comment),
-// a standing change to the helper's prompt (prompt add), a note on a context document (context).
+// a standing change to the helper's prompt (prompt add), a note on a context document (context). A note keeps the
+// context the parent attached on the tablet (context.screen, context.app).
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -38,7 +39,7 @@ export function allNotes(dataDir) {
   for (const f of readdirSync(dir).filter((n) => /^\d{4}-\d{2}-\d{2}\.json$/.test(n)).sort()) {
     for (const e of readJson(join(dir, f), {}).events ?? []) {
       const n = noteOf(e);
-      if (n) out.push({ eventId: e.eventId, at: e.at, ...n, ...(n.videoId && title(n.videoId) ? { videoTitle: title(n.videoId) } : {}) });
+      if (n) out.push({ eventId: e.eventId, at: e.at, ...n, ...(n.videoId && title(n.videoId) ? { videoTitle: title(n.videoId) } : {}), ...(e.context ? { context: e.context } : {}) });
     }
   }
   return out.sort((a, b) => a.at.localeCompare(b.at));

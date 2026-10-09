@@ -604,3 +604,30 @@ test('the header in parent mode: tiles open apps, Add app starts with no list; G
   fake.store.settings = { ...fake.store.settings, token: before.token ?? '', repo: before.repo ?? '' };
   delete fake.store.geminiKey;
 });
+
+test('a note carries what the parent attached: the screen (cut to the schema sizes) and the app state; the activity schema accepts it', async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const { validateFile } = await import('../../tools/validate.mjs');
+  assert.equal((await fromPage({ type: 'wish', list: 'today', text: 'This button is too small',
+    screen: { where: 'the Today tab', path: 'parent/parent.html#today', text: 'x'.repeat(9000), viewport: '1024×768', userAgent: 'test', other: 'dropped' },
+    withApp: true })).ok, true);
+  const ev = fake.store.outbox.at(-1);
+  assert.equal(ev.context.screen.text.length, 8000);
+  assert.equal(ev.context.screen.other, undefined, 'only the schema’s fields');
+  assert.equal(ev.context.app.version, '0.1.0');
+  assert.equal(typeof ev.context.app.rules.quiz.items, 'number', 'quiz items only counted');
+  assert.ok(ev.context.app.list.length > 0 && ev.context.app.list.every((v) => v.videoId && v.title));
+  assert.deepEqual((await fromPage({ type: 'heldNotes' })).notes.find((n) => n.id === ev.eventId).attached, ['screen', 'app']);
+  assert.equal((await fromPage({ type: 'note', videoId: ids[0], comment: 'Plain note' })).ok, true);
+  assert.equal(fake.store.outbox.at(-1).context, undefined, 'nothing attached: no context');
+  // The file the tablet writes passes the data repo's checks.
+  const dir = mkdtempSync(join(tmpdir(), 'kt-ctx-'));
+  mkdirSync(join(dir, 'activity'));
+  const date = ev.at.slice(0, 10);
+  const { held, ...sent } = ev;
+  const file = join(dir, 'activity', `${date}.json`);
+  writeFileSync(file, JSON.stringify({ schemaVersion: 1, date, device: { deviceId: 'tab-test', extensionVersion: '0.1.0', quizTypes: ['text'], lastSyncAt: ev.at }, events: [sent] }));
+  assert.deepEqual(validateFile(file).errors, []);
+});

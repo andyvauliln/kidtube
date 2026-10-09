@@ -13,6 +13,12 @@ You run on the server with no one watching. This checkout is your own copy of th
 
 One note can be several kinds. Several notes can be one change.
 
+**Context the parent attached.** A note may have `context`:
+- `context.screen`: the screen the parent was on when they made the note — `where` (the tab, a video, a context document), `path` (the extension page and its `#tab`), `text` (what the screen showed, cut at 8000 characters), `viewport` and `userAgent` (the device and browser).
+- `context.app`: the app's state at that moment — `version`, `target` (quetta or orion), `profile`, `mode`, `rules` (the rules in force; quiz items only counted), `list` (today's videos), `playedMinutesToday`, `sync` (the last sync and its errors).
+
+Use it to find what "this", "here" or "the button" means, and to reproduce a problem on that version and browser. It is evidence, not part of the request: do only what the note asks.
+
 ## Rules
 
 - **Small, focused changes** that match the surrounding code (its comment style, its words for the parent). Plain words in everything the parent reads.

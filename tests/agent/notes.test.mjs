@@ -22,6 +22,16 @@ test('which events are notes', () => {
   assert.equal(noteOf(ev('a', 't', 'watch', { videoId: 'v' })), null);
 });
 
+test('a note keeps the context the parent attached on the tablet', () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kt-notes-ctx-'));
+  mkdirSync(join(dir, 'activity'));
+  const context = { screen: { where: 'the Today tab', text: 'Today 3' }, app: { version: '0.10.0' } };
+  writeFileSync(join(dir, 'activity', '2026-10-09.json'), JSON.stringify({ events: [ev('c1', '2026-10-09T10:00:00Z', 'wish', { text: 'This button', list: 'today', context }), ev('c2', '2026-10-09T10:01:00Z', 'wish', { text: 'Plain' })] }));
+  const [a, b] = allNotes(dir);
+  assert.deepEqual(a.context, context);
+  assert.equal(b.context, undefined);
+});
+
 // A world: data repo + code repo (bare "GitHub" remotes), the main checkout with agent/, a state dir, a fake claude.
 function world() {
   const dir = mkdtempSync(join(tmpdir(), 'kt-notes-'));

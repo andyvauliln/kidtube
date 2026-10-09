@@ -11,7 +11,7 @@ import { visibleVideos } from '../lib/queue.js';
 import { loadBundled, effective, contextDocsOf } from './config.js';
 import { todayPlayed, lockNow, videoInfo, fullLang, newEvent, sessionUnlocked, endSession, markWatchedIfCounts,
   isOpenable, pickQuiz, openTalk } from './rules.js';
-import { heldNotes, dropHeld, noteVideo, wish, contextNote, promptNote, parentData, videoDetail, helperData, contextData, planChange, runView } from './parent.js';
+import { heldNotes, dropHeld, noteContext, noteVideo, wish, contextNote, promptNote, parentData, videoDetail, helperData, contextData, planChange, runView } from './parent.js';
 import { requestRun, saveRules } from './sync.js';
 
 const DEFAULT_LINES = {
@@ -187,10 +187,11 @@ export const HANDLERS = {
   }),
 
   // 👍 / 👎 / a note for the AI about one video (the 👍 goes to GitHub now; a note waits for ↻ Update data).
-  note: (msg) => withState((s) => noteVideo(s, msg)).then((r) => { if (r.ok) sync(); return r; }),
+  // Every note can carry what the parent attached: screen (the page's snapshot) and withApp (noteContext).
+  note: (msg) => withState(async (s) => noteVideo(s, msg, await noteContext(s, msg))).then((r) => { if (r.ok) sync(); return r; }),
 
   // "message to the helper", or a note for the AI about a whole list.
-  wish: (msg) => withState((s) => wish(s, msg)),
+  wish: (msg) => withState(async (s) => wish(s, msg, await noteContext(s, msg))),
 
   // Parent screens: open the video in this tab, no rules (parent mode).
   watchHere: (msg, { tabId }) => {
@@ -208,7 +209,7 @@ export const HANDLERS = {
   helperData: () => withState((s) => helperData(s)),
 
   // Add a standing instruction for the helper, or remove one (the Prompt tab).
-  promptNote: (msg) => withState((s) => promptNote(s, msg)).then((r) => { if (r.ok) sync(); return r; }),
+  promptNote: (msg) => withState(async (s) => promptNote(s, msg, await noteContext(s, msg))).then((r) => { if (r.ok) sync(); return r; }),
 
   // Parent mode → Update: send everything, then ask the server to run the helper now.
   runHelper: () => requestRun(),
@@ -218,7 +219,7 @@ export const HANDLERS = {
   contextData: () => withState((s) => contextData(s)),
   contextNote: async (msg) => {
     const docs = await contextDocsOf();
-    return withState((s) => contextNote(s, msg, docs)).then((r) => { if (r.ok) sync(); return r; });
+    return withState(async (s) => contextNote(s, msg, docs, await noteContext(s, msg))).then((r) => { if (r.ok) sync(); return r; });
   },
 
   // The notes card: every note for the AI still on this tablet (Apply notes sends them).

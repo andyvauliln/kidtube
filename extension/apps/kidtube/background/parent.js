@@ -5,7 +5,8 @@ import { localParts } from '../../../core/lib/time.js';
 import { isVideoId, thumbUrl } from '../../../core/lib/youtube.js';
 import { appOf } from '../../registry.js';
 import { PLAN_ACTIONS, applyPlan, applyPlanEvent, entryFromRecord, applyPromptNotes } from '../lib/plan.js';
-import { parentMode } from '../../../core/background/store.js';
+import { TARGET } from '../../../core/lib/target.js';
+import { parentMode, folderShown } from '../../../core/background/store.js';
 import { effective } from './config.js';
 import { newEvent, fullLang, todayPlayed } from './rules.js';
 
@@ -38,6 +39,7 @@ export async function heldNotes(s) {
     id: e.eventId, at: e.at, type: e.type, text: e.comment ?? e.text,
     ...(e.list ? { list: e.list } : {}), ...(e.doc ? { doc: e.doc } : {}),
     ...(e.videoId ? { videoId: e.videoId, title: titleOf(e.videoId) } : {}),
+    ...(e.context ? { attached: Object.keys(e.context) } : {}),
   }));
   return { ok: true, notes };
 }
@@ -56,14 +58,44 @@ export function dropHeld(s, id) {
   return { ok: true, removed: gone.size };
 }
 
-// 👍 / 👎 / a note for the AI about one video.
-export function noteVideo(s, msg) {
+// What the parent attached to a note (the notes card's This screen / App data), cut to the sizes in
+// schemas/activity.schema.json noteContext. msg.screen: the page's own snapshot; msg.withApp: the app's state now.
+// null when nothing is attached.
+export async function noteContext(s, msg) {
+  const out = {};
+  const sc = msg.screen && typeof msg.screen === 'object' ? msg.screen : null;
+  if (sc) {
+    const cut = { where: 200, title: 200, path: 300, text: 8000, viewport: 40, userAgent: 400 };
+    out.screen = Object.fromEntries(Object.entries(cut).filter(([k]) => typeof sc[k] === 'string' && sc[k]).map(([k, n]) => [k, sc[k].slice(0, n)]));
+  }
+  if (msg.withApp) out.app = await appState(s);
+  return Object.keys(out).length ? out : null;
+}
+
+// The app's state for a note: version and build, profile, mode, the rules in force (quiz items only counted),
+// today's list, time played, and how the last sync went.
+async function appState(s) {
+  const { config, queue } = await effective(s);
+  const { quiz, presenter, ...rules } = config;
+  const { phrases, ...friend } = presenter ?? {};
+  return {
+    version: chrome.runtime.getManifest().version, target: TARGET, profile: await folderShown(), mode: parentMode(s) ? 'parent' : 'kid',
+    rules: { ...rules, presenter: friend, quiz: quiz ? { ...quiz, items: Object.keys(quiz.items ?? {}).length } : null },
+    list: queue.videos.slice(0, 20).map((v) => ({ videoId: v.videoId, title: v.title, ...(v.required ? { required: true } : {}), ...(s.watched[v.videoId] ? { watched: true } : {}) })),
+    playedMinutesToday: Math.round(todayPlayed(s, config) / 60),
+    sync: { at: s.syncStatus?.at ?? null, errors: (s.syncStatus?.errors ?? []).slice(0, 5) },
+    waitingEvents: s.outbox.length,
+  };
+}
+
+// 👍 / 👎 / a note for the AI about one video. ctx: noteContext's answer.
+export function noteVideo(s, msg, ctx = null) {
   if (!isVideoId(msg.videoId)) return { ok: false };
   const ev = newEvent('parentNote', { videoId: msg.videoId });
   if (typeof msg.liked === 'boolean') ev.liked = msg.liked;
   if (msg.comment) ev.comment = String(msg.comment).trim().slice(0, 2000);
   if (ev.liked === undefined && !ev.comment) return { ok: false };
-  if (ev.comment) ev.held = true;   // a note waits on the tablet until ↻ Update data
+  if (ev.comment) { ev.held = true; if (ctx) ev.context = ctx; }   // a note waits on the tablet until ↻ Update data
   s.outbox.push(ev);
   s.notes ??= {};
   if (ev.comment) addNote(((s.notes.videos ??= {})[msg.videoId] ??= []), ev);
@@ -72,22 +104,22 @@ export function noteVideo(s, msg) {
 }
 
 // A message to the helper, or a note for the AI about a whole list (list: today | planned | history | settings).
-export function wish(s, msg) {
+export function wish(s, msg, ctx = null) {
   const text = String(msg.text ?? '').trim().slice(0, 2000);
   if (!text) return { ok: false };
   const list = ['today', 'planned', 'history', 'settings'].includes(msg.list) ? msg.list : null;
-  const ev = { ...newEvent('wish', { text, ...(list ? { list } : {}) }), held: true };
+  const ev = { ...newEvent('wish', { text, ...(list ? { list } : {}), ...(ctx ? { context: ctx } : {}) }), held: true };
   s.outbox.push(ev);
   if (list) addNote((((s.notes ??= {}).lists ??= {})[list] ??= []), ev);
   return { ok: true };
 }
 
 // A note on a context document (parent mode → Context). docs: the current app's document ids.
-export function contextNote(s, msg, docs) {
+export function contextNote(s, msg, docs, ctx = null) {
   if (!parentMode(s)) return { ok: false };
   const text = String(msg.text ?? '').trim().slice(0, 2000);
   if (!text || !docs.includes(msg.doc)) return { ok: false };
-  const ev = { ...newEvent('context', { doc: msg.doc, text }), held: true };
+  const ev = { ...newEvent('context', { doc: msg.doc, text, ...(ctx ? { context: ctx } : {}) }), held: true };
   s.outbox.push(ev);
   ((s.notes ??= {}).contextNotes ??= []).push(ev);
   s.notes.contextNotes = s.notes.contextNotes.slice(-100);
@@ -95,13 +127,13 @@ export function contextNote(s, msg, docs) {
 }
 
 // Adds a standing instruction for the helper, or removes one (the Prompt tab).
-export function promptNote(s, msg) {
+export function promptNote(s, msg, ctx = null) {
   const text = String(msg.text ?? '').trim().slice(0, 2000);
   if (!['add', 'remove'].includes(msg.action)) return { ok: false };
   if (msg.action === 'add' && !text) return { ok: false };
   if (msg.action === 'remove' && !/^[A-Za-z0-9-]{8,64}$/.test(msg.noteId ?? '')) return { ok: false };
   const ev = newEvent('prompt', { action: msg.action });
-  Object.assign(ev, msg.action === 'add' ? { noteId: ev.eventId, text, held: true } : { noteId: msg.noteId });
+  Object.assign(ev, msg.action === 'add' ? { noteId: ev.eventId, text, held: true, ...(ctx ? { context: ctx } : {}) } : { noteId: msg.noteId });
   s.outbox.push(ev);
   ((s.notes ??= {}).promptOps ??= []).push(ev);
   return { ok: true, noteId: ev.noteId };

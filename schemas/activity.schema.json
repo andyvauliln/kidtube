@@ -225,6 +225,9 @@
                 "comment": {
                   "type": "string",
                   "maxLength": 2000
+                },
+                "context": {
+                  "$ref": "#/$defs/noteContext"
                 }
               }
             }
@@ -327,6 +330,9 @@
                     "settings"
                   ],
                   "description": "a parent's note for the AI about this list (parent mode)"
+                },
+                "context": {
+                  "$ref": "#/$defs/noteContext"
                 }
               }
             }
@@ -422,6 +428,9 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 2000
+                },
+                "context": {
+                  "$ref": "#/$defs/noteContext"
                 }
               },
               "allOf": [
@@ -474,11 +483,60 @@
                   "type": "string",
                   "minLength": 1,
                   "maxLength": 2000
+                },
+                "context": {
+                  "$ref": "#/$defs/noteContext"
                 }
               }
             }
           }
         ]
+      }
+    }
+  },
+  "$defs": {
+    "noteContext": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "what the parent attached to a note for the AI (the notes card's This screen / App data): the screen they saw, and the app's state at that moment",
+      "properties": {
+        "screen": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "where": {
+              "type": "string",
+              "maxLength": 200,
+              "description": "the screen: a tab, a video, a context document, the prompt"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 200
+            },
+            "path": {
+              "type": "string",
+              "maxLength": 300,
+              "description": "the extension page and its #tab"
+            },
+            "text": {
+              "type": "string",
+              "maxLength": 8000,
+              "description": "the visible text of the screen, cut at 8000 characters"
+            },
+            "viewport": {
+              "type": "string",
+              "maxLength": 40
+            },
+            "userAgent": {
+              "type": "string",
+              "maxLength": 400
+            }
+          }
+        },
+        "app": {
+          "type": "object",
+          "description": "version, browser build, profile, mode, the rules in force (without quiz items), today's list, sync status"
+        }
       }
     }
   }

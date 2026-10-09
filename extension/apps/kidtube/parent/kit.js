@@ -62,9 +62,25 @@ export async function runNow() {
 // tablet, from every tab, with ✕ and Clear all. Apply notes sends them all to the AI (the same as ↻ Update data).
 // The words are written down by Groq's Whisper, Gemini (gemini-3.5-transcribe first) or OpenRouter (Settings → keys). Only without either key
 // the browser's own speech recognition writes them, and the card says so.
+// Two switches in the card attach context to the next notes, so the AI on the server sees what the parent means:
+// This screen (the page's visible text, its tab, the screen size and browser) and App data (the background adds the
+// version, the rules, today's list and the sync status). They stay as set on this tablet.
 const LONG_NOTE_MINUTES = 15;   // the browser's recognition
 const CLOUD_NOTE_MINUTES = 5;   // Gemini / OpenRouter: 5 min of 16 kHz WAV is ~13 MB sent, under Gemini's 20 MB
 const TYPE_LABEL = { today: 'Today', planned: 'Planned', history: 'History', settings: 'Settings' };
+const ATTACH_KEY = 'kidtube.noteAttach';
+const loadAttach = () => { try { return { screen: false, app: false, ...JSON.parse(localStorage.getItem(ATTACH_KEY) ?? '{}') }; } catch { return { screen: false, app: false }; } };
+
+// The screen as the parent sees it now, for a note's This screen. at: where() when the note started.
+function snapshot(at) {
+  const view = document.getElementById('view') ?? document.querySelector('main') ?? document.body;
+  const where = at.videoId ? `video ${at.videoId}` : at.doc ? `context document ${at.doc}` : at.prompt ? 'the Prompt tab' : `the ${TYPE_LABEL[at.list] ?? 'Settings'} tab`;
+  return {
+    where, title: document.title, path: `${location.pathname.replace(/^\/+/, '')}${location.hash}`,
+    text: (view.innerText ?? '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 8000),
+    viewport: `${innerWidth}×${innerHeight}`, userAgent: navigator.userAgent,
+  };
+}
 
 // where(): { list } | { videoId } | { doc, docName } | { prompt: true } — what the screen shows now.
 // docNames: context document id → its name, for the card.
@@ -79,14 +95,17 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
   let notes = [];
   // On a fresh page the waiting notes fold into one line; a recording, a typed note or Show open the list.
   let expanded = false;
+  const attach = loadAttach();   // { screen, app }: what goes with the next notes
 
   const label = (n) => n.videoId ? `Video · ${n.title || n.videoId}` : n.doc ? `Context · ${docNames[n.doc] ?? n.doc}`
     : n.type === 'prompt' ? 'Prompt' : TYPE_LABEL[n.list] ?? 'Message';
   const save = async (text, at = where()) => {
-    const r = at.videoId ? await ask({ type: 'note', videoId: at.videoId, comment: text })
-      : at.doc ? await ask({ type: 'contextNote', doc: at.doc, text })
-      : at.prompt ? await ask({ type: 'promptNote', action: 'add', text })
-      : await ask({ type: 'wish', list: at.list ?? 'settings', text });
+    // The screen where the note started (a recording took it then), and the app's state now.
+    const extra = { ...(attach.screen ? { screen: at.shot ?? snapshot(at) } : {}), ...(attach.app ? { withApp: true } : {}) };
+    const r = at.videoId ? await ask({ type: 'note', videoId: at.videoId, comment: text, ...extra })
+      : at.doc ? await ask({ type: 'contextNote', doc: at.doc, text, ...extra })
+      : at.prompt ? await ask({ type: 'promptNote', action: 'add', text, ...extra })
+      : await ask({ type: 'wish', list: at.list ?? 'settings', text, ...extra });
     if (!r?.ok) { toast('Could not save the note. Is parent mode still on?'); return false; }
     notice = '';
     expanded = true;
@@ -102,6 +121,26 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
   typed.rows = 1;
   typed.placeholder = 'Or type a note…';
   const addTyped = btn('Add', async () => { const t = typed.value.trim(); if (t && (await save(t))) typed.value = ''; }, 'small');
+
+  // The two switches: pressed = attached to the next notes.
+  function attachSwitch(key, text, title) {
+    const b = el('button', 'small attach', text);
+    b.type = 'button';
+    b.title = title;
+    const show = () => { b.setAttribute('aria-pressed', String(attach[key])); b.classList.toggle('on', attach[key]); };
+    b.addEventListener('click', (e) => {
+      e.stopPropagation();
+      attach[key] = !attach[key];
+      try { localStorage.setItem(ATTACH_KEY, JSON.stringify(attach)); } catch {}
+      show();
+    });
+    show();
+    return b;
+  }
+  const attachRow = el('div', 'attachrow');
+  attachRow.append(el('span', 'muted', 'Send with the note:'),
+    attachSwitch('screen', '📄 This screen', 'Attach what this screen shows (its text, the tab, the screen size), so the AI sees what you mean'),
+    attachSwitch('app', '⚙️ App data', 'Attach the app’s state: version, rules, today’s list, sync status'));
 
   async function draw() {
     const r = await ask({ type: 'heldNotes' });
@@ -146,6 +185,7 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
         const li = el('li');
         const body = el('div');
         body.append(el('span', 'nwhere', label(n)), el('span', '', n.text));
+        if (n.attached?.length) body.append(el('span', 'nattached', ['screen', 'app'].filter((a) => n.attached.includes(a)).map((a) => (a === 'screen' ? '📄 screen' : '⚙️ app data')).join(' · ')));
         const x = btn('✕', async () => {
           if ((await ask({ type: 'dropNote', id: n.id }))?.ok) { await draw(); hooks.afterRun(); } else toast('Already sent: it can’t be removed now.');
         }, 'ghost small');
@@ -157,7 +197,7 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
     }
     const row = el('div', 'noterow');
     row.append(typed, addTyped);
-    parts.push(row);
+    parts.push(row, attachRow);
     if (notes.length) {
       const acts = el('div', 'ncacts');
       acts.append(
@@ -205,6 +245,7 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
   async function record() {
     const lang = navigator.language || 'en-US';
     const at = where();      // the screen where the note started, even if you move on while it records
+    if (attach.screen) at.shot = snapshot(at);
     const keys = await listenKeys();
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     notice = '';
