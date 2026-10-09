@@ -2,6 +2,13 @@
 
 Newest first. Each version is built from `extension/` with `build/build-orion.mjs` (see [ORION.md](https://github.com/andyvauliln/kidtube/blob/main/docs/ORION.md)).
 
+## 0.10.2 (2026-10-09)
+
+- **Switch account works.** After you sign in to another Google account, YouTube's home waits until KidTube sees the new account. Then the header shows the new email and that account's data. The account menu shows when YouTube was last checked.
+- **An apps button.** The round button on the first header row shows and hides the apps row. The tablet remembers your choice.
+- **A YouTube tile.** The first tile in the apps row opens plain YouTube with no app running.
+- **A bar at the bottom of the parent page.** Left: the version and one **↻ Update** button. It sends your notes, asks for new data and, when a newer app exists, opens the install page. Middle: Parent | Kid. Right: 🎤.
+
 ## 0.10.1 (2026-10-09)
 
 - **Kid goes to his list.** Kid in parent mode now opens his list on YouTube. Before, it opened the PIN page.
