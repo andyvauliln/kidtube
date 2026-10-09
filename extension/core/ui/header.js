@@ -38,6 +38,8 @@
     .btn.primary:not(:disabled):hover { opacity: .85; background: var(--ink); }
     .btn.signin { background: transparent; border: 1px solid var(--line); color: var(--blue); padding: 0 14px 0 10px; }
     .btn.signin:hover { background: var(--blue-soft); border-color: transparent; }
+    .round { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--muted); }
+    .round:hover, .round[aria-pressed=true] { background: var(--soft); color: var(--ink); }
     .who { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px 0 4px; border-radius: 20px; min-width: 0; }
     .who:hover, .who[aria-expanded=true] { background: var(--soft); }
     .who .email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
@@ -54,7 +56,7 @@
     .app.on .icon { box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--accent); }
     .app .name { font-size: 12px; color: var(--muted); max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .app.on .name { color: var(--ink); font-weight: 600; }
-    .empty { color: var(--muted); padding: 0 4px; }
+    .empty { color: var(--muted); padding: 0 4px; align-self: center; }
     .card { margin: 0 16px 12px; padding: 16px; border: 1px solid var(--line); border-radius: 12px;
       display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 12px 16px; align-items: start; }
     .card h2 { grid-column: 1 / -1; margin: 0; font-size: 16px; font-weight: 600; }
@@ -131,6 +133,8 @@
     upload: 'M5 20h14v-2H5v2zm4-4h6v-6h4l-7-7-7 7h4v6z',
     plus: 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z',
     caret: 'M7 10l5 5 5-5z',
+    grid: 'M4 4h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 10h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 16h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4z',
+    youtube: 'M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4a2.5 2.5 0 0 0-1.8 1.8C2 8.8 2 12 2 12s0 3.2.4 4.8a2.5 2.5 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8c.4-1.6.4-4.8.4-4.8s0-3.2-.4-4.8zM10 15V9l5.2 3z',
   };
   function logo() {
     const s = document.createElementNS(NS, 'svg');
@@ -191,7 +195,9 @@
     root.append(picker);
 
     let data = null, alive = true, busy = '', loading = false, again = null;
-    const ui = { menu: false, add: false, pick: null, github: false, repo: null, token: '', note: '', noteKind: '' };
+    const ui = { menu: false, add: false, pick: null, github: false, repo: null, token: '', note: '', noteKind: '', apps: true };
+    // The round apps button shows or hides the apps row; the choice stays on this tablet (headerApps).
+    chrome.storage.local.get('headerApps').then(({ headerApps }) => { if (headerApps === false) { ui.apps = false; draw(); } }).catch(() => {});
     const say = (text, kind = '') => { ui.note = text; ui.noteKind = kind; draw(); };
 
     // A refresh asked for while one is running is not dropped: it runs right after (the storage can change twice).
@@ -226,6 +232,9 @@
       if (r?.ok && r.url && !r.navigated) location.href = r.url;
     });
 
+    // The YouTube tile: plain YouTube, no app running (the apps header stays above it).
+    const plainYouTube = () => act('Opening…', { type: 'plainYouTube' }).then((r) => { if (r?.ok && r.url && !r.navigated) location.href = r.url; });
+
     async function connect() {
       const repo = (ui.repo ?? data.github.repo ?? '').trim();
       busy = 'Connecting…'; ui.note = ''; draw();
@@ -259,7 +268,9 @@
       m.setAttribute('role', 'menu');
       const head = el('div', 'head');
       const t = el('div');
-      t.append(el('b', '', data.email ?? 'Signed in'), el('span', 'muted', 'YouTube account'));
+      // When YouTube last said who is signed in: after Switch, this shows whether the new account reached KidTube.
+      const seen = data.checkedAt ? ` · checked ${new Date(data.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : '';
+      t.append(el('b', '', data.email ?? 'Signed in'), el('span', 'muted', `YouTube account${seen}`));
       head.append(avatar(data.email, true), t);
       const item = (path, label, onTap, sub) => {
         const b = button('item', label, onTap, path);
@@ -351,13 +362,30 @@
         who.setAttribute('aria-expanded', String(ui.menu));
         who.title = h.email ?? '';
         who.append(avatar(h.email), el('span', 'email', h.email ?? 'Reading the email…'), icon(PATH.caret, 20));
+        const grid = button('round', '', () => {
+          ui.apps = !ui.apps;
+          chrome.storage.local.set({ headerApps: ui.apps }).catch(() => {});
+          draw();
+        }, PATH.grid);
+        grid.title = ui.apps ? 'Hide the apps' : 'Show the apps';
+        grid.setAttribute('aria-label', grid.title);
+        grid.setAttribute('aria-pressed', String(ui.apps));
+        if (h.github.connected && h.email) bar.append(grid);
         bar.append(who, button('btn', 'Switch', () => { location.href = h.switchAccount; }, PATH.swap));
 
         if (!h.github.connected || ui.github) kids.push(githubCard(!h.github.connected));
-        else if (h.email) {
+        else if (h.email && ui.apps) {
           const row = el('div', 'apps');
           const tiles = el('div', 'tiles');
           const mine = h.apps.filter((a) => a.has), missing = h.apps.filter((a) => !a.has);
+          // First: YouTube itself, with no app (ringed while no app runs).
+          const yt = el('button', `app${h.running ? '' : ' on'}`);
+          yt.type = 'button';
+          yt.title = 'YouTube without any app';
+          yt.append(appIcon({ color: '#ff0033', glyph: 'youtube' }), el('span', 'name', 'YouTube'));
+          yt.disabled = !!busy;
+          yt.addEventListener('click', plainYouTube);
+          tiles.append(yt);
           for (const a of mine) {
             const t = el('button', `app${a.active ? ' on' : ''}`);
             t.type = 'button';
@@ -377,9 +405,9 @@
           }
           kids.push(row);
           if (ui.add && missing.length) kids.push(addPopover(missing));
-          const note = ui.note || h.error;
-          if (note) kids.push(el('p', `note ${ui.note ? ui.noteKind : 'err'}`, note));
         }
+        const note = ui.note || h.error;
+        if (note && h.github.connected && !ui.github) kids.push(el('p', `note ${ui.note ? ui.noteKind : 'err'}`, note));
         if (ui.menu) kids.push(accountMenu());
       }
       if (ui.menu || ui.add) {

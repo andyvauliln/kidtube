@@ -20,76 +20,63 @@ const dayLabel = (date) => {
   return diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
 };
 
-// --- the app version: installed, and ⬆ Update app when there is a newer one ---------------------------
-// Quetta: the button asks the browser for it now (KidTube also asks by itself every 15 min), the browser
-// downloads it and KidTube restarts. Orion: the .zip from the install page, installed by hand.
+// --- the bar at the bottom: the version and Update (left), Parent | Kid (middle), the 🎤 (right) ----------------
+// Update does everything at once: it sends the notes, asks the helper for new data (the AI run), and gets a newer
+// app when there is one. Quetta: the browser downloads it and KidTube restarts. Orion: the install page opens,
+// where the new .zip is installed by hand.
 const UPDATING = {
-  update_available: 'Installing… KidTube restarts in a moment',
-  throttled: 'The browser asks to wait: it installs within a few minutes',
-  no_update: 'The browser does not see it yet: try again in a minute',
-  error: 'The browser could not check: try again in a minute',
+  update_available: 'Installing the new version… KidTube restarts in a moment',
+  throttled: 'The browser asks to wait: it installs the new version within a few minutes',
+  no_update: 'The browser does not see the new version yet: try again in a minute',
+  error: 'The browser could not check for the new version: try again in a minute',
 };
-let versionTimer = null;
-async function showVersion() {
-  const v = await ask({ type: 'version' });
-  if (!v?.ok) return;
-  const box = $('ver');
-  box.replaceChildren(document.createTextNode(`v${v.installed}`));
-  box.title = v.latest ? `Newest: ${v.latest}` : 'Could not check for a newer version';
-  clearTimeout(versionTimer);
-  document.querySelector('.toolbar')?.classList.toggle('wrap', !!v.newer);
-  if (!v.newer) return;
-  if (v.target !== 'orion') {
-    const b = btn(`⬆ Update app to ${v.latest}`, async () => {
-      b.disabled = true;
-      const r = await ask({ type: 'updateApp' });
-      toast(UPDATING[r?.status] ?? UPDATING.error);
-      if (r?.status !== 'update_available') b.disabled = false;
-    }, 'small');
-    b.title = v.updating === 'update_available' ? UPDATING.update_available : 'Get the new version now';
-    box.append(b);
-    versionTimer = setTimeout(showVersion, 60_000);
-    return;
-  }
-  if (v.download) {
-    const a = el('a', '', `⬆ Update app to ${v.latest} (download)`);
-    // The install page, not the .zip itself: opening it refreshes the copy of your connection (content/backup.js).
-    a.href = v.installPage || v.download;
-    a.target = '_blank';
-    a.title = 'Opens the install page: download the new .zip there, then install it in Orion the same way as the first time';
-    box.append(a);
-  }
-}
-showVersion();
-
-// --- Update: the helper's run status (header) -------------------------------------------------------
-let runTimer = null;
-const RUN_TEXT = { queued: 'Waiting for the server…', running: 'AI is working…', done: 'Updated', failed: 'Run failed' };
-async function showRun(fresh = false) {
-  const box = $('run');
+let runTimer = null, versionAt = 0, version = null;
+async function showDock(fresh = false) {
   if (fresh) await ask({ type: 'sync' });
+  if (!version || Date.now() - versionAt > 60_000) { version = await ask({ type: 'version' }); versionAt = Date.now(); }
   const r = await ask({ type: 'runStatus' });
+  const v = version?.ok ? version : null;
+  const ver = $('ver');
+  ver.textContent = v ? `v${v.installed}` : '';
+  ver.title = v?.latest ? `Newest: ${v.latest}` : 'Could not check for a newer version';
   if (!r?.ok) return;
   const working = r.state === 'queued' || r.state === 'running';
-  const when = r.at ? new Date(r.at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '';
-  const state = el('span', `state ${working ? 'working' : r.state}`, r.state === 'none' ? '' : `${RUN_TEXT[r.state] ?? r.state}${when && !working ? ` ${when}` : ''}`);
-  state.title = r.message ?? '';
-  if (r.message) state.addEventListener('click', () => toast(r.message));   // what the AI did, in its words
-  const b = btn(working ? '↻ …' : `↻ Update data${r.held ? ` (${r.held})` : ''}`, async () => { b.disabled = true; if (!(await runNow())) b.disabled = false; }, 'small');
+  const newer = v?.newer ? v.latest : null;
+  const label = working ? (r.state === 'queued' ? 'Waiting for the server…' : 'AI is working…')
+    : `↻ Update${r.held ? ` (${r.held})` : ''}${newer ? ` · app ${newer}` : ''}`;
+  const b = btn(label, async () => {
+    b.disabled = true;
+    const ok = await runNow();
+    if (newer) await updateApp(v);
+    if (!ok && !newer) b.disabled = false;
+  }, `small${newer ? ' primary' : ''}`);
   b.disabled = working;
-  b.title = r.held ? `Send your ${r.held} note${r.held === 1 ? '' : 's'} to the AI now` : 'Run the helper now with what he watched';
-  box.replaceChildren(state, b);
+  b.classList.toggle('working', working);
+  b.title = [r.held ? `Sends your ${r.held} note${r.held === 1 ? '' : 's'} to the AI` : 'Asks the AI for new data with what he watched',
+    newer ? `and installs version ${newer}` : '', r.message ? `\nLast run: ${r.message}` : ''].filter(Boolean).join(' ');
+  $('run').replaceChildren(b);
   clearTimeout(runTimer);
   if (working) runTimer = setTimeout(async () => {
     const before = r.state;
-    await showRun(true);
+    await showDock(true);
     const now = await ask({ type: 'runStatus' });
     if (now?.state === 'done' && before !== 'done') { toast(now.message || 'Done: the lists are updated.'); refresh(); }
+    if (now?.state === 'failed' && before !== 'failed') toast(`The AI run failed${now.message ? `: ${now.message}` : '.'}`);
   }, 30000);
+}
+async function updateApp(v) {
+  if (v.target === 'orion') {
+    // The install page, not the .zip itself: opening it refreshes the copy of your connection (content/backup.js).
+    if (v.installPage || v.download) window.open(v.installPage || v.download, '_blank');
+    toast('Download the new .zip on the install page, then install it in Orion the same way as the first time.');
+    return;
+  }
+  const u = await ask({ type: 'updateApp' });
+  toast(UPDATING[u?.status] ?? UPDATING.error);
 }
 
 hooks.afterUndo = () => refresh();
-hooks.afterRun = () => showRun();
+hooks.afterRun = () => showDock();
 
 
 // --- the apps header (core/ui/header.js), the Parent | Kid switch, loading ----------------------------------
@@ -105,7 +92,7 @@ async function refresh() {
   // Parent mode is off (switched off in another tab, or an old link): the PIN page turns it on.
   // (Kid in the header: the background is taking this tab to his list.)
   if (!r.parentMode) { if (globalThis.kidtubeLeaving) return; location.replace(chrome.runtime.getURL('core/pages/pin.html?for=parent')); return; }
-  if ($('run').hidden) { $('run').hidden = false; showRun(); }
+  if (!$('run').childElementCount) showDock();
   $('nToday').textContent = r.today.filter((v) => !v.watchedAt).length;
   $('nPlanned').textContent = r.planned.length;
   render();
@@ -643,7 +630,7 @@ function noteTarget() {
   if (r.tab === 'prompt') return { prompt: true };
   return { list: r.tab };   // today | planned | history | settings
 }
-notesDock({ card: $('notesCard'), where: noteTarget, docNames: Object.fromEntries(CONTEXT),
+notesDock({ card: $('notesCard'), fabHost: $('mic'), where: noteTarget, docNames: Object.fromEntries(CONTEXT),
   onSaved: () => { const t = route().tab; if (t === 'context') renderContext(); if (t === 'prompt') renderPrompt(); } });
 
 window.kidtubeParentReady = true;   // boot.js: the script ran

@@ -8,7 +8,7 @@ import { PIN_PAGE } from './constants.js';
 import { withState, parentMode, shellOf, fromExtensionPage, live } from './store.js';
 import { applySiteRules } from './sites.js';
 import { guard } from './guard.js';
-import { youtubeAccount, headerView, openApp, connectGitHub, exportSettings, importSettings, leaveApp, pinPageView } from './profiles.js';
+import { youtubeAccount, headerView, openApp, plainYouTube, connectGitHub, exportSettings, importSettings, leaveApp, pinPageView } from './profiles.js';
 import { sync, syncIfStale, settingsBackup } from './sync.js';
 import { checkUpdate, appVersion, updateApp } from './updates.js';
 import { partOf, allParts } from './apps.js';
@@ -39,6 +39,7 @@ const HANDLERS = {
   // The apps header (core/ui/header.js) on YouTube and on an app's pages.
   header: (msg) => headerView(!!msg.refresh),
   openApp: (msg, { tabId, host }) => openApp(msg, tabId, host),
+  plainYouTube: (msg, { tabId, host }) => plainYouTube(tabId, host),
   connectGitHub: (msg) => connectGitHub(msg),
   exportSettings: () => exportSettings(),
   importSettings: (msg) => importSettings(msg.file),

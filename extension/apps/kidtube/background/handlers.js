@@ -188,7 +188,7 @@ export const HANDLERS = {
     await chrome.tabs.update(tabId, { url: homeUrl(host) });
   }),
 
-  // 👍 / 👎 / a note for the AI about one video (the 👍 goes to GitHub now; a note waits for ↻ Update data).
+  // 👍 / 👎 / a note for the AI about one video (the 👍 goes to GitHub now; a note waits for ↻ Update).
   // Every note can carry what the parent attached: screen (the page's snapshot) and withApp (noteContext).
   note: (msg) => withState(async (s) => noteVideo(s, msg, await noteContext(s, msg))).then((r) => { if (r.ok) sync(); return r; }),
 

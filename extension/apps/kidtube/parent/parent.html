@@ -17,11 +17,6 @@
         <a href="#prompt" data-tab="prompt">Prompt</a>
         <a href="#settings" data-tab="settings">Settings</a>
       </nav>
-      <div class="tools">
-        <span id="run" class="run" hidden></span>
-        <span id="ver" class="ver"></span>
-        <span id="mode"></span>
-      </div>
     </div>
   </header>
 
@@ -29,6 +24,11 @@
     <div id="notesCard" class="box notecard" hidden></div>
     <div id="view"></div>
   </main>
+  <footer class="dock">
+    <div class="left"><span id="ver" class="ver"></span><span id="run" class="run"></span></div>
+    <div class="mid" id="mode"></div>
+    <div class="right" id="mic"></div>
+  </footer>
   <script src="../../../core/ui/boot.js"></script>
   <script src="../../../core/ui/header.js"></script>
   <script type="module" src="parent.js"></script>

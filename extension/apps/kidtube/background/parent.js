@@ -95,7 +95,7 @@ export function noteVideo(s, msg, ctx = null) {
   if (typeof msg.liked === 'boolean') ev.liked = msg.liked;
   if (msg.comment) ev.comment = String(msg.comment).trim().slice(0, 2000);
   if (ev.liked === undefined && !ev.comment) return { ok: false };
-  if (ev.comment) { ev.held = true; if (ctx) ev.context = ctx; }   // a note waits on the tablet until ↻ Update data
+  if (ev.comment) { ev.held = true; if (ctx) ev.context = ctx; }   // a note waits on the tablet until ↻ Update
   s.outbox.push(ev);
   s.notes ??= {};
   if (ev.comment) addNote(((s.notes.videos ??= {})[msg.videoId] ??= []), ev);
@@ -305,7 +305,7 @@ export async function planChange(s, msg) {
 }
 
 // What parent mode shows about the latest run asked for: waiting for the server, running, done, failed.
-// held: notes on this tablet that ↻ Update data hasn't sent yet.
+// held: notes on this tablet that ↻ Update hasn't sent yet.
 export function runView(s) {
   const req = s.data.runRequest ?? null;
   const st = s.data.runStatus ?? null;

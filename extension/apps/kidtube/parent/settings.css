@@ -44,7 +44,7 @@
 .settings .win button { margin-top: 8px; padding: 6px 10px; }
 
 /* the save bar: sticks to the bottom while the rules above are in view */
-.settings .savebar { position: sticky; bottom: 12px; z-index: 4; display: flex; align-items: center; justify-content: space-between; gap: 12px;
+.settings .savebar { position: sticky; bottom: 76px; z-index: 4; display: flex; align-items: center; justify-content: space-between; gap: 12px;
   background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px 10px 10px 16px; margin: 0 0 12px; box-shadow: 0 8px 24px rgba(0, 0, 0, .14); }
 .settings .savebar span { font-size: 14px; }
 

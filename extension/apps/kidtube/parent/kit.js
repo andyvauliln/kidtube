@@ -56,10 +56,10 @@ export async function runNow() {
   return true;
 }
 
-// --- notes for the AI: one 🎤 button (bottom right) and one notes card (top of the page) ---------------
+// --- notes for the AI: one 🎤 button (in the bottom bar, right) and one notes card (top of the page) ---------
 // The 🎤 records a note about what is on the screen (where()): a tab, a video, a context document or the prompt.
 // Pauses don't end it: it records until ⏹. Then the words join the card, which lists every note still on this
-// tablet, from every tab, with ✕ and Clear all. Apply notes sends them all to the AI (the same as ↻ Update data).
+// tablet, from every tab, with ✕ and Clear all. Apply notes sends them all to the AI (the same as ↻ Update).
 // The words are written down by Groq's Whisper, Gemini (gemini-3.5-transcribe first) or OpenRouter (Settings → keys). Only without either key
 // the browser's own speech recognition writes them, and the card says so.
 // Two switches in the card attach context to the next notes, so the AI on the server sees what the parent means:
@@ -84,11 +84,12 @@ function snapshot(at) {
 
 // where(): { list } | { videoId } | { doc, docName } | { prompt: true } — what the screen shows now.
 // docNames: context document id → its name, for the card.
-export function notesDock({ card, where, docNames = {}, onSaved = () => {} }) {
-  const fab = el('button', 'notefab', '🎤');
+// fabHost: where the 🎤 goes (the parent page's bottom bar); without one it floats bottom right.
+export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabHost = null }) {
+  const fab = el('button', `notefab${fabHost ? ' docked' : ''}`, '🎤');
   fab.title = 'Record a note for the AI about this screen';
   fab.setAttribute('aria-label', fab.title);
-  document.body.append(fab);
+  (fabHost ?? document.body).append(fab);
   let rec = null;            // the recording in progress: { stop }
   let writing = false;       // the recording is being written down
   let started = 0, clock = null, notice = '', cloud = false;

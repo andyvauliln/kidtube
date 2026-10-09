@@ -165,7 +165,7 @@ async function pullPlan(loc, token, acct) {
   }, { account: acct });
 }
 
-// Notes for the AI wait on the tablet (held) until the parent taps ↻ Update data; then they all go together,
+// Notes for the AI wait on the tablet (held) until the parent taps ↻ Update; then they all go together,
 // and the server's notes agent (agent/notes.sh) reads them within a minute.
 export async function releaseNotes() {
   await withState((s) => { for (const e of s.outbox) delete e.held; });
@@ -233,7 +233,7 @@ async function uploadLocalConfig() {
 // Writes queued events into activity/YYYY-MM-DD.json, de-duplicated by eventId (PLAN.md §3.3).
 async function flushOutbox(loc, token) {
   const all = (await chrome.storage.local.get('outbox')).outbox ?? [];
-  const outbox = all.filter((e) => !e.held);   // notes wait for ↻ Update data
+  const outbox = all.filter((e) => !e.held);   // notes wait for ↻ Update
   const { settings = {}, data = {}, localConfig } = await chrome.storage.local.get(['settings', 'data', 'localConfig']);
   if (!outbox.length) return;
   if (!token) throw new Error('no token; events kept on the tablet');

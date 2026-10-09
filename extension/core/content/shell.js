@@ -119,33 +119,47 @@
   // The email comes from YouTube's own account switcher, asked from this page so it carries the YouTube sign-in;
   // the background picks that account's data.
   let accountSeen = false, lastWho = null;
+  // The first report has reached the background (or 8 s passed): only then may a page move on (parent mode turns
+  // YouTube's home into the parent screens). Else, after Switch, the page left before it said who is signed in.
+  let accountDone;
+  const accountReady = new Promise((r) => { accountDone = r; });
+  setTimeout(() => accountDone(), 8000);
   window.addEventListener('message', (e) => {
     if (e.source !== window || e.data?.kidtube !== 'account') return;
     accountSeen = true;
     reportAccount(e.data.loggedIn, e.data.datasyncId);
   });
-  // The page-world script may not run (Orion): read the same two values from YouTube's own page text.
-  setTimeout(() => {
+  // The page-world script may not run (Orion): read the same two values from YouTube's own page text, again
+  // every few seconds (YouTube's sign-in can change them without a new content script).
+  let fromText = '';
+  const readText = () => {
     if (accountSeen) return;
     const text = [...document.scripts].map((x) => x.textContent).find((t) => t.includes('"LOGGED_IN"')) ?? '';
     const loggedIn = text.match(/"LOGGED_IN":(true|false)/)?.[1];
-    if (loggedIn) reportAccount(loggedIn === 'true', text.match(/"DATASYNC_ID":"([^"]*)"/)?.[1] ?? '');
-  }, 4000);
+    const ds = text.match(/"DATASYNC_ID":"([^"]*)"/)?.[1] ?? '';
+    if (!loggedIn || `${loggedIn}|${ds}` === fromText) return;
+    fromText = `${loggedIn}|${ds}`;
+    reportAccount(loggedIn === 'true', ds);
+  };
+  setTimeout(readText, 1500);
+  setInterval(readText, 3000);
   async function reportAccount(loggedIn, datasyncId) {
     lastWho = [loggedIn, datasyncId];
     let switcher = '';
     if (loggedIn) {
-      try { switcher = (await (await fetch(`${location.origin}/getAccountSwitcherEndpoint`, { credentials: 'include' })).text()).slice(0, 400000); } catch {}
+      // Never from a cache: Orion (WebKit) gave the old account's answer after a switch, so the old email stayed.
+      try { switcher = (await (await fetch(`${location.origin}/getAccountSwitcherEndpoint?kt=${Date.now()}`, { credentials: 'include', cache: 'no-store' })).text()).slice(0, 400000); } catch {}
     }
-    ask({ type: 'account', loggedIn: !!loggedIn, datasyncId: String(datasyncId ?? '').slice(0, 200), switcher });
+    await ask({ type: 'account', loggedIn: !!loggedIn, datasyncId: String(datasyncId ?? '').slice(0, 200), switcher });
+    accountDone();
   }
 
-  // Parent mode can end without any storage change (an old timer), and at the header the account can change in
-  // another tab: ask again now and then.
+  // Parent mode can end without any storage change (an old timer), and wherever the header shows (the apps header,
+  // parent mode) the account can change in another tab or by Switch: ask again now and then.
   let beat = 0;
   setInterval(() => {
     if (++beat % (shell ? 5 : 30) === 0) refresh();
-    if (shell && beat % 10 === 0 && lastWho) reportAccount(...lastWho);
+    if ((shell || parentOn) && beat % 10 === 0 && lastWho) reportAccount(...lastWho);
   }, 1000);
   chrome.storage.onChanged.addListener((ch) => {
     if (ch.data || ch.localConfig || ch.settings || ch.account || ch.shell) refresh();
@@ -156,6 +170,8 @@
     ask, Z,
     // Ask the background again now (an app's script after a page change).
     refresh,
+    // Resolves once the background knows who is signed in on this page (at most 8 s).
+    whenAccount: () => accountReady,
     // fn(state) after every answer: { app, shell, parentMode, ...the app's view }. Called at once with the last one.
     onState(fn) { listeners.push(fn); if (last) fn(last); },
   };

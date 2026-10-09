@@ -192,9 +192,18 @@
     allowSkip = !!st.rules?.allowSkip;
     parentOn = !!st.parentMode;
     document.documentElement.classList.toggle('kidtube-noskip', !allowSkip);
-    if (parentOn && page === 'home') ask({ type: 'openParent' });
+    if (parentOn && page === 'home') openParent();
     if (page === 'watch') route();
   });
+
+  // Parent mode on YouTube's home: the parent screens, once the background knows who is signed in here (after
+  // Switch, another account must stop the app instead).
+  let parentAsked = false;
+  function openParent() {
+    if (parentAsked) return;
+    parentAsked = true;
+    S.whenAccount().then(() => ask({ type: 'openParent' })).finally(() => { parentAsked = false; });
+  }
 
   // A parent watching (parent mode): nothing covered, nothing counted. The header is shell.js's.
   function showParentView() {
@@ -224,7 +233,7 @@
       document.documentElement.classList.add('kidtube-on');
       layoutWatch();
     } else {
-      if (page !== 'home') { page = 'home'; videoId = null; document.documentElement.classList.add('kidtube-on'); if (parentOn) ask({ type: 'openParent' }); }
+      if (page !== 'home') { page = 'home'; videoId = null; document.documentElement.classList.add('kidtube-on'); if (parentOn) openParent(); }
       showHome();
       silenceVideos();
     }

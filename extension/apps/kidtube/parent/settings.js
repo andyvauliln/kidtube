@@ -1,6 +1,6 @@
 // The settings view (the parent screens' Settings tab): a note for the AI, update, status, rules, the talking friend
 // and the PIN. Everything else has one place only: the account, the GitHub connection and the settings file are in
-// the apps header, Parent | Kid in the toolbar, the helper's prompt in the Prompt tab.
+// the apps header, Parent | Kid in the bottom bar, the helper's prompt in the Prompt tab.
 import { hashPin } from '../../../core/lib/pin.js';
 import { say, listen, recordAnswer, transcribeAnswer, FREE_LISTEN_MODELS, PAID_LISTEN_MODELS } from '../lib/voice.js';
 import { ask as send } from '../../../core/lib/ask.js';

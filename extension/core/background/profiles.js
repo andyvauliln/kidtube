@@ -148,7 +148,7 @@ export async function headerView(force) {
   const github = { connected: !!t, repo: settings.repo || DEFAULT_REPO, tokenHint: t ? `${t.slice(0, t.length > 20 ? 11 : 2)}…${t.slice(-4)}` : null };
   const running = !sh.on && g.account && (!email || g.account.email === email) ? appOf(g.account).id : null;
   const out = { ok: true, shell: sh, open: await headerOpen(g), mode: parentMode(g) ? 'parent' : 'kid', running,
-    email, seen: !!g.ytAccount, signedIn: !!g.ytAccount?.loggedIn, github, apps: [], error: null,
+    email, seen: !!g.ytAccount, signedIn: !!g.ytAccount?.loggedIn, checkedAt: g.ytAccount?.at ?? null, github, apps: [], error: null,
     switchAccount: chooserUrl(null, live.host), signOut: `https://${live.host}/logout` };
   if (!email || !github.connected) return out;
   const remote = await repoProfiles(force);
@@ -235,6 +235,16 @@ export async function importSettings(file) {
   await chrome.storage.local.remove('repoProfiles');
   const r = await sync();
   return { ok: true, errors: r?.errors ?? [] };
+}
+
+// The header's YouTube tile: no app runs, plain YouTube with the apps header above it.
+export async function plainYouTube(tabId, host) {
+  if (!(await headerOpen())) return { ok: false, error: 'Unlock with the PIN first.' };
+  await chrome.storage.local.set({ shell: { on: true, locked: false } });
+  await applySiteRules();
+  const url = homeUrl(/(^|\.)youtube\.com$/.test(host) ? host : live.host);   // from an app's own page: the YouTube in use
+  if (tabId != null) await chrome.tabs.update(tabId, { url });
+  return { ok: true, url, navigated: tabId != null };
 }
 
 // Back to the header: the PIN page, when YouTube was locked.

@@ -34,7 +34,7 @@ export async function autoUpdate(latest) {
   return askNow();
 }
 
-// The toolbar's ⬆ Update app (Quetta): ask the browser now, not in 5 min.
+// The bottom bar's ↻ Update when there is a newer app (Quetta): ask the browser now, not in 5 min.
 export async function updateApp() {
   if (TARGET === 'orion') return { ok: false, error: 'Orion installs a new version from the .zip' };
   return { ok: true, status: await askNow() };
@@ -48,7 +48,7 @@ export async function checkUpdate() {
   return { installed: installed(), check, latest: latest?.version ?? null, installPage: newer ? INSTALL_PAGE : null, download: newer ? latest.zipUrl ?? null : null, sync: await sync() };
 }
 
-// The installed version and the newest release (parent toolbar). Quetta asks for the update itself
+// The installed version and the newest release (the parent page's bottom bar). Quetta asks for the update itself
 // (updating: the browser's answer); Orion gets a download link.
 export async function appVersion() {
   const latest = await latestRelease();
