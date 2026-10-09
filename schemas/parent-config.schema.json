@@ -44,7 +44,8 @@
       "type": [
         "boolean",
         "null"
-      ]
+      ],
+      "description": "true = YouTube's ads are hidden and video ads skipped while KidTube runs (kid and parent mode); on Quetta the ad servers are also blocked"
     },
     "allowSkip": {
       "type": [
@@ -286,8 +287,8 @@
             "string",
             "null"
           ],
-          "pattern": "^[a-z0-9-]*$",
-          "description": "\"\" = the picture above; a name = the mesh avatar bundled in extension/apps/kidtube/avatars/<name>/ (mesh-avatar-studio), shown instead of the picture where the tablet has WebGL2"
+          "pattern": "^(repo:)?[a-z0-9-]*$",
+          "description": "\"\" = the picture above; a name = the mesh avatar bundled in extension/apps/kidtube/avatars/<name>/ (mesh-avatar-studio); repo:<name> = one in the profile's avatars/<name>/ in the private data repo (characters that can't be in the public code, such as Pikachu). Shown instead of the picture where the tablet has WebGL2"
         },
         "voice": {
           "type": [

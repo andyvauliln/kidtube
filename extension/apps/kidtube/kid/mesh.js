@@ -46,18 +46,44 @@ export const MOODS = {
   playful: (a) => { a.setEmotion('happy', { playMotion: false }); a.play('wink'); },
 };
 
-// box: the element to fill; base: the avatar folder URL. load: the engine (a test passes a fake one).
+// An avatar from the private data repo ("repo:<name>"), kept on the tablet by background/media.js syncAvatar:
+// its rig and a map of built/ file names to blob URLs (the engine's `assets`).
+export const AVATAR_CACHE = 'kidtube-avatar';
+export async function cachedAvatar(name) {
+  if (!globalThis.caches) throw new Error('no Cache Storage here');
+  const root = `https://kidtube.invalid/avatars/${name}/`;
+  const cache = await caches.open(AVATAR_CACHE);
+  const rigRes = await cache.match(`${root}rig.json`);
+  if (!rigRes) throw new Error(`avatar ${name} is not on this tablet yet (it comes with the next sync)`);
+  const assets = {};
+  for (const req of await cache.keys()) {
+    if (!req.url.startsWith(`${root}built/`)) continue;
+    assets[req.url.slice(root.length + 6)] = URL.createObjectURL(await (await cache.match(req)).blob());
+  }
+  return { rig: await rigRes.json(), assets };
+}
+
+// box: the element to fill; base: the avatar folder URL, or "repo:<name>" (cachedAvatar). load: the engine (a test
+// passes a fake one).
 export async function createMeshFriend(box, { base, load = () => import('../vendor/mesh-avatar/mesh-avatar.js') } = {}) {
   if (!hasWebGL2()) throw new Error('no WebGL2 here');
-  const root = String(base).replace(/\/?$/, '/');
-  const res = await fetch(`${root}rig.json`);
-  if (!res.ok) throw new Error(`avatar not found: ${root}rig.json`);
-  const rig = await res.json();
+  let rig, from;
+  if (String(base).startsWith('repo:')) {
+    const c = await cachedAvatar(String(base).slice(5));
+    rig = c.rig;
+    from = { assets: c.assets };
+  } else {
+    const root = String(base).replace(/\/?$/, '/');
+    const res = await fetch(`${root}rig.json`);
+    if (!res.ok) throw new Error(`avatar not found: ${root}rig.json`);
+    rig = await res.json();
+    from = { assetsBase: `${root}built/` };
+  }
   const { createMeshAvatar } = await load();
   const canvas = Object.assign(document.createElement('canvas'), { className: 'mesh' });
   box.append(canvas);
   let avatar;
-  try { avatar = await createMeshAvatar(canvas, { rig, assetsBase: `${root}built/` }); }
+  try { avatar = await createMeshAvatar(canvas, { rig, ...from }); }
   catch (e) { canvas.remove(); throw e; }
 
   let talkingNow = false, raf = 0, last = 0, fake = null, analyser = null, samples = null, ctx = null, destroyed = false;

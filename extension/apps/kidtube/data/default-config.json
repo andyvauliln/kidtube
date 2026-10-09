@@ -6,7 +6,7 @@
   "blockShorts": true,
   "blockLive": true,
   "blockOutboundLinks": true,
-  "blockAds": false,
+  "blockAds": true,
   "allowSkip": false,
   "allowedSiteDomains": [
     "youtube.com",

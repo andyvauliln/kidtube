@@ -1,7 +1,8 @@
 // Names and numbers the service worker's modules share.
 import { TARGET } from '../lib/target.js';
 
-export const SITE_RULE_ID = 100;          // the one dynamic blocking rule (sites.js)
+export const SITE_RULE_ID = 100;          // the dynamic blocking rules (sites.js): other websites
+export const AD_RULE_ID = 101;            // and ad servers
 export const POLL_MINUTES = 15;           // GitHub sync and update check
 export const DEFAULT_REPO = 'andyvauliln/kidtube-data';
 export const PAGES_URL = 'https://andyvauliln.github.io/kidtube/';

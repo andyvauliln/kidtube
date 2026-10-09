@@ -12,7 +12,7 @@ KidTube's part of the service worker. `index.js` is the part the core registers 
 | `parent.js` | Parent mode's data: Today, Planned, History, a video's details, the Prompt tab, the notes for the AI, plan changes |
 | `sync.js` | KidTube's files in the data repo: rules and list, the helper's files, keys, context documents, other devices' plan changes; writes activity, rules and run requests |
 | `transcripts.js` | Captions fetched on the tablet (YouTube refuses servers) and saved as `transcripts/<videoId>.json` |
-| `media.js` | The friend's recordings (`audio/*.mp3` in Cache Storage) and picture (`characters/`) |
+| `media.js` | The friend's recordings (`audio/*.mp3` in Cache Storage), picture (`characters/`) and a moving avatar from the data repo (`avatars/<name>/`, `presenter.avatar` `repo:<name>`; only the chosen one is kept, a file again only when its sha changed) |
 
 ## Who decides what
 

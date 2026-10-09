@@ -59,13 +59,16 @@ globalThis.fetch = async (url, init = {}) => {
   if (!(path in repo)) {
     const kids = Object.keys(repo).filter((p) => p.startsWith(`${path}/`)).map((p) => p.slice(path.length + 1).split('/')[0]);
     if (!kids.length) return no;
-    return { ok: true, status: 200, json: async () => [...new Set(kids)].map((name) => ({ name, type: Object.keys(repo).some((p) => p.startsWith(`${path}/${name}/`)) ? 'dir' : 'file' })) };
+    const size = (p) => (typeof repo[p] === 'string' ? repo[p] : JSON.stringify(repo[p] ?? '')).length;
+    return { ok: true, status: 200, json: async () => [...new Set(kids)].map((name) => ({ name, type: Object.keys(repo).some((p) => p.startsWith(`${path}/${name}/`)) ? 'dir' : 'file',
+      sha: `sha-${size(`${path}/${name}`)}`, size: size(`${path}/${name}`) })) };
   }
   const v = repo[path];
   const text = typeof v === 'string' ? v : JSON.stringify(v);
   const raw = /raw/.test(init.headers?.Accept ?? '');
   return { ok: true, status: 200, headers: { get: (h) => (h.toLowerCase() === 'etag' ? `"${text.length}"` : null) },
-    text: async () => text, json: async () => (raw ? JSON.parse(text) : { sha: `sha-${text.length}`, content: Buffer.from(text).toString('base64') }) };
+    text: async () => text, blob: async () => new Blob([text]),
+    json: async () => (raw ? JSON.parse(text) : { sha: `sha-${text.length}`, content: Buffer.from(text).toString('base64') }) };
 };
 
 const EMAIL = 'kid@example.com';
@@ -310,4 +313,96 @@ test('R104 “folder should have some docs with readme explanation”: every cod
   for (const top of ['extension', 'agent', 'build', 'tests']) walk(top);
   assert.deepEqual(missing, []);
   assert.equal(existsSync('spike'), false);
+});
+
+test('R003 “Banner and overlay ads are removed, Skip is pressed when it appears”: on by default, the ad servers blocked on Quetta', async () => {
+  const { applySiteRules, AD_DOMAINS } = await import('../../extension/core/background/sites.js');
+  const { AD_RULE_ID } = await import('../../extension/core/background/constants.js');
+  kidDay();
+  assert.equal((await send({ type: 'state' })).rules.blockAds, true, 'the page hides and skips ads (apps/kidtube/content/youtube.js)');
+  await applySiteRules();
+  const ad = fake.rules.find((r) => r.id === AD_RULE_ID);
+  assert.deepEqual(ad?.condition.requestDomains, AD_DOMAINS);
+  assert.equal(ad.condition.resourceTypes, undefined, 'everything a page loads, not the page itself');
+  assert.ok(!AD_DOMAINS.some((d) => /youtube/.test(d)), 'YouTube’s own requests stay open: blocking them makes YouTube warn about ad blockers');
+  // The parent turns it off in Settings: no ad rule, nothing skipped.
+  kidDay({ blockAds: false });
+  await applySiteRules();
+  assert.equal(fake.rules.some((r) => r.id === AD_RULE_ID), false);
+  assert.equal((await send({ type: 'state' })).rules.blockAds, false);
+  kidDay();
+  await applySiteRules();
+});
+
+test('R027 “ok add pikachu now”, then “Should Settings offer Pikachu?” “ok do it”: an avatar from the data repo is offered, downloaded and shown', async () => {
+  // Cache Storage, in memory (the browser keeps the chosen avatar there).
+  const mem = new Map();
+  const box = (n) => { if (!mem.has(n)) mem.set(n, new Map()); return mem.get(n); };
+  globalThis.caches = { open: async (n) => ({
+    match: async (k) => box(n).get(String(k?.url ?? k))?.clone(),
+    put: async (k, r) => { box(n).set(String(k?.url ?? k), r); },
+    delete: async (k) => box(n).delete(String(k?.url ?? k)),
+    keys: async () => [...box(n).keys()].map((url) => ({ url })),
+  }) };
+  const K = 'https://kidtube.invalid/avatars/pikachu/';
+  const kept = () => [...box('kidtube-avatar').keys()].map((u) => u.replace(K, '')).sort();
+  const { KIDTUBE_CHECKS } = await import('../../extension/apps/kidtube/background/checks.js');
+  const { Expect } = await import('../../extension/core/checks/kit.js');
+  const avatarCheck = async () => { const t = new Expect(); await KIDTUBE_CHECKS.start.find((c) => c.id === 'kidtube.avatar').run(t); return t; };
+  try {
+    for (const k of Object.keys(repo)) delete repo[k];
+    repo['kidtube/kid/profile.json'] = { schemaVersion: 1, email: EMAIL };
+    repo['kidtube/kid/avatars/pikachu/rig.json'] = { view: { padTop: 0 } };
+    repo['kidtube/kid/avatars/pikachu/built/layers.json'] = { build: 1, layers: {} };
+    repo['kidtube/kid/avatars/pikachu/built/base.png'] = 'PNG';
+    repo['kidtube/kid/avatars/pikachu/built/sprites/sprites.json'] = { layers: {} };
+    repo['kidtube/kid/avatars/pikachu/notes.txt'] = 'not part of the avatar';
+    kidDay();
+    Object.assign(fake.store, { data: {}, settings: { ...fake.store.settings, mode: 'parent' } });
+    await fromPage({ type: 'sync' });
+    assert.deepEqual((await fromPage({ type: 'getRules' })).repoAvatars, ['pikachu'], 'Settings offers it');
+    assert.deepEqual(kept(), [], 'not chosen: nothing downloaded');
+    assert.equal((await avatarCheck()).skipped, 'no avatar from the data repo chosen');
+
+    // The parent picks it in Settings and saves: on GitHub, and downloaded at once.
+    await fromPage({ type: 'saveRules', patch: { presenter: { avatar: 'repo:pikachu' } } });
+    for (let i = 0; i < 50 && !kept().includes('rig.json'); i++) await wait(20);
+    assert.deepEqual(kept(), ['.files', 'built/base.png', 'built/layers.json', 'built/sprites/sprites.json', 'rig.json']);
+    assert.equal(repo['kidtube/kid/parent-config.json'].presenter.avatar, 'repo:pikachu');
+    const t = await avatarCheck();
+    assert.equal(t.passed && !t.skipped, true, JSON.stringify(t.mismatch));
+    // The talk screen gets "repo:pikachu": kid/mesh.js cachedAvatar reads it from the cache.
+    assert.equal((await send({ type: 'talk', videoId: A, mode: 'intro' })).avatar, 'repo:pikachu');
+
+    // The next sync downloads only what changed.
+    calls.length = 0;
+    await fromPage({ type: 'sync' });
+    assert.deepEqual(calls.filter((c) => /^GET kidtube\/kid\/avatars\/pikachu\/.*\.(png|json)$/.test(c)), []);
+    assert.ok(!(fake.store.syncStatus?.errors ?? []).some((e) => e.startsWith('Moving avatar')), fake.store.syncStatus?.errors?.join(' | '));
+    repo['kidtube/kid/avatars/pikachu/built/base.png'] = 'PNG, drawn again';
+    await fromPage({ type: 'sync' });
+    assert.equal(await (await box('kidtube-avatar').get(`${K}built/base.png`).clone().blob()).text(), 'PNG, drawn again');
+
+    // Gone from the data repo: the sync says why, and the copy here stays (as the last good list does).
+    for (const k of Object.keys(repo)) if (k.includes('/avatars/')) delete repo[k];
+    await fromPage({ type: 'sync' });
+    assert.ok(fake.store.syncStatus.errors.some((e) => /Moving avatar: avatars\/pikachu\/ is not in the data repo/.test(e)), fake.store.syncStatus.errors.join(' | '));
+    assert.ok(kept().includes('rig.json'));
+    // Never downloaded and not there: the check reports it, with the sync's words.
+    box('kidtube-avatar').clear();
+    const missing = await avatarCheck();
+    assert.equal(missing.passed, false);
+    assert.match(JSON.stringify(missing.mismatch), /is not in the data repo/);
+
+    // Back to Miko (bundled in the extension): the Pikachu files leave the tablet at the next sync.
+    repo['kidtube/kid/avatars/pikachu/rig.json'] = { view: { padTop: 0 } };
+    await fromPage({ type: 'saveRules', patch: { presenter: { avatar: 'repo:pikachu' } } });
+    for (let i = 0; i < 50 && !kept().includes('rig.json'); i++) await wait(20);
+    await fromPage({ type: 'saveRules', patch: { presenter: { avatar: 'miko-qipao' } } });
+    await fromPage({ type: 'sync' });
+    assert.deepEqual(kept(), []);
+    assert.equal((await send({ type: 'talk', videoId: A, mode: 'intro' })).avatar, '../avatars/miko-qipao');
+  } finally {
+    delete globalThis.caches;
+  }
 });

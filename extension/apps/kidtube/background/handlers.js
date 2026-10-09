@@ -77,8 +77,9 @@ export const HANDLERS = {
     const ch = s.character && p.imageUrl === `repo:${s.character.path}` ? s.character : null;
     return {
       name, imageUrl: ch?.src ?? (p.imageUrl?.startsWith('https://') ? p.imageUrl : ''), svg: ch?.svg ?? '',
-      // a mesh avatar bundled in apps/kidtube/avatars/<name>/ (talk.html is in kid/)
-      avatar: /^[a-z0-9-]+$/.test(p.avatar ?? '') ? `../avatars/${p.avatar}` : '',
+      // a mesh avatar bundled in apps/kidtube/avatars/<name>/ (talk.html is in kid/), or "repo:<name>" from the data
+      // repo, kept on the tablet by media.js syncAvatar
+      avatar: /^(repo:)?[a-z0-9-]+$/.test(p.avatar ?? '') ? (p.avatar.startsWith('repo:') ? p.avatar : `../avatars/${p.avatar}`) : '',
       catchphrase: p.catchphrase ?? '', catchphraseAudioRef: p.catchphraseAudioRef ?? null, phrases: p.phrases ?? {},
       recorded: p.voice?.recorded !== false, listen: p.voice?.listen ?? { provider: 'cloud' },
       voice: { ...(p.voice ?? {}), lang }, lang, title: v.title, lines,
@@ -241,7 +242,7 @@ export const HANDLERS = {
   // The notes card: ✕ on one note (id), or Clear all (all: true); only notes not sent yet.
   dropNote: (msg) => withState((s) => dropHeld(s, msg.all ? null : String(msg.id ?? ''))),
   plan: (msg) => withState((s) => planChange(s, msg)).then((r) => { if (r?.ok) sync(); return r; }),
-  getRules: () => withState(async (s) => ({ config: (await effective(s)).config, pending: !!s.localConfig })),
+  getRules: () => withState(async (s) => ({ config: (await effective(s)).config, pending: !!s.localConfig, repoAvatars: s.repoAvatars ?? [] })),
   saveRules: (msg) => saveRules(msg.patch),
   resetToday: () => withState((s) => { s.today = null; return { ok: true }; }),
 

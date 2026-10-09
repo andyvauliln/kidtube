@@ -14,7 +14,7 @@ export default {
   // planLog: the parent's changes to today's list and the planned videos (lib/plan.js).
   // history: what he watched, newest last (parent mode → History). notes: the parent's notes for the AI.
   // outbox: events waiting for activity/<day>.json.
-  stateKeys: ['watched', 'today', 'session', 'outbox', 'localConfig', 'seen', 'pendingTalk', 'quizTurn', 'transcripts', 'character', 'planLog', 'history', 'notes'],
+  stateKeys: ['watched', 'today', 'session', 'outbox', 'localConfig', 'seen', 'pendingTalk', 'quizTurn', 'transcripts', 'character', 'repoAvatars', 'planLog', 'history', 'notes'],
   // The helper's files and the context documents, kept per profile too.
   profileKeys: ['memory', 'helperInfo', 'contextDocs'],
   // The listening keys typed in Settings go into the settings file.
@@ -31,7 +31,7 @@ export default {
   beforeSync: (msg) => (msg.notes ? releaseNotes() : undefined),
   async siteRules(stored) {
     const { config } = await effective(stored);
-    return { block: !!config.blockOutboundLinks, allowed: config.allowedSiteDomains ?? [] };
+    return { block: !!config.blockOutboundLinks, allowed: config.allowedSiteDomains ?? [], ads: !!config.blockAds };
   },
   async tabRemoved(s, tabId) {
     if (s.session?.tabId === tabId) leaveSession(s, (await effective(s)).config, 'closed');

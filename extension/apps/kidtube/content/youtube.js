@@ -21,6 +21,15 @@
     .ytp-youtube-button, .ytp-suggestion-set, .ytp-videowall-still, .ytp-cards-teaser, .ytp-cards-button, .ytp-autonav-endscreen,
     .ytp-title, .ytp-title-channel, .ytm-autonav-bar, .player-endscreen, .fullscreen-watch-next-entrypoint-wrapper,
     .ytwPlayerMiniplayerHost, ytm-pivot-bar-renderer { display: none !important; }`;
+  // YouTube's ad boxes (config.blockAds): in the lists, beside and over the player. Video ads: skipAds below.
+  const adBoxes = document.createElement('style');
+  adBoxes.textContent = `
+    ytd-ad-slot-renderer, ytd-in-feed-ad-layout-renderer, ytd-banner-promo-renderer, ytd-statement-banner-renderer,
+    ytd-promoted-sparkles-web-renderer, ytd-promoted-video-renderer, ytd-display-ad-renderer, ytd-companion-slot-renderer,
+    ytd-action-companion-ad-renderer, ytd-player-legacy-desktop-watch-ads-renderer, ytd-merch-shelf-renderer, #player-ads,
+    #masthead-ad, .ytp-ad-overlay-container, .ytp-ad-overlay-slot, .ytp-ad-image-overlay, .ytp-ad-text-overlay,
+    ytm-promoted-sparkles-web-renderer, ytm-companion-ad-renderer, ytm-promoted-video-renderer, ad-slot-renderer,
+    ytm-ad-slot-renderer { display: none !important; }`;
   style.textContent = `
     html.kidtube-on, html.kidtube-on body { overflow: hidden !important; overscroll-behavior: none !important; }
     iframe.kidtube-frame { position: fixed !important; border: 0 !important; margin: 0 !important; padding: 0 !important;
@@ -176,6 +185,8 @@
     page = null;
     document.documentElement.classList.remove('kidtube-on', 'kidtube-noskip');
     hidden.remove();
+    adBoxes.remove();
+    blockAds = false;
   }
   function activate() {
     active = true;
@@ -185,11 +196,13 @@
 
   // allowSkip off: no jumping forward and no speed above 1x. Going back is fine.
   // parentOn: parent mode: YouTube's home becomes the parent's screens, a video plays with nothing covered.
-  let allowSkip = false, maxReached = 0, parentOn = false;
+  let allowSkip = false, maxReached = 0, parentOn = false, blockAds = false;
   S.onState((st) => {
     if (st.shell.on || st.app !== 'kidtube') { if (active) standDown(); return; }
     if (!active) activate();
     allowSkip = !!st.rules?.allowSkip;
+    blockAds = !!st.rules?.blockAds;
+    if (blockAds) (document.head || document.documentElement).append(adBoxes); else adBoxes.remove();
     parentOn = !!st.parentMode;
     document.documentElement.classList.toggle('kidtube-noskip', !allowSkip);
     if (parentOn && page === 'home') openParent();
@@ -210,15 +223,16 @@
     [...COVERS, 'strip', 'lock', 'home'].forEach(drop);
     document.documentElement.classList.remove('kidtube-on');
   }
+  // An ad plays in the same video element: it is not his video, so it is not guarded (skipAds runs it to its end).
   function guardSkipping(v) {
     v.addEventListener('timeupdate', () => {
-      if (!v.seeking && v.currentTime <= maxReached + 3) maxReached = Math.max(maxReached, v.currentTime);
+      if (!adOn && !v.seeking && v.currentTime <= maxReached + 3) maxReached = Math.max(maxReached, v.currentTime);
     });
     v.addEventListener('seeking', () => {
-      if (!allowSkip && v.currentTime > maxReached + 1.5) v.currentTime = maxReached;
+      if (!allowSkip && !adOn && v.currentTime > maxReached + 1.5) v.currentTime = maxReached;
     });
     v.addEventListener('ratechange', () => {
-      if (!allowSkip && v.playbackRate > 1) v.playbackRate = 1;
+      if (!allowSkip && !adOn && v.playbackRate > 1) v.playbackRate = 1;
     });
     for (const t of ['emptied', 'loadstart']) v.addEventListener(t, () => { maxReached = 0; }); // new media (ad -> video)
   }
@@ -268,11 +282,63 @@
     }, 10000);
   }
 
+  // --- ads -------------------------------------------------------------------------------------------------------
+  // A video ad plays in YouTube's own player (the class ad-showing). With blockAds it is muted, run to its end, and
+  // Skip is tapped when YouTube shows it. adOn is kept either way: an ad's end is not his video's end.
+  // (Blocking YouTube's own ad requests instead makes YouTube warn about ad blockers.)
+  const SKIP_AD = '.ytp-skip-ad-button, .ytp-ad-skip-button, .ytp-ad-skip-button-modern, .ytp-ad-skip-button-slot button, .ytm-skip-ad-button, button[class*="skip-ad"]';
+  const adPlayer = () => document.querySelector('.html5-video-player.ad-showing, #movie_player.ad-showing, .ad-showing .html5-video-player');
+  let adOn = false, adMuted = null, warned = '';
+  function skipAds() {
+    const p = adPlayer();
+    if (!p) {
+      if (adOn) adOn = false;
+      if (adMuted) { if (page === 'watch') adMuted.muted = false; adMuted = null; }   // his video has its sound back
+      return;
+    }
+    if (!adOn) { adOn = true; if (blockAds) checkAdGone(); }
+    if (!blockAds) return;
+    const v = p.querySelector('video') ?? player();
+    if (v) {
+      if (!v.muted) { v.muted = true; adMuted = v; }
+      if (v.playbackRate < 16) v.playbackRate = 16;
+      if (Number.isFinite(v.duration) && v.duration > 0 && v.currentTime < v.duration - 0.1) v.currentTime = v.duration;
+    }
+    for (const b of document.querySelectorAll(SKIP_AD)) b.click();
+  }
+  setInterval(() => { if (active && page === 'watch') skipAds(); }, 300);
+
+  // YouTube changing its ads (a new class, a new Skip button) is an outside change: the fix agent gets the player's
+  // classes and the buttons it found. Strikes: one ad that YouTube won't let go is not yet a pattern.
+  function checkAdGone() {
+    globalThis.KidTubeWatch?.check({ id: 'yt.adSkipped', kind: 'probe', strikes: 2, area: 'youtube',
+      expect: 'With “Hide and skip ads” on, a video ad is gone within 10 seconds', code: ['apps/kidtube/content/youtube.js skipAds'] }, (t) => {
+      if (!active || !blockAds || page !== 'watch') return t.skip('ads not skipped here now');
+      const p = adPlayer();
+      if (t.ok('the ad is gone', !p, 'still playing', 'gone')) return;
+      const v = p.querySelector('video');
+      t.note('ad', { duration: v?.duration, at: v?.currentTime, rate: v?.playbackRate, muted: v?.muted, playerClass: p.className.slice(0, 300),
+        skipButtons: [...document.querySelectorAll('button[class*="skip"], [class*="skip-ad"]')].slice(0, 5).map((b) => `${b.tagName.toLowerCase()}.${String(b.className).slice(0, 80)}`) });
+    }, 10000);
+  }
+
+  // YouTube's warning about ad blockers: the fix agent must know at once (once per page).
+  function checkAdWarning() {
+    const box = blockAds && document.querySelector('ytd-enforcement-message-view-model, ytm-enforcement-message-view-model');
+    if (!box || warned === location.href) return;
+    warned = location.href;
+    globalThis.KidTubeWatch?.check({ id: 'yt.adWarning', kind: 'probe', area: 'youtube',
+      expect: 'YouTube does not warn about ad blockers while KidTube hides and skips ads', code: ['apps/kidtube/content/youtube.js skipAds', 'core/background/sites.js AD_DOMAINS'] }, (t) => {
+      t.ok('no ad blocker warning', false, String(box.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 300), 'none');
+    });
+  }
+
   // Playback time: only while the video plays and the page is visible (PLAN.md §3.1).
   let played = 0, last = performance.now(), hooked = new WeakSet();
   setInterval(async () => {
     if (!active) return;
     route();
+    checkAdWarning();
     const now = performance.now(), dt = (now - last) / 1000;
     last = now;
     if (page !== 'watch' || frames.lock || parentOn) return;
@@ -280,10 +346,10 @@
     if (!v) return;
     if (!hooked.has(v)) {
       hooked.add(v);
-      v.addEventListener('ended', () => { if (videoId) ask({ type: 'ended', videoId }); });
+      v.addEventListener('ended', () => { if (videoId && !adOn && !adPlayer()) ask({ type: 'ended', videoId }); });
       guardSkipping(v);
     }
-    if (!v.paused && !v.ended && document.visibilityState === 'visible') played += Math.min(dt, 2);
+    if (!v.paused && !v.ended && !adOn && document.visibilityState === 'visible') played += Math.min(dt, 2);
     if (played >= 5) {
       const seconds = Math.round(played);
       played -= seconds;

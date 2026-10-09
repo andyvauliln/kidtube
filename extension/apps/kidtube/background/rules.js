@@ -84,7 +84,7 @@ export async function viewState(s) {
     minutesLeft: cap ? Math.max(0, Math.ceil(cap - played / 60)) : null,
     maxMinutes: cap || null,
     session: ses ? { videoId: ses.videoId, secondsUntilUnlock: ses.ended ? 0 : Math.max(0, Math.ceil(min - ses.playedSeconds)) } : null,
-    rules: { allowSkip: parentMode(s) || !!config.allowSkip },
+    rules: { allowSkip: parentMode(s) || !!config.allowSkip, blockAds: !!config.blockAds },
     friend: config.presenter?.name || 'Zippy',
   };
 }

@@ -11,7 +11,7 @@
 //   sync(ctx)     the app's files in the data repo; ctx { loc, token, data, status, acct }; false: the profile
 //                 changed meanwhile, so nothing was kept
 //   beforeSync(msg)   the 'sync' message from the app's own pages (KidTube: the notes held for Update go too)
-//   siteRules(stored) { block, allowed }: other websites closed, and the domains still open
+//   siteRules(stored) { block, allowed, ads }: other websites closed, the domains still open, and ad servers blocked
 //   created(s)    a new profile of the app (the header's Add app): its starting state
 //   tabRemoved(s, tabId)
 //   checks        { start: [...], actions: { type: check } } what the app's start and messages must do

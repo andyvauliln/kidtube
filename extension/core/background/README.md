@@ -9,7 +9,7 @@ background parts (`apps/backgrounds.js`) and wires the browser's events to the m
 | `apps.js` | The contract of an app's background part, and `partOf(account)`: the part of the profile's app |
 | `store.js` | The state in `chrome.storage.local`. Every change of the profile's state goes through `withState()`, one at a time. Also the modes, the apps header state (`shellOf`) and the data location |
 | `guard.js` | The guard's common part: extension pages, Google's sign-in and the apps header pass; other websites → `sites.js`; YouTube pages → the app's `guard` |
-| `sites.js` | Other websites: one blocking rule (declarativeNetRequest), or the guard's fallback where there are no rules (Orion). The app says which domains stay open |
+| `sites.js` | Other websites: one blocking rule (declarativeNetRequest), or the guard's fallback where there are no rules (Orion). The app says which domains stay open, and whether ad servers (`AD_DOMAINS`) are blocked |
 | `profiles.js` | Profiles and the apps header: who YouTube has, switching profiles, the header's apps, the GitHub connection, the settings file |
 | `tabs.js` | One tab for YouTube and KidTube's pages: a tab that opens one closes the others |
 | `sync.js` | When a sync runs (one at a time, soon after activity, when stale), `profile.json`, then the app's `sync`. Also the install page's backup of the connection |

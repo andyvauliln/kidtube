@@ -13,7 +13,7 @@ import { PLAN_ACTIONS, pendingPlan, entryFromRecord } from '../lib/plan.js';
 import { loadBundled, effective, contextDocsOf } from './config.js';
 import { dropDoneNotes, getMemory, runView } from './parent.js';
 import { uploadTranscripts } from './transcripts.js';
-import { syncAudio, loadCharacter } from './media.js';
+import { syncAudio, loadCharacter, syncAvatar } from './media.js';
 
 export const okConfig = (c) => c && c.schemaVersion === 1 && typeof c === 'object' && !Array.isArray(c);
 export const okQueue = (q) => q && q.schemaVersion === 1 && Array.isArray(q.videos) && q.videos.every((v) => isVideoId(v.videoId) && Number.isFinite(v.durationSeconds));
@@ -122,6 +122,7 @@ export async function syncKidTube({ loc, token, data, status, acct }) {
     try { await uploadTranscripts(loc, token); } catch (e) { report('Transcripts: ', String(e.message ?? e)); }
     try { await loadCharacter(loc, token); } catch (e) { report('Talking friend picture: ', String(e.message ?? e)); }
     try { await syncAudio(loc, token); } catch (e) { report('Talking friend recordings: ', String(e.message ?? e)); }
+    try { await syncAvatar(loc, token); } catch (e) { report('Moving avatar: ', String(e.message ?? e)); }
   }
 }
 
@@ -202,7 +203,13 @@ export async function requestRun() {
 export async function saveRules(patch) {
   await withState((s) => { s.localConfig = mergeConfig(s.localConfig ?? {}, patch); });
   await applySiteRules();
-  return uploadLocalConfig();
+  const saved = await uploadLocalConfig();
+  // A moving avatar from the data repo is downloaded now, not at the next sync.
+  if (String(patch.presenter?.avatar ?? '').startsWith('repo:')) {
+    const { settings = {} } = await chrome.storage.local.get('settings');
+    if (settings.token) dataLocation(settings).then((loc) => loc.base && syncAvatar(loc, settings.token)).catch(() => {});
+  }
+  return saved;
 }
 
 async function uploadLocalConfig() {

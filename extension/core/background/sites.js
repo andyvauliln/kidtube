@@ -2,7 +2,7 @@
 // browser has no blocking rules (Orion). The current app says whether they are closed and which stay open.
 import { TARGET } from '../lib/target.js';
 import { homeUrl } from '../lib/youtube.js';
-import { SITE_RULE_ID } from './constants.js';
+import { SITE_RULE_ID, AD_RULE_ID } from './constants.js';
 import { parentMode } from './store.js';
 import { partOf } from './apps.js';
 
@@ -16,7 +16,12 @@ export const allowedDomains = (allowed, signingIn = false) =>
   [...new Set([...allowed, 'youtube.com', 'accounts.google.com', 'andyvauliln.github.io', ...(signingIn ? ['google.com'] : [])])];
 const signingIn = (s) => (s.shell?.on ? !s.shell.locked : parentMode(s));
 
-// { block, allowed, signingIn }: the profile's app decides (an app without rules: everything else closed).
+// Ad servers, blocked inside every page when the app asks (KidTube's blockAds). Only other companies' servers:
+// blocking YouTube's own ad requests makes YouTube warn about ad blockers. YouTube's own ads are skipped in the page
+// (apps/kidtube/content/youtube.js skipAds).
+export const AD_DOMAINS = ['doubleclick.net', 'googlesyndication.com', 'googleadservices.com', 'googletagservices.com', 'adservice.google.com'];
+
+// { block, allowed, ads, signingIn }: the profile's app decides (an app without rules: everything else closed).
 export async function rulesInput() {
   const s = await chrome.storage.local.get(['data', 'localConfig', 'shell', 'settings', 'account']);
   const app = partOf(s.account);
@@ -27,15 +32,19 @@ export async function rulesInput() {
 export async function applySiteRules() {
   // Orion has no blocking rules (its build drops the permission): externalGuard does the job there.
   if (TARGET === 'orion') { dnrWorks = false; return; }
-  const { block, allowed, signingIn } = await rulesInput();
+  const { block, allowed, ads, signingIn } = await rulesInput();
   // YouTube and the install page always stay reachable, whatever the list says.
   try {
     await chrome.declarativeNetRequest.updateDynamicRules({
-      removeRuleIds: [SITE_RULE_ID],
-      addRules: block ? [{
-        id: SITE_RULE_ID, priority: 1, action: { type: 'block' },
-        condition: { resourceTypes: ['main_frame'], excludedRequestDomains: allowedDomains(allowed, signingIn) },
-      }] : [],
+      removeRuleIds: [SITE_RULE_ID, AD_RULE_ID],
+      addRules: [
+        ...(block ? [{
+          id: SITE_RULE_ID, priority: 1, action: { type: 'block' },
+          condition: { resourceTypes: ['main_frame'], excludedRequestDomains: allowedDomains(allowed, signingIn) },
+        }] : []),
+        // no resourceTypes: everything a page loads (not the page itself)
+        ...(ads ? [{ id: AD_RULE_ID, priority: 1, action: { type: 'block' }, condition: { requestDomains: AD_DOMAINS } }] : []),
+      ],
     });
     dnrWorks = true;
   } catch {

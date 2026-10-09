@@ -4,8 +4,8 @@
 import { TARGET } from '../lib/target.js';
 import { cmpVersion } from '../lib/version.js';
 import { ghHeaders, explainHttp } from '../lib/github.js';
-import { POLL_MINUTES, LATEST_URL, SITE_RULE_ID, DEFAULT_REPO } from '../background/constants.js';
-import { rulesInput, allowedDomains } from '../background/sites.js';
+import { POLL_MINUTES, LATEST_URL, SITE_RULE_ID, AD_RULE_ID, DEFAULT_REPO } from '../background/constants.js';
+import { rulesInput, allowedDomains, AD_DOMAINS } from '../background/sites.js';
 import { heardFrom } from './runner.js';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -42,7 +42,7 @@ export const CORE_START = [
     },
   },
   {
-    id: 'start.rules', area: 'blocking', expect: 'The blocking rule for other websites matches the app and the mode',
+    id: 'start.rules', area: 'blocking', expect: 'The blocking rules for other websites and for ad servers match the app and the mode',
     code: ['core/background/sites.js applySiteRules'],
     async run(t) {
       // Orion has no blocking rules: core/background/sites.js externalGuard sends other sites home instead.
@@ -50,8 +50,11 @@ export const CORE_START = [
       const want = await rulesInput();
       const rules = await chrome.declarativeNetRequest.getDynamicRules();
       const rule = rules.find((r) => r.id === SITE_RULE_ID) ?? null;
-      t.note('wanted', { block: want.block, allowedSites: want.allowed, signingIn: want.signingIn });
+      t.note('wanted', { block: want.block, allowedSites: want.allowed, ads: !!want.ads, signingIn: want.signingIn });
       t.eq('blocking rule present', !!want.block, !!rule);
+      const ads = rules.find((r) => r.id === AD_RULE_ID) ?? null;
+      t.eq('ad server rule present', !!want.ads, !!ads);
+      if (ads && want.ads) t.eq('ad servers blocked', AD_DOMAINS, ads.condition?.requestDomains ?? null);
       if (rule && want.block) {
         const open = rule.condition?.excludedRequestDomains ?? [];
         for (const d of allowedDomains(want.allowed, want.signingIn)) t.ok(`"${d}" stays open`, open.includes(d), open, `listed in excludedRequestDomains`);

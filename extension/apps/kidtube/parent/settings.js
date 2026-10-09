@@ -67,6 +67,7 @@ const MARKUP = `
     </select>
 
     <label class="check"><span>Allow skipping inside a video <small>Off: he can't jump forward or speed it up. Going back is always allowed.</small></span><input type="checkbox" id="allowSkip"></label>
+    <label class="check"><span>Hide and skip ads <small>YouTube’s ad boxes are hidden, and a video ad is muted and skipped at once. On Quetta the ad servers are also blocked.</small></span><input type="checkbox" id="blockAds"></label>
   </section>
 
   <section id="sec-sites" class="rules">
@@ -104,6 +105,7 @@ const MARKUP = `
     <input id="friendImage" placeholder="empty = the built-in cloud friend">
     <label for="friendAvatar">Moving avatar (shown instead of the picture)</label>
     <select id="friendAvatar"><option value="">None: use the picture</option><option value="miko-qipao">Miko (test sample)</option></select>
+    <p class="hint">More avatars come from the data repo’s <code>avatars/</code> folder of this profile (Pikachu is there, as it can’t be in the public code). The tablet downloads the chosen one with the next sync.</p>
     <p class="hint">The friend always speaks with a recorded voice: the daily helper records his lines (Groq, then Gemini, set on the server), and a line it didn't record is recorded on this tablet with the Groq key, then the Gemini key below. Without a key the words only show on screen.</p>
     <button id="tryVoice">🔊 Try the voice</button>
   </section>
@@ -274,7 +276,13 @@ export function mountSettings(root) {
 
   async function renderRules() {
     drawing = true;
-    const { config: c, pending } = await send({ type: 'getRules' });
+    const { config: c, pending, repoAvatars = [] } = await send({ type: 'getRules' });
+    const pick = $('friendAvatar');
+    pick.querySelectorAll('option[data-repo]').forEach((o) => o.remove());
+    for (const n of new Set([...repoAvatars, ...(String(c.presenter?.avatar ?? '').startsWith('repo:') ? [c.presenter.avatar.slice(5)] : [])])) {
+      pick.append(Object.assign(document.createElement('option'), { value: `repo:${n}`, textContent: `${n[0].toUpperCase()}${n.slice(1)} (from the data repo)` }));
+      pick.lastChild.dataset.repo = '1';
+    }
     $('windows').replaceChildren(...(c.time?.allowed ?? []).map(windowEditor));
     $('maxMinutes').value = c.time?.maxMinutesPerDay ?? 0;
     $('queueSize').value = c.queueSize ?? 10;
@@ -284,6 +292,7 @@ export function mountSettings(root) {
     $('maxLen').value = (c.maxVideoDurationSeconds ?? 0) / 60;
     $('requiredFirst').value = c.requiredFirst ?? 'first';
     $('allowSkip').checked = !!c.allowSkip;
+    $('blockAds').checked = !!c.blockAds;
     $('blockSites').checked = !!c.blockOutboundLinks;
     $('sites').value = (c.allowedSiteDomains ?? []).join('\n');
     $('channels').value = (c.blockedChannelIds ?? []).join('\n');
@@ -348,6 +357,7 @@ export function mountSettings(root) {
       maxVideoDurationSeconds: Math.round(Number($('maxLen').value) * 60) || 0,
       requiredFirst: $('requiredFirst').value,
       allowSkip: $('allowSkip').checked,
+      blockAds: $('blockAds').checked,
       blockOutboundLinks: $('blockSites').checked,
       allowedSiteDomains: sites.length ? sites : ['youtube.com'],
       blockedChannelIds: channels,

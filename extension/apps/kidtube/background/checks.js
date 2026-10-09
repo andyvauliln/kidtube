@@ -4,6 +4,7 @@ import { isVideoId } from '../../../core/lib/youtube.js';
 import { loadBundled, effective } from './config.js';
 import { okConfig, okQueue } from './sync.js';
 import { visibleVideos } from '../lib/queue.js';
+import { AVATAR_CACHE, repoAvatarName } from './media.js';
 
 const kid = (p) => chrome.runtime.getURL(`apps/kidtube/kid/${p}`);
 const parentOn = (settings) => settings?.mode === 'parent';
@@ -52,6 +53,23 @@ export const KIDTUBE_CHECKS = {
         const shown = visibleVideos(queue, config, s.watched ?? {});
         t.note('list', { source: s.data?.queue ? 'GitHub' : 'built-in', videos: queue.videos.length, shown: shown.length, minutesPerDay: config.time?.maxMinutesPerDay ?? null });
         t.ok('every video id', queue.videos.every((v) => isVideoId(v.videoId)), queue.videos.map((v) => v.videoId).filter((id) => !isVideoId(id)), '11 characters');
+      },
+    },
+    {
+      id: 'kidtube.avatar', area: 'kid', expect: 'A moving avatar chosen from the data repo (repo:<name>) is kept on the tablet',
+      code: ['apps/kidtube/background/media.js syncAvatar', 'apps/kidtube/kid/mesh.js cachedAvatar'],
+      async run(t) {
+        const s = await chrome.storage.local.get(['account', 'data', 'localConfig', 'repoAvatars', 'syncStatus']);
+        if (s.account?.app && s.account.app !== 'kidtube') return t.skip('another app runs');
+        const name = repoAvatarName((await effective(s)).config.presenter?.avatar);
+        if (!name) return t.skip('no avatar from the data repo chosen');
+        if (!globalThis.caches) return t.skip('no Cache Storage in this browser');
+        const kept = !!await (await caches.open(AVATAR_CACHE)).match(`https://kidtube.invalid/avatars/${name}/rig.json`);
+        const why = (s.syncStatus?.errors ?? []).find((e) => e.startsWith('Moving avatar: '));
+        // Not downloaded and no error: the first sync has not reached it yet.
+        if (!kept && !why) return t.skip('not downloaded yet');
+        t.note('in the data repo', s.repoAvatars ?? []);
+        t.ok(`avatars/${name}/rig.json on the tablet`, kept, why ?? 'missing', 'kept');
       },
     },
   ],
