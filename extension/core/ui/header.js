@@ -195,9 +195,8 @@
     root.append(picker);
 
     let data = null, alive = true, busy = '', loading = false, again = null;
-    const ui = { menu: false, add: false, pick: null, github: false, repo: null, token: '', note: '', noteKind: '', apps: true };
-    // The round apps button shows or hides the apps row; the choice stays on this tablet (headerApps).
-    chrome.storage.local.get('headerApps').then(({ headerApps }) => { if (headerApps === false) { ui.apps = false; draw(); } }).catch(() => {});
+    const ui = { menu: false, add: false, pick: null, github: false, repo: null, token: '', note: '', noteKind: '', apps: false };
+    // The round apps button shows or hides the apps row. It starts closed on every page and every reload.
     const say = (text, kind = '') => { ui.note = text; ui.noteKind = kind; draw(); };
 
     // A refresh asked for while one is running is not dropped: it runs right after (the storage can change twice).
@@ -364,7 +363,6 @@
         who.append(avatar(h.email), el('span', 'email', h.email ?? 'Reading the email…'), icon(PATH.caret, 20));
         const grid = button('round', '', () => {
           ui.apps = !ui.apps;
-          chrome.storage.local.set({ headerApps: ui.apps }).catch(() => {});
           draw();
         }, PATH.grid);
         grid.title = ui.apps ? 'Hide the apps' : 'Show the apps';

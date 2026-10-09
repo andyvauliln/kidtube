@@ -148,3 +148,24 @@ test('a key, but the browser won’t let KidTube record: its own recognition wri
   assert.deepEqual(sent.filter((m) => m.type === 'wish').map((m) => [m.list, m.text]), [['history', 'fewer cartoons']]);
   delete local.repoKeys;
 });
+
+test('the apps row starts closed on every page and reload; the round apps button opens it', async () => {
+  answers.header = () => ({
+    ok: true, signedIn: true, seen: true, email: 'parent@example.com', running: 'kidtube',
+    github: { connected: true }, apps: [{ id: 'kidtube', label: 'KidTube', has: true, active: true, color: '#c00', glyph: 'k' }],
+  });
+  const appsRow = (host) => find(host.shadowRoot, (n) => n.className === 'apps');
+  const host = new FakeEl('div');
+  globalThis.KidTubeHeader.mount(host, { dark: false });
+  await tick();
+  assert.equal(appsRow(host), undefined, 'closed when the page opens');
+  const grid = find(host.shadowRoot, (n) => n.tagName === 'BUTTON' && n.className === 'round');
+  assert.equal(grid.title, 'Show the apps');
+  grid.click();
+  assert.ok(appsRow(host), 'the apps button opens it');
+  const again = new FakeEl('div');   // a reload: a new header
+  globalThis.KidTubeHeader.mount(again, { dark: false });
+  await tick();
+  assert.equal(appsRow(again), undefined, 'closed again after a reload');
+  delete answers.header;
+});
