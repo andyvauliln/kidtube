@@ -2,6 +2,14 @@
 
 Newest first. Each version is built from `extension/` with `build/build-orion.mjs` (see [ORION.md](https://github.com/andyvauliln/kidtube/blob/main/docs/ORION.md)).
 
+## 0.10.1 (2026-10-09)
+
+- **Kid goes to his list.** Kid in parent mode now opens his list on YouTube. Before, it opened the PIN page.
+- **The lists load at once.** When you open KidTube on a new install, its lists and rules come from GitHub at once. Before, they came only after about 2 minutes.
+- **One tab.** When you open YouTube or a KidTube page in a new tab, the other YouTube and KidTube tabs close. Other sites stay open.
+- **You see the saved token.** The GitHub card shows the start and end of the saved token. With no new token typed, the button says **Load from GitHub** and loads everything again.
+- **Fewer stuck screens.** If one step in the background hangs, the other screens still get an answer. **Check this browser** shows the step that hung.
+
 ## 0.10.0 (2026-10-09)
 
 - **A new look for his screens.** Sky colours, big picture cards, a sun that shows the minutes left today, and a night-sky screen when videos are over. The lock screen now fills the whole screen.
