@@ -8,7 +8,7 @@ import { appOf } from '../lib/apps.js';
 import { PARENT_PAGE, PIN_PAGE, DEFAULT_REPO } from './constants.js';
 import { withState, loadBundled, effective, parentMode, shellOf, fromExtensionPage, folderShown, contextDocsOf, live } from './store.js';
 import { applySiteRules } from './sites.js';
-import { todayPlayed, lockNow, parentTab, videoInfo, fullLang, newEvent, sessionUnlocked, endSession, markWatchedIfCounts,
+import { todayPlayed, lockNow, videoInfo, fullLang, newEvent, sessionUnlocked, endSession, markWatchedIfCounts,
   viewState, isOpenable, guard, pickQuiz, openTalk } from './session.js';
 import { youtubeAccount, headerView, openApp, connectGitHub, exportSettings, importSettings, leaveApp, pinPageView } from './profiles.js';
 import { heldNotes, dropHeld, noteVideo, wish, contextNote, promptNote, parentData, videoDetail, helperData, contextData, planChange, runView } from './parent.js';
@@ -36,9 +36,9 @@ const HANDLERS = {
   },
 
   // A KidTube screen opened: fetch the newest list if the last sync is a few minutes old.
-  state: (msg, { tabId }) => {
+  state: () => {
     syncIfStale(2);
-    return withState((s) => viewState(s, tabId));
+    return withState((s) => viewState(s));
   },
 
   open: (msg, { tabId, host }) => withState(async (s) => {
@@ -130,15 +130,6 @@ const HANDLERS = {
     await chrome.tabs.update(tabId, { url });
   }),
 
-  // From the parent page: watch any listed or watched video in a new tab, skipping allowed.
-  parentWatch: async (msg) => {
-    if (!isVideoId(msg.videoId)) return { ok: false };
-    await withState((s) => { s.parentPass = { videoId: msg.videoId, tabId: null, until: Date.now() + 60 * 60 * 1000 }; });
-    const tab = await chrome.tabs.create({ url: watchUrl('m.youtube.com', msg.videoId) });
-    await withState((s) => { if (s.parentPass?.videoId === msg.videoId) s.parentPass.tabId ??= tab.id; });
-    return { ok: true };
-  },
-
   goHome: (msg, { tabId, host }) => withState(async (s) => {
     const { config } = await effective(s);
     if (!sessionUnlocked(s, config)) return { ok: false };
@@ -148,7 +139,7 @@ const HANDLERS = {
 
   // Playback time from the content script (at most 15 s at a time).
   tick: (msg, { tabId, host }) => withState(async (s) => {
-    if (parentTab(s, tabId) || parentMode(s)) return { action: 'none' }; // a parent watching doesn't count
+    if (parentMode(s)) return { action: 'none' }; // a parent watching doesn't count
     const { config } = await effective(s);
     const ses = s.session;
     const seconds = Math.min(Math.max(Number(msg.seconds) || 0, 0), 15);

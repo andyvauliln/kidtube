@@ -12,7 +12,7 @@ import { KEYS, serial, withState, shellOf, headerOpen, parentMode, live } from '
 import { applySiteRules } from './sites.js';
 import { sync } from './sync.js';
 
-const ACCOUNT_KEYS = [...KEYS.filter((k) => k !== 'parentPass'), 'memory', 'helperInfo', 'contextDocs'];
+const ACCOUNT_KEYS = [...KEYS, 'memory', 'helperInfo', 'contextDocs'];
 
 // A profile is an email with one app, so one email can have a profile in each app. KidTube's key is the email
 // itself (what YouTube reports, and what tablets before 0.9.6 have); another app's is "<app>:<email>".

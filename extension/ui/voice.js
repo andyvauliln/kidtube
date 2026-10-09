@@ -49,8 +49,6 @@ export async function say(line, voice = {}, { onWord } = {}) {
   for (const s of sentences(line.text)) await speakOne(s, voice, onWord);
 }
 
-export const canListen = () => !!(window.SpeechRecognition || window.webkitSpeechRecognition);
-
 // Listens once. Resolves with what was heard (several guesses, best first),
 // [] when he said nothing, or null when the microphone can't be used here.
 export function listen(lang = 'en-US', { seconds = 8 } = {}) {

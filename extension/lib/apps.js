@@ -23,7 +23,5 @@ export const APPS = {
     contextDocs: [],
   },
 };
-// Profiles of an app that isn't on YouTube don't follow YouTube's signed-in account.
-export const usesYouTube = (app) => (app?.sites ?? []).includes('youtube.com');
 export const DEFAULT_APP = 'kidtube';
 export const appOf = (account) => APPS[account?.app] ?? APPS[DEFAULT_APP];

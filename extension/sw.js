@@ -24,7 +24,6 @@ chrome.tabs.onUpdated.addListener((tabId, info) => {
 
 chrome.tabs.onRemoved.addListener((tabId) => {
   withState(async (s) => {
-    if (s.parentPass?.tabId === tabId) s.parentPass = null;
     if (s.session?.tabId !== tabId) return;
     leaveSession(s, (await effective(s)).config, 'closed');
   });
@@ -48,7 +47,6 @@ async function start() {
 }
 
 chrome.runtime.onInstalled.addListener(async ({ reason } = {}) => {
-  await chrome.storage.local.remove('report'); // left over from the M0 spike
   await start();
   // A fresh install without a connection: open the install page, where content/backup.js gives it back.
   const { settings = {} } = await chrome.storage.local.get('settings');

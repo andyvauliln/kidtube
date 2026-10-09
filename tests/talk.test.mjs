@@ -108,22 +108,6 @@ test('the parent list shows picture, title and channel of watched videos', async
   assert.ok(b.title.length > 3 && b.channelTitle && b.thumbnailUrl.startsWith('https://i.ytimg.com/'));
 });
 
-test('parent watch: any video in its own tab, skipping allowed, no counting, ends when the tab leaves it', async () => {
-  setConfig({ time: { ...allDay, maxMinutesPerDay: 30 } });
-  fake.store.today = null;
-  assert.equal((await send({ type: 'parentWatch', videoId: 'dQw4w9WgXcQ' })).ok, true);
-  assert.equal(fake.nav.created.at(-1), 'https://m.youtube.com/watch?v=dQw4w9WgXcQ');
-  assert.equal(await navigate('https://m.youtube.com/watch?v=dQw4w9WgXcQ', 99), 'https://m.youtube.com/watch?v=dQw4w9WgXcQ');
-  const st = await sendFrom(99, { type: 'state' });
-  assert.equal(st.parent, true);
-  assert.equal(st.rules.allowSkip, true);
-  assert.equal((await send({ type: 'state' })).parent, false, 'other tabs keep the kid rules');
-  await sendFrom(99, { type: 'tick', videoId: 'dQw4w9WgXcQ', seconds: 15 });
-  assert.equal(fake.store.today.playedSeconds, 0, "the parent's watching doesn't count");
-  assert.equal(await navigate('https://m.youtube.com/watch?v=aaaaaaaaaaa', 99), 'https://m.youtube.com/', 'leaving the video ends the pass');
-  assert.equal(fake.store.parentPass, null);
-});
-
 test('the kid’s 🔒 Parent opens the PIN page in his tab', async () => {
   await send({ type: 'parentGate' });
   assert.equal(fake.nav.updates.at(-1), 'ext://apps/apps.html?for=parent');

@@ -20,11 +20,10 @@ export async function loadBundled() {
 // --- the current profile's state --------------------------------------------------------------------------
 // localConfig: rules saved on the parent page that haven't reached GitHub yet.
 // seen: title/channel of videos he opened, for the parent's list after the queue has moved on.
-// parentPass: one tab where a parent watches a video without the kid's rules.
 // pendingTalk: the talking friend's screen he is on (before or after a video).
 // planLog: the parent's changes to today's list and the planned videos (lib/plan.js).
 // history: what he watched, newest last (parent mode → History). notes: the parent's notes for the AI.
-export const KEYS = ['settings', 'data', 'watched', 'today', 'session', 'outbox', 'syncStatus', 'localConfig', 'seen', 'parentPass', 'pendingTalk', 'quizTurn', 'transcripts', 'character', 'planLog', 'history', 'notes'];
+export const KEYS = ['settings', 'data', 'watched', 'today', 'session', 'outbox', 'syncStatus', 'localConfig', 'seen', 'pendingTalk', 'quizTurn', 'transcripts', 'character', 'planLog', 'history', 'notes'];
 
 let chain = Promise.resolve();
 // Runs fn after every earlier serial() call has finished.
@@ -73,7 +72,6 @@ export async function shellOf(g) {
   const { shell, account } = g ?? await chrome.storage.local.get(['shell', 'account']);
   return shell ?? { on: !account, locked: false };
 }
-export const shellOpen = (sh) => sh.on && !sh.locked;
 
 // The header can act (open an app, connect GitHub, the settings file): at the unlocked header, or in parent mode.
 // In kid mode it isn't shown, and a locked header waits for the PIN.
@@ -99,8 +97,6 @@ export function fromExtensionPage(sender) {
 }
 
 // --- the current profile and where its files are --------------------------------------------------------
-export const currentAccount = async () => (await chrome.storage.local.get('account')).account?.key ?? null;
-
 // For the screens (no lock: safe inside withState): "kidtube/johnnypitt.ind/", or null before the first sync.
 export async function folderShown() {
   const a = (await chrome.storage.local.get('account')).account;

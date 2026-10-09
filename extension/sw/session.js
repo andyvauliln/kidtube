@@ -19,11 +19,6 @@ export function lockNow(s, cfg, now = new Date()) {
   return lockReason(cfg, now, todayPlayed(s, cfg, now)) ?? (s.today?.stopped ? 'stopped' : null);
 }
 
-// A tab where a parent watches a video from the parent page (no rules, nothing counted).
-export function parentTab(s, tabId) {
-  return tabId != null && s.parentPass?.tabId === tabId && s.parentPass.until > Date.now();
-}
-
 export function videoInfo(s, queue, videoId) {
   const v = queue.videos.find((x) => x.videoId === videoId);
   return { videoId, ...(s.seen?.[videoId] ?? {}), ...(v ?? {}), title: v?.title ?? s.seen?.[videoId]?.title ?? 'this video' };
@@ -74,12 +69,12 @@ export function leaveSession(s, cfg, reason) {
 }
 
 // --- the view any screen asks for ----------------------------------------------------------
-export async function viewState(s, tabId) {
+export async function viewState(s) {
   const { config, queue } = await effective(s);
   const now = new Date();
   const played = todayPlayed(s, config, now);
   const reason = lockNow(s, config, now);
-  const parent = parentTab(s, tabId) || parentMode(s);
+  const parent = parentMode(s);
   const ses = s.session;
   const min = config.minSecondsBeforeLeave ?? 0;
   const cap = config.time?.maxMinutesPerDay || 0;
@@ -140,16 +135,6 @@ export async function guard(s, tabId, href) {
   if (app.page) return chrome.runtime.getURL(app.page);
   // Parent mode: YouTube's home is the parent's screens; everything else on YouTube is open.
   if (parentMode(s)) return c.kind === 'home' ? chrome.runtime.getURL(PARENT_PAGE) : null;
-  // A parent watching from the parent page: that one video in that one tab, no kid rules.
-  const pass = s.parentPass;
-  if (pass) {
-    if (pass.until < Date.now()) s.parentPass = null;
-    else if (pass.tabId == null && c.kind === 'watch' && c.videoId === pass.videoId) { pass.tabId = tabId; return null; }
-    else if (pass.tabId === tabId) {
-      if (c.kind === 'watch' && c.videoId === pass.videoId) return null;
-      s.parentPass = null;
-    }
-  }
   const { config, queue } = await effective(s);
   const locked = lockNow(s, config);
   const ses = s.session;

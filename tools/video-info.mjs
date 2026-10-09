@@ -72,18 +72,6 @@ function parseLength(text) {
   return String(text).split(':').map(Number).reduce((acc, x) => acc * 60 + x, 0);
 }
 
-export function toQueueEntry(info, addedAt = new Date().toISOString().replace(/\.\d+Z$/, 'Z')) {
-  return {
-    videoId: info.videoId,
-    title: info.title,
-    channelId: info.channelId,
-    channelTitle: info.channelTitle,
-    durationSeconds: info.durationSeconds,
-    thumbnailUrl: `https://i.ytimg.com/vi/${info.videoId}/mqdefault.jpg`,
-    addedAt,
-  };
-}
-
 async function main(argv) {
   if (argv[0] === '--search') {
     for (const v of await search(argv[1], Number(argv[2] ?? 10))) console.log(JSON.stringify(v));

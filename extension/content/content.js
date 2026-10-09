@@ -366,7 +366,7 @@
 
   addEventListener('resize', () => (page === 'watch' ? route() : page === 'home' && showHome()));
   chrome.storage.onChanged.addListener((ch) => {
-    if (ch.data || ch.localConfig || ch.parentPass || ch.settings || ch.account || ch.shell) loadRules();
+    if (ch.data || ch.localConfig || ch.settings || ch.account || ch.shell) loadRules();
     if (ch.data || ch.watched || ch.today) for (const n of ['home', 'strip']) frames[n]?.refresh?.();
   });
   loadRules();
