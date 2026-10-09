@@ -1,6 +1,16 @@
 # KidTube for Orion: what changed
 
-Newest first. Each version is built from `extension/` with `tools/build-orion.mjs` (see [ORION.md](../ORION.md)).
+Newest first. Each version is built from `extension/` with `build/build-orion.mjs` (see [ORION.md](https://github.com/andyvauliln/kidtube/blob/main/docs/ORION.md)).
+
+## 0.10.0 (2026-10-09)
+
+- **A new look for his screens.** Sky colours, big picture cards, a sun that shows the minutes left today, and a night-sky screen when videos are over. The lock screen now fills the whole screen.
+- **A clearer parent mode.** Today starts with three numbers (videos watched, minutes, ⭐ left). The notes card folds into one line. Settings are in sections with a jump list, and changes wait in a save bar until you tap Save.
+- **Notes for the AI.** One 🎤 button and one notes card with ✕, Clear all and Apply notes. Groq's Whisper or Google's speech model writes them down. If that fails, the card says why and keeps the recording (Try again). New: the **📄 This screen** and **⚙️ App data** buttons send what you see and the app's state with the note, so the AI knows what you mean.
+- **The talking friend can move.** Settings → Moving avatar (Miko is a test sample). The face follows the mood of each line and the mouth follows the voice. The friend always speaks with a recorded voice, never the iPad's own: a line the helper did not record is recorded on the iPad with the Groq or Gemini key.
+- **Listening keys** can also come from the private data repo (`kidtube/keys.json`). A key typed in Settings wins.
+- **Fixes.** The friend's screen says so when KidTube's background does not answer, with a way back to the list. Google sign-in pages stay open in every app. ↻ Update is now called ↻ Update data.
+- Inside, the code is rearranged into a common part and one part per app. Nothing changes in how you use it.
 
 ## 0.9.10 (2026-10-08)
 
