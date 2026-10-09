@@ -6,7 +6,7 @@ import { okConfig, okQueue } from './sync.js';
 import { visibleVideos } from '../lib/queue.js';
 
 const kid = (p) => chrome.runtime.getURL(`apps/kidtube/kid/${p}`);
-const parentOn = (settings) => settings?.mode === 'parent' && (!settings.parentUntil || settings.parentUntil > Date.now());
+const parentOn = (settings) => settings?.mode === 'parent';
 const held = (outbox, type) => (outbox ?? []).filter((e) => e.held && (!type || e.type === type));
 const refused = (t, answer) => t.has('answer.error (why it was refused)', answer?.error);
 

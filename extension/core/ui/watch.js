@@ -204,6 +204,18 @@
     try { chrome.storage.onChanged.addListener((ch) => { if (ch.checkAlert?.newValue && !ch.checkAlert.newValue.shown) pullAlert(); }); } catch {}
   }
 
+  // No KidTube page stays blank (2026-10-05: “I see nothing, just a white screen”): 4 s after it loads, something shows.
+  if (ownPage && !location.pathname.endsWith('/cover.html')) {
+    addEventListener('load', () => check({ id: `page.notBlank.${slug(location.pathname.split('/').pop().replace('.html', ''))}`, area: 'page',
+      expect: 'A KidTube page shows something within 4 s', code: [location.pathname.replace(/^\//, '')] }, (t) => {
+      const seen = [...(document.body?.querySelectorAll('*') ?? [])].some((n) => {
+        const r = n.getBoundingClientRect();
+        return r.width > 20 && r.height > 10 && (n.textContent.trim() || /^(IMG|SVG|CANVAS|VIDEO|svg)$/.test(n.tagName));
+      });
+      t.ok('something on the page', seen, 'a blank page', 'text or a picture');
+    }, 4000), { once: true });
+  }
+
   if (ownPage) step({ kind: 'page', label: document.title });
   addEventListener('hashchange', () => step({ kind: 'page', label: location.hash }));
   globalThis.KidTubeWatch = { check, watchTaps, noAnswer, step, send, Expect, banner };

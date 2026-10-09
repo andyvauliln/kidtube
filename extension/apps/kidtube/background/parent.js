@@ -183,7 +183,7 @@ export async function parentData(s) {
   const played = todayPlayed(s, config);   // starts a new day when the date changed, like the kid's screens
   return {
     account, app: appOf(account).id,
-    parentUntil: s.settings.parentUntil || 0, parentMode: parentMode(s), mode: s.settings.mode ?? null,
+    parentMode: parentMode(s), mode: s.settings.mode ?? null,
     today, planned, history: historyDays(s, recs, config), lists: s.notes?.lists ?? {},
     minutes: { played: Math.round(played / 60), max: config.time?.maxMinutesPerDay || 0, stopped: !!s.today?.stopped },
     hasMemory: !!memory, memoryAt: memory?.updatedAt ?? null, queueUpdatedAt: queue.updatedAt ?? null,
@@ -234,6 +234,11 @@ export async function videoDetail(s, id) {
 }
 
 // The Prompt tab: what the helper is (helper.json), what it did lately (memory.json), the tablet rules it reads.
+// How his spoken answers are heard, in the words of Settings → Hearing his answers ('cloud' is the default;
+// 'openrouter' is what tablets before 0.8.7 saved for the same thing).
+export const listenLabel = (provider) => (provider === 'device' ? 'the tablet’s own speech recognition'
+  : 'recorded and sent: free Groq and Gemini first, then paid OpenRouter');
+
 export async function helperData(s) {
   const { config } = await effective(s);
   const memory = await getMemory();
@@ -256,7 +261,7 @@ export async function helperData(s) {
       requiredFirst: config.requiredFirst ?? 'off', minSecondsBeforeLeave: config.minSecondsBeforeLeave ?? 0, allowSkip: !!config.allowSkip,
       minVideoMinutes: Math.round((config.minVideoDurationSeconds ?? 0) / 60), maxVideoMinutes: Math.round((config.maxVideoDurationSeconds ?? 0) / 60),
       quiz: { enabled: !!config.quiz?.enabled, maxAttempts: config.quiz?.maxAttempts ?? 3, onFail: config.quiz?.onFail ?? 'continue' },
-      friend: { name: p.name || 'Zippy', intro: !!p.intro, outro: !!p.outro, recorded: p.voice?.recorded !== false, listen: p.voice?.listen?.provider ?? 'cloud' },
+      friend: { name: p.name || 'Zippy', intro: !!p.intro, outro: !!p.outro, recorded: p.voice?.recorded !== false, listen: listenLabel(p.voice?.listen?.provider) },
       blockSites: !!config.blockOutboundLinks,
     },
   };

@@ -47,6 +47,12 @@ async function start() {
   chrome.alarms.create('poll', { periodInMinutes: POLL_MINUTES });
   chrome.alarms.clear?.('profileHold');               // 0.9.4–0.9.7's sign-in wait, replaced by the apps header
   await chrome.storage.local.remove('profileHold');
+  // Parent mode has no timer now. A tablet from before 0.8.9 can still hold one: an ended one means kid mode.
+  await withState((s) => {
+    if (!('parentUntil' in s.settings)) return;
+    if (s.settings.parentUntil && s.settings.parentUntil < Date.now()) s.settings.mode = 'kid';
+    delete s.settings.parentUntil;
+  });
   await applySiteRules();
   sync();
 }

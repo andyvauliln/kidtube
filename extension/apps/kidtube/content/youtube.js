@@ -233,10 +233,27 @@
       document.documentElement.classList.add('kidtube-on');
       layoutWatch();
     } else {
-      if (page !== 'home') { page = 'home'; videoId = null; document.documentElement.classList.add('kidtube-on'); if (parentOn) openParent(); }
+      if (page !== 'home') { page = 'home'; videoId = null; document.documentElement.classList.add('kidtube-on'); if (parentOn) openParent(); else checkCovered(); }
       showHome();
       silenceVideos();
     }
+  }
+
+  // His list covers YouTube's home: nothing of YouTube can be tapped, and its suggestions are hidden.
+  let coverChecked = false;
+  function checkCovered() {
+    if (coverChecked) return;
+    coverChecked = true;
+    globalThis.KidTubeWatch?.check({ id: 'kid.covered', area: 'kid', expect: 'In kid mode YouTube’s home is covered by his list, and YouTube’s suggestions are hidden',
+      code: ['apps/kidtube/content/youtube.js showHome', 'apps/kidtube/content/youtube.js hidden'] }, (t) => {
+      if (parentOn || !active || page !== 'home') return t.skip('not his home now');
+      const f = frames.home ?? frames.lock;
+      const box = f?.getBoundingClientRect?.();
+      t.ok('his list over the whole screen', !!box && box.width >= innerWidth - 2 && box.height >= innerHeight - 2,
+        box ? `${Math.round(box.width)}x${Math.round(box.height)}` : 'no screen', `${innerWidth}x${innerHeight}`);
+      t.ok('YouTube’s suggestions hidden', hidden.isConnected, 'the hiding style is off', 'on');
+      t.note('drawn', inPage ? 'in the page (Orion)' : 'in a frame');
+    }, 5000);
   }
 
   // The video element must be where player() looks: else his time is not counted and the end never comes.

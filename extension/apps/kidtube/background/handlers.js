@@ -3,7 +3,7 @@
 // the core (core/background/messages.js) routes them here and checks pageOnly.
 import { lockReason } from '../lib/schedule.js';
 import { nowIso } from '../../../core/lib/time.js';
-import { homeUrl, watchUrl, isVideoId, thumbUrl } from '../../../core/lib/youtube.js';
+import { homeUrl, watchUrl, isVideoId } from '../../../core/lib/youtube.js';
 import { DEFAULT_REPO } from '../../../core/background/constants.js';
 import { withState, parentMode, folderShown, live } from '../../../core/background/store.js';
 import { sync, syncSoon } from '../../../core/background/sync.js';
@@ -267,11 +267,6 @@ export const HANDLERS = {
         uploaded: queue.videos.filter((v) => s.transcripts?.[v.videoId]?.status === 'uploaded').length,
         missing: queue.videos.filter((v) => s.transcripts?.[v.videoId]?.available === false).length,
       },
-      recent: Object.entries(s.watched).sort((a, b) => b[1].localeCompare(a[1])).slice(0, 10).map(([videoId, at]) => {
-        const v = videoInfo(s, queue, videoId);
-        return { videoId, at, title: v.title, channelTitle: v.channelTitle ?? '', durationSeconds: v.durationSeconds ?? null,
-          thumbnailUrl: v.thumbnailUrl || thumbUrl(videoId) };
-      }),
     };
   }),
 };

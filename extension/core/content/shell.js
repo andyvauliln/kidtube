@@ -95,7 +95,7 @@
 
   // --- the state, handed to the app's script ---------------------------------------------------------------
   // shell: the apps header is on (no app runs: plain YouTube, where the parent signs in or switches the account).
-  let shell = null, parentOn = false, last = null;
+  let shell = null, parentOn = false, last = null, headerChecked = false;
   const listeners = [];
   async function refresh() {
     const st = await ask({ type: 'state' });
@@ -111,6 +111,15 @@
       if (shell || (parentOn && location.pathname === '/watch')) showHeader(); else hideHeader();
     }
     for (const fn of listeners) fn(st);
+    if (!headerChecked) {
+      headerChecked = true;
+      const want = !shell?.locked && !!(shell || (parentOn && location.pathname === '/watch'));
+      globalThis.KidTubeWatch?.check({ id: 'header.where', area: 'header', expect: 'The apps header shows at the apps header and in parent mode on a video, never in kid mode',
+        code: ['core/content/shell.js refresh'] }, (t) => {
+        t.eq('the apps header on this page', want, !!headerHost?.isConnected);
+        t.note('state', { shell: !!shell, locked: !!shell?.locked, parentMode: parentOn, path: location.pathname });
+      }, 1000);
+    }
     // An app was opened at the header, or parent mode ended: the app's rules check this page again.
     if ((wasShell && !shell) || (wasParent && !parentOn && !shell)) ask({ type: 'recheck', url: location.href });
   }

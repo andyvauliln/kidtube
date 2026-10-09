@@ -101,12 +101,6 @@ test('with intro, outro and quiz off, the video end goes straight home', async (
   assert.equal(fake.nav.updates.at(-1), 'https://m.youtube.com/');
 });
 
-test('the parent list shows picture, title and channel of watched videos', async () => {
-  const st = await send({ type: 'status' });
-  const b = st.recent.find((r) => r.videoId === B);
-  assert.ok(b.title.length > 3 && b.channelTitle && b.thumbnailUrl.startsWith('https://i.ytimg.com/'));
-});
-
 test('the kid’s 🔒 Parent opens the PIN page in his tab', async () => {
   await send({ type: 'parentGate' });
   assert.equal(fake.nav.updates.at(-1), 'ext://core/pages/pin.html?for=parent');

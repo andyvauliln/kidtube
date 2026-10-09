@@ -179,7 +179,7 @@ export async function openApp(msg, tabId, host) {
   const r = await useProfile({ email, datasyncId: g.ytAccount.datasyncId }, { app: app.id, key, folder: there?.folder });
   const parent = msg.create || msg.mode !== 'kid';
   await withState((s) => {
-    Object.assign(s.settings, { mode: parent ? 'parent' : 'kid', parentUntil: 0 });
+    s.settings.mode = parent ? 'parent' : 'kid';
     if (msg.create && !known) partOf({ app: app.id }).created?.(s);   // the app's starting files
   });
   await chrome.storage.local.set({ shell: { on: false, locked: false } });

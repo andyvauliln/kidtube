@@ -12,6 +12,6 @@ export const INSTALL_PAGE = TARGET === 'orion' ? `${PAGES_URL}#orion` : PAGES_UR
 export const PIN_PAGE = 'core/pages/pin.html';
 
 // Settings that belong to the tablet, not to a profile: they move along with every profile switch.
-export const DEVICE_SETTINGS = ['pinHash', 'pinSalt', 'pinFails', 'pinLockedUntil', 'deviceId', 'mode', 'parentUntil', 'repo', 'token'];
+export const DEVICE_SETTINGS = ['pinHash', 'pinSalt', 'pinFails', 'pinLockedUntil', 'deviceId', 'mode', 'repo', 'token'];
 // The settings file (the header's Save / Load) and the copy on the install page: the connection and the PIN.
 export const BACKUP_KEYS = ['repo', 'token', 'pinSalt', 'pinHash'];

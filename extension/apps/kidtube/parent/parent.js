@@ -124,7 +124,7 @@ async function refresh() {
   // Parent mode is off (switched off in another tab, or an old link): the PIN page turns it on.
   // (Kid in the header: the background is taking this tab to his list.)
   if (!r.parentMode) { if (globalThis.kidtubeLeaving) return; location.replace(chrome.runtime.getURL('core/pages/pin.html?for=parent')); return; }
-  if (!$('run').childElementCount) showDock();
+  if (!$('run').childElementCount) { showDock(); checkDock(); }
   $('nToday').textContent = r.today.filter((v) => !v.watchedAt).length;
   $('nPlanned').textContent = r.planned.length;
   render();
@@ -159,6 +159,24 @@ function render() {
 }
 addEventListener('hashchange', render);
 
+// The bottom bar as the parent asked (2026-10-09): left the version and ↻ Update, middle Parent | Kid, right the 🎤,
+// fixed to the bottom, and no time of the last update.
+function checkDock() {
+  W?.check({ id: 'parent.dock', area: 'parent', expect: 'The bottom bar: the version and ↻ Update on the left, Parent | Kid in the middle, 🎤 on the right, no update time',
+    code: ['apps/kidtube/parent/parent.html footer.dock', 'apps/kidtube/parent/parent.js showDock'] }, (t) => {
+    const dock = document.querySelector('footer.dock');
+    if (!t.has('footer.dock', dock)) return;
+    const box = dock.getBoundingClientRect();
+    t.eq('the bar is fixed', 'fixed', getComputedStyle(dock).position);
+    t.ok('the bar sits at the bottom', Math.abs(box.bottom - innerHeight) < 2, Math.round(box.bottom), `${innerHeight}`);
+    t.ok('the version', /^v\d+\.\d+\.\d+/.test($('ver').textContent), $('ver').textContent, 'v<version>');
+    t.ok('↻ Update', /Update|working|Waiting/.test($('run').textContent), $('run').textContent, 'the Update button');
+    t.ok('Parent | Kid', $('mode').childElementCount > 0, 'empty', 'the switch');
+    t.ok('🎤', $('mic').childElementCount > 0, 'empty', 'the notes button');
+    t.ok('no update time', !/\d{1,2}:\d{2}/.test(dock.textContent), dock.textContent.trim().slice(0, 80), 'no time in the bar');
+  }, 5000);
+}
+
 // A tab tapped: it is marked, and its screen has something on it.
 function checkTab(tab) {
   W?.check({ id: `parent.tab.${tab}`, area: 'parent', expect: `The ${tab} tab shows its screen`,
@@ -166,6 +184,12 @@ function checkTab(tab) {
     if (route().tab !== tab) return t.skip('another tab now');
     t.eq('the marked tab', tab, document.querySelector('.tabs a.on')?.dataset.tab ?? null);
     t.ok('the screen', view.childElementCount > 0, 'empty', 'something drawn');
+    // Settings uses the whole page (2026-10-08: no half-height box with its own scroll).
+    if (tab === 'settings') {
+      const boxed = [...view.querySelectorAll('*')].filter((n) => !/^(TEXTAREA|PRE|SELECT|INPUT|CODE)$/.test(n.tagName)
+        && /(auto|scroll)/.test(getComputedStyle(n).overflowY) && n.scrollHeight > n.clientHeight + 4 && n.clientHeight < innerHeight * 0.8);
+      t.ok('no box with its own scroll', !boxed.length, boxed.map((n) => `${n.tagName.toLowerCase()}.${n.className}`).slice(0, 3), 'the page scrolls');
+    }
   }, 3000);
 }
 
@@ -297,7 +321,6 @@ function syncLine() {
   else if (data.waiting) bits.push(`${data.waiting} change${data.waiting > 1 ? 's' : ''} waiting to upload.`);
   if (data.sync?.errors?.length) bits.push(`Sync problem: ${data.sync.errors[0]}`);
   else if (data.sync?.notes?.length) bits.push(data.sync.notes[0]);
-  if (data.parentUntil) bits.push(`Parent mode until ${when(new Date(data.parentUntil).toISOString())}.`);
   return el('p', 'muted', bits.join(' '));
 }
 
@@ -476,7 +499,7 @@ async function renderPrompt() {
     ['Video length', `${r.minVideoMinutes || 0}–${r.maxVideoMinutes || '∞'} min`], ['Must watch before switching', `${r.minSecondsBeforeLeave} s`], ['Skipping inside a video', r.allowSkip ? 'allowed' : 'off'],
     ['Questions', r.quiz.enabled ? `on, ${r.quiz.maxAttempts} tries, then ${ON_FAIL[r.quiz.onFail] ?? r.quiz.onFail}` : 'off'],
     ['Talking friend', `${r.friend.name}: ${[r.friend.intro && 'hello before', r.friend.outro && 'what we learned after'].filter(Boolean).join(', ') || 'quiet'}${r.friend.recorded ? ', recorded voice' : ''}`],
-    ['Hearing his answers', r.friend.listen === 'openrouter' ? 'OpenRouter audio model' : 'the tablet’s speech recognition'], ['Other websites', r.blockSites ? 'blocked' : 'open'],
+    ['Hearing his answers', r.friend.listen], ['Other websites', r.blockSites ? 'blocked' : 'open'],
   ]));
   box('Settings it uses', ...setBody);
 
@@ -663,7 +686,6 @@ chrome.storage.onChanged.addListener((ch) => {
   if (ch.settings && route().tab !== 'settings') refresh();
   else if (ch.settings) ask({ type: 'parentData' }).then((r) => { if (r && !r.parentMode) refresh(); });
 });
-setInterval(() => { if (data?.parentMode && data.parentUntil && data.parentUntil < Date.now()) refresh(); }, 30000);
 // --- notes for the AI: the 🎤 bottom right, the card on top. A note is about the screen it starts on. ----------
 function noteTarget() {
   const r = route();

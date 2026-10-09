@@ -51,7 +51,7 @@ test('plan changes need parent mode', async () => {
 
 test('parent mode: YouTube home opens the parent screens, any video plays, nothing is counted', async () => {
   assert.equal((await fromPage({ type: 'setMode', mode: 'parent' })).ok, true);
-  assert.equal(fake.store.settings.parentUntil, 0);   // stays on until the parent leaves (no timer since 0.8.9)
+  assert.equal(fake.store.settings.mode, 'parent');   // stays on until the parent switches to Kid (no timer)
   assert.equal(await navigate('https://m.youtube.com/'), 'ext://apps/kidtube/parent/parent.html');
   assert.equal(await navigate('https://m.youtube.com/watch?v=dQw4w9WgXcQ'), 'https://m.youtube.com/watch?v=dQw4w9WgXcQ');
   assert.equal((await send({ type: 'tick', videoId: 'dQw4w9WgXcQ', seconds: 10 })).action, 'none');
@@ -145,7 +145,7 @@ test('prompt changes: added, shown as waiting, removed; the helper gets prompt e
 
 test('prompt changes also come from the settings page with parent mode off, never from YouTube', async () => {
   const before = fake.store.settings;
-  fake.store.settings = { ...before, mode: 'kid', parentUntil: 0 };
+  fake.store.settings = { ...before, mode: 'kid' };
   const opts = { url: 'ext://core/pages/options.html', tab: { id: 9, url: 'ext://core/pages/options.html' } };
   assert.equal((await send({ type: 'promptNote', action: 'add', text: 'More animals' }, opts)).ok, true);
   assert.equal((await send({ type: 'promptNote', action: 'add', text: 'From the page' })).ok, false);
@@ -160,8 +160,15 @@ test('kid mode: home is his list again', async () => {
   assert.equal(await navigate('https://m.youtube.com/watch?v=dQw4w9WgXcQ'), 'https://m.youtube.com/');
 });
 
-test('parent mode times out', async () => {
+test('parent mode stays on until Kid (no timer); an old tablet’s ended timer means kid mode after the update', async () => {
+  fake.store.settings = { ...fake.store.settings, mode: 'parent' };
+  const realNow = Date.now;
+  Date.now = () => realNow() + 24 * 3600000;
+  try { assert.equal((await send({ type: 'state' })).parentMode, true, 'a day later: still parent mode'); } finally { Date.now = realNow; }
   fake.store.settings = { ...fake.store.settings, mode: 'parent', parentUntil: Date.now() - 1000 };
+  for (const fn of fake.listeners.startup) await fn();
+  assert.equal(fake.store.settings.mode, 'kid');
+  assert.equal('parentUntil' in fake.store.settings, false);
   assert.equal((await send({ type: 'state' })).parentMode, false);
 });
 

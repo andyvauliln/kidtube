@@ -70,7 +70,7 @@ export async function contextNow(sender) {
   const st = g.settings ?? {};
   const m = chrome.runtime.getManifest();
   const yt = g.ytAccount ?? null;
-  const parentOn = st.mode === 'parent' && (!st.parentUntil || st.parentUntil > Date.now());
+  const parentOn = st.mode === 'parent';
   return redact({
     app: { version: m.version, versionName: m.version_name ?? null, target: TARGET, workerStartedAt: workerStart },
     browser: { userAgent: globalThis.navigator?.userAgent ?? null, online: globalThis.navigator?.onLine ?? null,

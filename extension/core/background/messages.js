@@ -64,12 +64,12 @@ const HANDLERS = {
   // The PIN page: what runs now, whether it may skip the PIN, and where YouTube is.
   apps: () => withState((s) => pinPageView(s)),
 
-  // Settings page or parent screens, after the PIN. Parent mode stays on until the parent switches back (no timer since 0.8.9).
+  // Settings page or parent screens, after the PIN. Parent mode stays on until the parent switches back.
   setMode: (msg) => {
     if (!['kid', 'parent'].includes(msg.mode)) return { ok: false, error: 'Unknown mode.' };
     return withState((s) => {
-      Object.assign(s.settings, { mode: msg.mode, parentUntil: 0 });
-      return { ok: true, until: 0, parentMode: parentMode(s) };
+      s.settings.mode = msg.mode;
+      return { ok: true, parentMode: parentMode(s) };
     }).then(async (r) => { await applySiteRules(); return r; });
   },
 
@@ -89,7 +89,7 @@ const HANDLERS = {
 
   // Parent screens → kid mode: back to the app's home (KidTube: his list on YouTube).
   kidHome: async (msg, { tabId }) => {
-    await withState((s) => { Object.assign(s.settings, { mode: 'kid', parentUntil: 0 }); });
+    await withState((s) => { s.settings.mode = 'kid'; });
     await applySiteRules();
     const app = appOf((await chrome.storage.local.get('account')).account);
     const url = app.page ? chrome.runtime.getURL(app.page) : homeUrl(live.host);

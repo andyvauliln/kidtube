@@ -80,10 +80,9 @@ export async function headerOpen(g) {
 }
 
 // Parent mode: the parent's screens instead of his list, no rules, nothing counted.
-// parentUntil: set only by versions before 0.8.9 (a timer); a session started then still ends on time.
+// It stays on until the parent switches to Kid: no timer.
 export function parentMode(s) {
-  const st = s.settings ?? {};
-  return st.mode === 'parent' && (!st.parentUntil || st.parentUntil > Date.now());
+  return s.settings?.mode === 'parent';
 }
 
 // Messages that change the plan or the mode come only from the extension's own pages.
