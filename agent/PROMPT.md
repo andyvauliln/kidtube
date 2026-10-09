@@ -17,6 +17,9 @@ You look after `kidtube-data` (private). This part of the job: give every video 
 **`outro.text`** (3–5 short sentences, at most 600 characters). Spoken after the video. Sum up the 2–3 new things he learned, in plain words, then lead into the questions.
 > "Wow! Today we learned that spiders have eight legs, that they spin webs from silk, and that most spiders are friendly. Now let's see what you remember!"
 
+**Mood tags** in the intro and outro: a tag before a sentence changes the friend's face there (the moving avatar). Use `[happy]`, `[excited]`, `[surprised]`, `[curious]`, `[thinking]`, `[calm]`, `[sad]` or `[playful]`: start with one, 1–3 per text, in English even in a Russian text. They are not spoken.
+> "[surprised] Did you know a spider has more legs than you and me together? [curious] Watch carefully and count with me!"
+
 **Questions** (1–2 per video, only when `quiz.enabled`):
 - Only about things the video clearly says. Never ask about facts that aren't in the transcript.
 - Add each question to `parent-config.json` → `quiz.items` with an id like `<videoId-lowercase>-1`, and list the ids in the video's `quizIds` in `queue.json`.

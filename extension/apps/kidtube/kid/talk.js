@@ -1,10 +1,12 @@
 // The talking friend: says the intro before a video, and after it says what we learned and asks the questions.
 // The service worker decides what comes next; this page only talks, listens and reports.
-import { say, listen, recordedUrl, recordAnswer, transcribeAnswer, listenKeys } from '../lib/voice.js';
+import { say, listen, recordedUrl, recordedLips, makeLine, recordAnswer, transcribeAnswer, listenKeys } from '../lib/voice.js';
 import { createRig } from './rig.js';
+import { createMeshFriend } from './mesh.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { checkPin } from '../../../core/lib/pin.js';
 import { ask as send } from '../../../core/lib/ask.js';
+import { moodTrack } from '../lib/moods.js';
 
 const $ = (id) => document.getElementById(id);
 const q = new URLSearchParams(location.search);
@@ -20,21 +22,45 @@ const svg = $('buddy');
 
 // --- the character -----------------------------------------------------------------------------
 
-let rig = null;                 // moves the SVG character (rig.js); a plain picture only bobs
+let rig = null;                 // moves the SVG character (rig.js) or the mesh avatar (mesh.js); a plain picture only bobs
 function talking(on) {
   document.body.classList.toggle('talking', on);
   rig?.talking(on);
 }
 
+// A built-in line with the friend's face for it.
+const withMood = (line, mood) => (line.moods ? line : { ...line, moods: [{ at: 0, mood }] });
+
 // lang: the language of this line (a question can differ from the video); default the video's.
+let playing = null;              // the <audio> of the line now, so a parent's skip can stop it
+
 async function speak(line, lang = script.lang) {
   if (skipAll) return;
   $('bubble').textContent = line.text;
-  talking(true);
-  // A recording made by the helper plays instead of the tablet's own voice (when the parent allows it).
-  const recorded = script.recorded !== false && line.audioRef ? await recordedUrl(line.audioRef) : null;
-  try { await say(recorded ? { ...line, audioUrl: recorded } : line, { ...script.voice, lang: lang || script.voice?.lang }, { onWord: () => rig?.word() }); }
-  finally { talking(false); if (recorded) URL.revokeObjectURL(recorded); }
+  // line.moods from the helper's [mood] tags: each starts when the voice reaches its character.
+  const reach = moodTrack(line.moods, (m) => rig?.mood?.(m));
+  reach(0);
+  const len = String(line.text).length;
+  // The helper's recording with its mouth shapes; without one, say() records the line here (Groq, then Gemini).
+  const recorded = line.audioRef ? await recordedUrl(line.audioRef) : null;
+  const lips = recorded ? await recordedLips(line.audioRef) : null;
+  try {
+    await say(recorded ? { ...line, audioUrl: recorded, lips } : line, { lang: lang || script.voice?.lang },
+      { onAudio: (a, l) => {
+        if (skipAll) { a.muted = true; queueMicrotask(() => a.dispatchEvent(new Event('ended'))); return; }   // skipped while it was made
+        playing = a; talking(true); rig?.audio?.(a, l);
+      }, onProgress: (f) => reach(f * len) });
+  } finally { playing = null; talking(false); if (recorded) URL.revokeObjectURL(recorded); }
+}
+
+// Lines the helper didn't record are recorded here while he looks at the start screen, so they are ready in time.
+async function prepare() {
+  const keys = await listenKeys();
+  const lines = [...script.lines.map((l) => [l, script.lang]), ...script.items.filter((i) => i.supported).map((i) => [{ text: i.prompt, audioRef: i.audioRef }, i.lang])];
+  for (const [l, lang] of lines) {
+    const url = l.audioRef ? await recordedUrl(l.audioRef) : null;
+    if (url) URL.revokeObjectURL(url); else await makeLine(l.text, lang || script.voice?.lang, keys);
+  }
 }
 
 // A line around the questions: the helper's recording of it when there is one, else the built-in text.
@@ -93,7 +119,17 @@ function animate(el) {
   if (el.querySelector('#body')) $('friend').classList.add('rigged');
 }
 
-function setupFriend() {
+async function setupFriend() {
+  $('startText').textContent = `👆 Tap ${script.name}`;
+  // A mesh avatar when the parent chose one; the drawing below when this tablet can't show it.
+  if (script.avatar) {
+    try {
+      rig = await createMeshFriend($('friend'), { base: script.avatar });
+      svg.remove();
+      $('friend').classList.add('rigged', 'mesh');
+      return;
+    } catch (e) { console.warn('mesh avatar not shown:', e); }
+  }
   const custom = script.svg && inlineSvg(script.svg);
   if (custom) { svg.replaceWith(custom); animate(custom); }
   else if (script.imageUrl) {
@@ -101,7 +137,6 @@ function setupFriend() {
     img.onerror = () => { img.replaceWith(svg); animate(svg); };
     svg.replaceWith(img);
   } else animate(svg);
-  $('startText').textContent = `👆 Tap ${script.name}`;
 }
 
 // --- answering -------------------------------------------------------------------------------
@@ -187,7 +222,7 @@ async function ask(item) {
   }
   if (skipAll) return { ...result, result: 'skippedByParent' };
   const skipped = new Promise((r) => { skipNow = r; });
-  await speak({ text: item.prompt, audioUrl: item.audioUrl, audioRef: item.audioRef }, item.lang);
+  await speak(withMood({ text: item.prompt, audioUrl: item.audioUrl, audioRef: item.audioRef }, 'curious'), item.lang);
   $('bubble').textContent = item.prompt;
   while (result.attempts < script.maxAttempts) {
     const a = skipAll ? 'skip' : await Promise.race([getAnswer(item), skipped]);
@@ -222,17 +257,19 @@ function finish() {
 async function run() {
   running = true;
   $('start').hidden = true;
+  rig?.unlock?.();                // his tap lets the sound be measured (mesh avatar)
   rig?.wave();
   for (const line of script.lines) await speak(line);
   if (mode === 'outro' && script.items.length) {
-    if (!script.lines.length) await speak(phrase(script.lang, 'hello', script.name));
+    if (!script.lines.length) await speak(withMood(phrase(script.lang, 'hello', script.name), 'happy'));
     const results = [];
     for (const item of script.items) results.push(await ask(item));
     const { next } = await send({ type: 'quizResults', videoId, results });
     const allGood = results.every((r) => r.result !== 'failed');
-    await speak(phrase(script.lang, next === 'rewatch' ? 'rewatch' : next === 'stopForToday' ? 'stop' : allGood ? 'great' : 'tried'));
+    const end = next === 'rewatch' ? 'rewatch' : next === 'stopForToday' ? 'stop' : allGood ? 'great' : 'tried';
+    await speak(withMood(phrase(script.lang, end), { rewatch: 'curious', stop: 'calm', great: 'excited', tried: 'happy' }[end]));
   }
-  if (mode === 'outro' && script.catchphrase) await speak({ text: script.catchphrase, audioRef: script.catchphraseAudioRef });
+  if (mode === 'outro' && script.catchphrase) await speak(withMood({ text: script.catchphrase, audioRef: script.catchphraseAudioRef }, 'playful'));
   finish();
 }
 
@@ -244,7 +281,7 @@ $('pinOk').onclick = async () => {
   if (!r.ok) { $('pinErr').textContent = r.error; return; }
   $('pinbox').hidden = true;
   skipAll = true;
-  window.speechSynthesis?.cancel();
+  if (playing) { playing.pause(); playing.dispatchEvent(new Event('ended')); }
   skipNow?.('skip');
   if (!running) finish();
 };
@@ -261,7 +298,8 @@ if (!script) {
   const home = `https://${/(^|\.)youtube\.com$/.test(from) ? from : 'm.youtube.com'}/`;
   $('stage').firstChild.firstChild.append(globalThis.KidTubeUI.button('go', 'Back to the list', () => { location.href = home; }));
 } else {
-  setupFriend();
+  await setupFriend();
+  prepare();
   if (!script.lines.length && !script.items.length) finish();
   // Browsers only let a page speak after a tap, so he taps the friend to start.
   $('start').hidden = false;

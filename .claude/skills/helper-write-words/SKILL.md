@@ -11,6 +11,7 @@ For every video on today's list, among the new ideas, or planned (the next plann
 - `learned`: 2–4 new things the child learns;
 - `intro`: 2–4 short sentences, at most 400 characters. It makes the child curious without giving the answer and says what to look out for;
 - `outro`: 3–5 short sentences, at most 600 characters. It sums up what the child learned, then leads into the questions;
+- mood tags in `intro` and `outro`: a tag before a sentence changes the friend's face there — `[happy]` `[excited]` `[surprised]` `[curious]` `[thinking]` `[calm]` `[sad]` `[playful]`. Start with one, use 1–3 per text, in English even in a Russian text; they are not spoken and don't count toward the length. Example: `"[surprised] Did you know a snail carries its house? [curious] Look at what it does when it is scared!"`;
 - `talkAbout`: 2–4 things to talk about with the child;
 - `quiz`: up to 2 questions.
   - Math videos: `{"template":"add|subtract|next-number|number-before|bigger","params":{"max":10},"count":1}` — `max` from "Where the child is now" in the `math` document.

@@ -1,6 +1,7 @@
 // What the helper asks the model, and how each answer is checked before it is used.
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
+import { MOOD_GUIDE, parseMoods } from './moods.mjs';
 
 const WRITING_GUIDE = readFileSync(fileURLToPath(new URL('../PROMPT.md', import.meta.url)), 'utf8');
 
@@ -148,11 +149,12 @@ Reply JSON:
 Quiz: at most ${maxQuestions} questions.${transcript?.available ? '' : ' There is no transcript yet: return "quiz": [] unless it is a math video (then use only the math templates); the questions are written later from the transcript.'} For math videos use the math templates (add, subtract, next-number, number-before, bigger) with "params": {"max": N} and optional "count". For other videos use video-voice (one- or two-word answers, several accepted forms) or video-choice ("options" and "correct"). Only ask about things the video really says.
 He is 4–5 years old: the intro, outro and questions use only words a small child knows. Skip hard facts from the video (scientific terms like "nucleus" or "hemoglobin", big numbers, shape names like "trapezoid"); ask about the simple, memorable things instead (what it is made of, what colour, which animal, how many up to 10, what to do).
 Answers he says must be 1–2 everyday words or a number up to 20.
-Do not start the intro or end the outro with a catchphrase or the friend's name; the tablet adds it.`,
-    check: (o) => (typeof o.intro !== 'string' || !o.intro.trim() ? 'intro is missing'
-      : o.intro.length > 450 ? 'intro is longer than 400 characters'
-      : typeof o.outro !== 'string' || !o.outro.trim() ? 'outro is missing'
-      : o.outro.length > 600 ? 'outro is longer than 600 characters'
+Do not start the intro or end the outro with a catchphrase or the friend's name; the tablet adds it.
+Intro and outro: ${MOOD_GUIDE} Example: "[surprised] Did you know a snail carries its house? [curious] Look at what it does when it is scared!"`,
+    check: (o) => (typeof o.intro !== 'string' || !parseMoods(o.intro).text ? 'intro is missing'
+      : parseMoods(o.intro).text.length > 450 ? 'intro is longer than 400 characters'
+      : typeof o.outro !== 'string' || !parseMoods(o.outro).text ? 'outro is missing'
+      : parseMoods(o.outro).text.length > 600 ? 'outro is longer than 600 characters'
       : typeof o.summary !== 'string' ? 'summary is missing'
       : ru && !/[а-яё]/i.test(o.intro) ? 'the video is Russian: write the intro in Russian'
       : tooHard(o.quiz) ? `this answer is too hard for a 4-year-old: "${tooHard(o.quiz)}" (use 1–2 everyday words or a number up to 20)`

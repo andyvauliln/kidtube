@@ -10,6 +10,7 @@ Release tools. They read `extension/` and write into `site/`.
 | `build-orion.mjs` | **Orion release.** Copies `extension/` to `dist/orion`, sets `TARGET = 'orion'`, trims the manifest, zips it into `site/orion/` with `latest.json`. `npm run orion:build`; the Claude skill `update-orion` has the full steps |
 | `orion-check.mjs` | Every `chrome.*` API the extension uses, looked up in `orion-apis.json`; fails on one Orion lacks unless the Orion build handles it. `npm run orion:check` |
 | `orion-apis.json` | A dated snapshot of Kagi's Orion API support table |
+| `build-mesh-avatar.mjs` | Bundles the mesh-avatar-studio engine into `extension/apps/kidtube/vendor/mesh-avatar/` (run it only to update the engine) |
 
 ## Release
 

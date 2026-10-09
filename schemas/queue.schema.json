@@ -85,6 +85,38 @@
                 "pattern": "^https://",
                 "description": "optional recorded voice; without it the tablet reads text aloud"
               },
+              "moods": {
+                "type": "array",
+                "maxItems": 12,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "at",
+                    "mood"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "at": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 600
+                    },
+                    "mood": {
+                      "enum": [
+                        "happy",
+                        "excited",
+                        "surprised",
+                        "curious",
+                        "thinking",
+                        "calm",
+                        "sad",
+                        "playful"
+                      ]
+                    }
+                  }
+                },
+                "description": "the friend's face from character `at` of text on (written by the helper as [mood] tags); the moving avatar shows it"
+              },
               "audioRef": {
                 "type": "string",
                 "pattern": "^repo:audio/[A-Za-z0-9_-]+\\.(mp3|wav|ogg)$",
@@ -110,6 +142,38 @@
                 "format": "uri",
                 "pattern": "^https://",
                 "description": "optional recorded voice; without it the tablet reads text aloud"
+              },
+              "moods": {
+                "type": "array",
+                "maxItems": 12,
+                "items": {
+                  "type": "object",
+                  "required": [
+                    "at",
+                    "mood"
+                  ],
+                  "additionalProperties": false,
+                  "properties": {
+                    "at": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 600
+                    },
+                    "mood": {
+                      "enum": [
+                        "happy",
+                        "excited",
+                        "surprised",
+                        "curious",
+                        "thinking",
+                        "calm",
+                        "sad",
+                        "playful"
+                      ]
+                    }
+                  }
+                },
+                "description": "the friend's face from character `at` of text on (written by the helper as [mood] tags); the moving avatar shows it"
               },
               "audioRef": {
                 "type": "string",

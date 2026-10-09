@@ -56,9 +56,9 @@ export const HANDLERS = {
     const ru = lang.startsWith('ru');
     if (msg.mode === 'intro') {
       if (p.catchphrase) lines.push({ text: p.catchphrase, ...(p.catchphraseAudioRef ? { audioRef: p.catchphraseAudioRef } : {}) });
-      lines.push(v.intro ?? { text: DEFAULT_LINES.intro(ru, name, v.title, hasQuiz) });
+      lines.push(v.intro ?? { moods: [{ at: 0, mood: 'excited' }], text: DEFAULT_LINES.intro(ru, name, v.title, hasQuiz) });
     } else if (p.outro) {
-      lines.push(v.outro ?? { text: DEFAULT_LINES.outro(ru, name, v.title) });
+      lines.push(v.outro ?? { moods: [{ at: 0, mood: 'happy' }], text: DEFAULT_LINES.outro(ru, name, v.title) });
     }
     const quizItems = config.quiz?.items ?? {};
     const items = msg.mode === 'outro' ? (t?.quizIds ?? []).map((quizId) => ({ quizId, ...quizItems[quizId] })).filter((i) => i.prompt) : [];
@@ -66,6 +66,8 @@ export const HANDLERS = {
     const ch = s.character && p.imageUrl === `repo:${s.character.path}` ? s.character : null;
     return {
       name, imageUrl: ch?.src ?? (p.imageUrl?.startsWith('https://') ? p.imageUrl : ''), svg: ch?.svg ?? '',
+      // a mesh avatar bundled in apps/kidtube/avatars/<name>/ (talk.html is in kid/)
+      avatar: /^[a-z0-9-]+$/.test(p.avatar ?? '') ? `../avatars/${p.avatar}` : '',
       catchphrase: p.catchphrase ?? '', catchphraseAudioRef: p.catchphraseAudioRef ?? null, phrases: p.phrases ?? {},
       recorded: p.voice?.recorded !== false, listen: p.voice?.listen ?? { provider: 'cloud' },
       voice: { ...(p.voice ?? {}), lang }, lang, title: v.title, lines,

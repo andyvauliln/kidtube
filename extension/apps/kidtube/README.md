@@ -12,6 +12,8 @@ server fills the list.
 | `parent/` | Parent mode: Today, Planned, History, Context, Prompt, Settings |
 | `lib/` | KidTube's pure helpers: the list, the plan, the hours, answer marking, captions, speech |
 | `data/` | Bundled defaults: rules, a starter list, the quiz types this version supports |
+| `avatars/` | Mesh avatars for the talking friend, one folder each (`rig.json` + `built/`, made with mesh-avatar-studio). `miko-qipao` is the test sample |
+| `vendor/` | Third-party code: `mesh-avatar/`, the mesh-avatar-studio engine (MIT), bundled by `build/build-mesh-avatar.mjs` |
 
 ## A day on the tablet
 

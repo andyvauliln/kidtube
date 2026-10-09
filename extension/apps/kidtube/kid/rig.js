@@ -182,5 +182,11 @@ export function createRig(svg, { reducedMotion = !!globalThis.matchMedia?.('(pre
     [...loops, ...pose, tilt, ...glow].forEach((x) => x?.cancel());
   }
 
-  return { talking, word, react, wave, destroy };
+  // The helper's [mood] tags: the drawing can only look happy or sad.
+  function mood(name) {
+    if (['happy', 'excited', 'playful'].includes(name)) react('happy');
+    else if (name === 'sad') react('sad');
+  }
+
+  return { talking, word, react, wave, mood, destroy };
 }

@@ -29,6 +29,8 @@ import { buildQuiz, templateCatalog } from './lib/quiz.mjs';
 import { tooHard } from './lib/prompts.mjs';
 import { createGemini } from './lib/gemini.mjs';
 import { createVoices, audioPath, groqFor, groqTag, langOf } from './lib/voices.mjs';
+import { parseMoods, moodLine, MOODS } from './lib/moods.mjs';
+import { makeLips, LIPS_FILE } from './lib/lips.mjs';
 import { search } from '../tools/video-info.mjs';
 import { locate } from './lib/profile.mjs';
 import { mergeConfig } from '../extension/core/lib/merge.js';
@@ -248,9 +250,13 @@ const commands = {
     const w = parse(json, 'words');
     const ru = (v.lang ?? 'en').startsWith('ru');
     const problems = [];
-    if (!w.intro?.trim() || w.intro.length > 450) problems.push('intro: 1–450 characters');
-    if (!w.outro?.trim() || w.outro.length > 600) problems.push('outro: 1–600 characters');
-    if (ru && !/[а-яё]/i.test(w.intro ?? '')) problems.push('the video is Russian: intro and outro in Russian');
+    // [mood] tags before sentences: taken out of the text, kept as { at, mood } for the avatar.
+    const intro = parseMoods(w.intro), outro = parseMoods(w.outro);
+    if (!intro.text || intro.text.length > 450) problems.push('intro: 1–450 characters');
+    if (!outro.text || outro.text.length > 600) problems.push('outro: 1–600 characters');
+    const unknown = [...intro.unknown, ...outro.unknown];
+    if (unknown.length) problems.push(`unknown mood tags ${unknown.map((t) => `[${t}]`).join(', ')}: use ${MOODS.map((m) => `[${m}]`).join(' ')}`);
+    if (ru && !/[а-яё]/i.test(intro.text)) problems.push('the video is Russian: intro and outro in Russian');
     const hard = tooHard(w.quiz);
     if (hard) problems.push(`answer too hard for a 4-year-old: "${hard}" (1–2 everyday words or a number up to 20)`);
     const pc = readJson(paths.config);
@@ -261,7 +267,7 @@ const commands = {
     if (problems.length) return fail(problems.join('; '));
     const tr = transcript(dataDir, id);
     v.content = { source: tr?.available ? 'transcript' : 'title', at: iso(), summary: String(w.summary ?? ''), learned: (w.learned ?? []).map(String).slice(0, 6),
-      intro: w.intro.trim(), outro: w.outro.trim(), talkAbout: (w.talkAbout ?? []).map(String).slice(0, 6), quizIds: ids, items,
+      intro: intro.text, outro: outro.text, ...(intro.moods.length ? { introMoods: intro.moods } : {}), ...(outro.moods.length ? { outroMoods: outro.moods } : {}), talkAbout: (w.talkAbout ?? []).map(String).slice(0, 6), quizIds: ids, items,
       ...(tr?.available && typeof w.tooHard === 'string' && w.tooHard.trim() ? { tooHard: w.tooHard.trim().slice(0, 300) } : {}) };
     s.rewritten.push(id);
     s.touched.push(id);
@@ -306,7 +312,7 @@ const commands = {
         videoId: id, title: v.title.slice(0, 200), channelId: v.channelId, ...(v.channelTitle ? { channelTitle: v.channelTitle.slice(0, 200) } : {}),
         durationSeconds: v.durationSeconds, thumbnailUrl: `https://i.ytimg.com/vi/${id}/mqdefault.jpg`, addedAt: v.addedAt ?? iso(),
         ...(v.lang && v.lang !== 'en' ? { lang: v.lang } : {}), ...(v.required ? { required: true } : {}),
-        ...(v.content?.intro ? { intro: { text: v.content.intro } } : {}), ...(v.content?.outro ? { outro: { text: v.content.outro } } : {}),
+        ...(v.content?.intro ? { intro: moodLine(v.content.intro, v.content.introMoods) } : {}), ...(v.content?.outro ? { outro: moodLine(v.content.outro, v.content.outroMoods) } : {}),
         ...(v.content?.quizIds?.length ? { quizIds: v.content.quizIds } : {}), ...(v.why ? { note: v.why.slice(0, 500) } : {}),
       };
     });
@@ -433,7 +439,7 @@ async function makeVoices(queue, pc, s) {
   // Without GROQ_API_KEY the Groq block in config.json changes nothing: no Groq names, no recording again.
   const cfg = env.GROQ_API_KEY ? speak : { ...speak, groq: undefined };
   const voices = createVoices({ env, cfg });
-  const want = new Set();
+  const want = new Set(), langs = new Map();   // langs: each recording's language, for its mouth shapes
   const report = { provider: cfg.provider, groq: cfg.groq ? { models: cfg.groq.models, made: 0, gone: false } : null, made: 0, kept: 0, skipped: 0, errors: [] };
   // Gemini can be slow or overloaded (3 models × 60 s per line): after this budget the rest is
   // left to the tablet's own voice and recorded on a later run, so save always finishes.
@@ -454,7 +460,7 @@ async function makeVoices(queue, pc, s) {
       const haveGroq = groqNames.find((p) => existsSync(join(dataDir, p)));
       const haveProvider = existsSync(join(dataDir, providerName)) ? providerName : null;
       const groqNow = groqNames.length > 0 && !voices.groqGone && Date.now() <= deadline;
-      const keep = (p) => { want.add(p); report.kept++; return `repo:${p}`; };
+      const keep = (p) => { want.add(p); langs.set(p, lang); report.kept++; return `repo:${p}`; };
       if (haveGroq) return keep(haveGroq);
       if (haveProvider && !groqNow) return keep(haveProvider);
       if (Date.now() > deadline || !voices.canSpeak(lang)) { report.skipped++; return null; }
@@ -462,6 +468,7 @@ async function makeVoices(queue, pc, s) {
         const { mp3, by } = await voices.speak(text, lang);
         const path = audioPath(text, lang, cfg, by);
         want.add(path);
+        langs.set(path, lang);
         mkdirSync(join(dataDir, 'audio'), { recursive: true });
         writeFileSync(join(dataDir, path), mp3);
         report.made++;
@@ -487,9 +494,9 @@ async function makeVoices(queue, pc, s) {
     const p = (pc.presenter ??= {});
     if (p.catchphrase) { const ref = await make(p.catchphrase, 'en'); if (ref) p.catchphraseAudioRef = ref; else delete p.catchphraseAudioRef; }
     const name = p.name || 'Zippy';
-    const langs = [...new Set(['en', ...queue.videos.map((v) => (v.lang ?? 'en').slice(0, 2))])].filter((l) => PHRASES[l]);
+    const phraseLangs = [...new Set(['en', ...queue.videos.map((v) => (v.lang ?? 'en').slice(0, 2))])].filter((l) => PHRASES[l]);
     p.phrases = {};
-    for (const l of langs) {
+    for (const l of phraseLangs) {
       p.phrases[l] = {};
       for (const [key, texts] of Object.entries(PHRASES[l])) {
         p.phrases[l][key] = [];
@@ -498,6 +505,11 @@ async function makeVoices(queue, pc, s) {
     }
   }
   if (report.groq) report.groq.gone = voices.groqGone;
+  // The mouth shapes of every recording (Groq's Whisper; voices.speak.lips: false turns it off).
+  if (voices.enabled) {
+    report.lips = await makeLips({ dataDir, want, langs, key: env.GROQ_API_KEY, cfg: cfg.lips ?? {}, deadline: deadline + 3 * 60000 });
+    want.add(LIPS_FILE);
+  }
   // Recordings nobody uses any more are removed, so the repo stays small.
   const adir = join(dataDir, 'audio');
   if (existsSync(adir)) for (const f of readdirSync(adir)) if (!want.has(`audio/${f}`)) unlinkSync(join(adir, f));

@@ -12,4 +12,6 @@ The helper's modules. `kt.mjs` and `run.mjs` use them.
 | `llm.mjs` | OpenRouter text models, free ones first, rotating away from models that fail |
 | `gemini.mjs` | Transcripts from Gemini (Google opens the public video), with daily limits |
 | `voices.mjs` | The friend's recorded voice: Groq (English), Gemini, or OpenRouter; quotas and fallbacks |
+| `moods.mjs` | The helper's `[mood]` tags (re-exports `extension/apps/kidtube/lib/moods.js`) |
+| `lips.mjs` | `audio/lips.json`: mouth shapes of every recording, from Groq Whisper's word times |
 | `info.mjs` | `helper.json`: how the helper works, for parent mode → Prompt |

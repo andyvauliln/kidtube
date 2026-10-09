@@ -53,6 +53,7 @@
     "outro": false,
     "name": "Zippy",
     "imageUrl": "",
+    "avatar": "",
     "voice": {
       "lang": "en-US",
       "pitch": 1.9,

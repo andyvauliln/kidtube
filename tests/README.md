@@ -5,8 +5,8 @@ fake `chrome.*` (`helpers/fake-chrome.mjs`), and fetches to `ext://` read files 
 
 | Folder | What it tests |
 | --- | --- |
-| `extension/` | The service worker through its messages and tab events (`sw`, `parent`, `profiles`, `talk`, `transcripts`, `orion`), the pure helpers (`logic`, `mark`, `merge`), the parent kit and the apps header (`kit`), listening (`voice`) |
-| `agent/` | The helper's toolkit, quiz and voices (`agent`), the notes poller (`notes`) |
+| `extension/` | The service worker through its messages and tab events (`sw`, `parent`, `profiles`, `talk`, `transcripts`, `orion`), the pure helpers (`logic`, `mark`, `merge`), the parent kit and the apps header (`kit`), listening (`voice`), the mesh avatar (`mesh`), lip shapes (`lips`) |
+| `agent/` | The helper's toolkit, quiz and voices (`agent`), the notes poller (`notes`), `[mood]` tags (`moods`) |
 | `build/` | The Orion build and the Orion API check (`orion-build`) |
 | `tools/` | The data validator against the fixtures (`validate`) |
 | `helpers/` | `fake-chrome.mjs` |
