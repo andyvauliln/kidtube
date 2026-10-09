@@ -145,3 +145,21 @@ test('poll.sh: if the agent writes no result, the parent sees it failed, and the
   assert.match(readFileSync(w.p('state', 'notes-handled.json'), 'utf8'), /n-3/);
   assert.equal(existsSync(w.p('tablet', 'notes-done.json')), false);   // the note stays on the tablet, to send again
 });
+
+test('poll.sh: a run request pushed while the notes agent works is not lost (↻ Update: notes first, the request after)', () => {
+  const w = world();
+  w.poll();
+  w.answer({ summary: 'Apps row starts closed (0.10.3).', runHelper: false, version: '0.10.3' });
+  // The fake claude: while it works, the tablet pushes the run request (as requestRun does after its sync).
+  const claude = readFileSync(w.p('bin', 'claude'), 'utf8');
+  writeFileSync(w.p('bin', 'claude'), claude.replace("console.log('{}');", `require('child_process').execSync(${JSON.stringify(`cd ${w.p('tablet')} && git pull -q --rebase origin main && mkdir -p requests && echo '{"schemaVersion":1,"id":"req-late","at":"now"}' > requests/run.json && git add -A && git commit -qm "tablet: run the helper now" && git push -q origin HEAD:main`)});\nconsole.log('{}');`));
+  w.send([ev('n-9', '2026-10-06T17:51:00Z', 'wish', { list: 'settings', text: 'Apps row closed by default' })]);
+  w.poll();                                            // the notes agent (the request arrives meanwhile)
+  assert.equal(w.calls().length, 1);
+  assert.equal(existsSync(w.p('helper-ran')), false);
+  w.poll();                                            // the next minute sees the request
+  assert.equal(readFileSync(w.p('helper-ran'), 'utf8').trim(), 'ran');
+  const st = w.status();
+  assert.equal(st.requestId, 'req-late');
+  assert.equal(st.state, 'done');
+});

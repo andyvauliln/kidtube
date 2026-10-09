@@ -62,6 +62,7 @@ async function showDock(fresh = false) {
     const now = await ask({ type: 'runStatus' });
     if (now?.state === 'done' && before !== 'done') { toast(now.message || 'Done: the lists are updated.'); refresh(); }
     if (now?.state === 'failed' && before !== 'failed') toast(`The AI run failed${now.message ? `: ${now.message}` : '.'}`);
+    if (now?.state === 'late' && before !== 'late') toast(now.message);
   }, 30000);
 }
 async function updateApp(v) {

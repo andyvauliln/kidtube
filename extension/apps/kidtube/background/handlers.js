@@ -13,6 +13,17 @@ import { todayPlayed, lockNow, videoInfo, fullLang, newEvent, sessionUnlocked, e
   isOpenable, pickQuiz, openTalk } from './rules.js';
 import { heldNotes, dropHeld, noteContext, noteVideo, wish, contextNote, promptNote, parentData, videoDetail, helperData, contextData, planChange, runView } from './parent.js';
 import { requestRun, saveRules } from './sync.js';
+import { Expect } from '../../../core/checks/kit.js';
+import { probe } from '../../../core/checks/runner.js';
+
+// ↻ Update asked the server for a run: it must start within 10 minutes (agent/poll.sh, every minute).
+function serverProbe(r) {
+  if (!['queued', 'late', 'running', 'done', 'failed'].includes(r.state)) return;
+  const t = new Expect();
+  t.ok('the run asked for at ' + r.at, r.state !== 'late', 'not started in 10 minutes', 'started by the server');
+  probe('server.run', { area: 'server', strikes: 1, expect: 'The server starts a run asked for with ↻ Update within 10 minutes',
+    code: ['agent/poll.sh', 'apps/kidtube/background/sync.js requestRun', 'apps/kidtube/background/parent.js runView'] }, t).catch(() => {});
+}
 
 const DEFAULT_LINES = {
   intro: (ru, name, title, quiz) => (ru
@@ -215,7 +226,7 @@ export const HANDLERS = {
 
   // Parent mode → Update: send everything, then ask the server to run the helper now.
   runHelper: () => requestRun(),
-  runStatus: () => withState((s) => ({ ok: true, ...runView(s) })),
+  runStatus: () => withState((s) => ({ ok: true, ...runView(s) })).then((r) => { serverProbe(r); return r; }),
 
   // Parent mode → Context: the documents and your notes the helper hasn't read yet.
   contextData: () => withState((s) => contextData(s)),

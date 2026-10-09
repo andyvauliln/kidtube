@@ -306,12 +306,17 @@ export async function planChange(s, msg) {
 
 // What parent mode shows about the latest run asked for: waiting for the server, running, done, failed.
 // held: notes on this tablet that ↻ Update hasn't sent yet.
+const LATE_MS = 10 * 60000;
 export function runView(s) {
   const req = s.data.runRequest ?? null;
   const st = s.data.runStatus ?? null;
   const held = s.outbox.filter((e) => e.held).length;
   // Waiting only while no run has started since the request: a run for notes sent without one has its own id.
-  if (req && st?.requestId !== req.id && !(st?.startedAt && st.startedAt >= req.at)) return { state: 'queued', at: req.at, message: 'Asked. The server starts it within a minute or two.', held };
+  if (req && st?.requestId !== req.id && !(st?.startedAt && st.startedAt >= req.at)) {
+    // Not started in 10 minutes (the server is off, or it missed the request): ↻ Update can ask again.
+    if (Date.now() - Date.parse(req.at) > LATE_MS) return { state: 'late', at: req.at, message: 'The server has not started it in 10 minutes. Tap ↻ Update to ask again.', held };
+    return { state: 'queued', at: req.at, message: 'Asked. The server starts it within a minute or two.', held };
+  }
   if (!st) return { state: 'none', held };
   return { state: st.state, at: st.finishedAt ?? st.startedAt, message: st.message ?? '', held };
 }

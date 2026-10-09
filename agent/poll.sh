@@ -27,6 +27,8 @@ flock -n 9 || exit 0
 remote=$(git -C "$CLONE" ls-remote origin HEAD 2>/dev/null | cut -f1)
 [ -n "$remote" ] && [ "$remote" = "$(cat "$SROOT/poll-head" 2>/dev/null)" ] && exit 0
 git -C "$CLONE" fetch --quiet origin && git -C "$CLONE" reset --quiet --hard "origin/HEAD" || exit 0
+# Only what was there now counts as looked at. A request or a note pushed while a run below works (the tablet's
+# ↻ Update writes the notes first and the run request a few seconds later) makes the next minute look again.
 echo "$remote" > "$SROOT/poll-head"
 
 # The profiles to look at; none in config.json: the old layout, one child at the root of the repo ("-").
@@ -106,7 +108,6 @@ if [ "$count" -gt 0 ]; then
       status failed "Your notes arrived. The AI already worked on notes $NOTES_MAX times today, so it reads these tomorrow."
     fi
     [ -n "$id" ] && run_helper "$ROOT"
-    git -C "$CLONE" rev-parse HEAD > "$SROOT/poll-head"
     exit 0
   fi
   echo "$TODAY $statusId $count" >> "$STATE/notes-runs.log"
@@ -164,7 +165,6 @@ $notes
 elif [ -n "$id" ]; then
   run_helper "$ROOT"
 fi
-git -C "$CLONE" rev-parse HEAD > "$SROOT/poll-head"
 )
 
 for P in $PROFILES; do poll_profile "$P"; done
