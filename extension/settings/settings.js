@@ -82,7 +82,7 @@ const MARKUP = `
     <p class="hint">“No more videos today” can be undone with Reset today’s minutes.</p>
     <div class="two">
       <div><label for="friendName">Name</label><input id="friendName" maxlength="30"></div>
-      <div><label for="pitch">Voice: low ↔ squeaky</label><input id="pitch" type="range" min="0.5" max="2" step="0.1"></div>
+
     </div>
     <label for="catchphrase">Catchphrase (said at the start and the end)</label>
     <input id="catchphrase" maxlength="60" placeholder="Pika pika!">
@@ -90,8 +90,8 @@ const MARKUP = `
     <input id="friendImage" placeholder="empty = the built-in cloud friend">
     <label for="friendAvatar">Moving avatar (shown instead of the picture)</label>
     <select id="friendAvatar"><option value="">None: use the picture</option><option value="miko-qipao">Miko (test sample)</option></select>
-    <label class="check"><input type="checkbox" id="recorded"> Use the helper’s recorded voice when there is one</label>
-    <p class="hint">The daily helper can record the friend’s lines (Gemini or OpenRouter, set on the server). Off: the tablet’s own voice says everything.</p>
+
+    <p class="hint">The friend always speaks with a recorded voice: the daily helper records his lines (Groq, then Gemini, set on the server), and a line it didn't record is recorded on this tablet with the Groq key, then the Gemini key below. Without a key the words only show on screen.</p>
 
     <label for="listenProvider">Hearing his answers</label>
     <select id="listenProvider">
@@ -261,11 +261,9 @@ export function mountSettings(root) {
     $('maxAttempts').value = c.quiz?.maxAttempts ?? 3;
     $('attemptsLabel').textContent = $('maxAttempts').value;
     $('friendName').value = p.name ?? 'Zippy';
-    $('pitch').value = p.voice?.pitch ?? 1.9;
     $('friendImage').value = p.imageUrl ?? '';
     $('friendAvatar').value = p.avatar ?? '';
     $('catchphrase').value = p.catchphrase ?? '';
-    $('recorded').checked = p.voice?.recorded !== false;
     // "openrouter" is the older name of "cloud".
     $('listenProvider').value = p.voice?.listen?.provider === 'device' ? 'device' : 'cloud';
     $('freeModels').value = (p.voice?.listen?.freeModels ?? FREE_LISTEN_MODELS).join('\n');
@@ -324,7 +322,7 @@ export function mountSettings(root) {
         imageUrl: $('friendImage').value.trim(),
         avatar: $('friendAvatar').value,
         catchphrase: $('catchphrase').value.trim(),
-        voice: { pitch: Number($('pitch').value), recorded: $('recorded').checked,
+        voice: {
           listen: { provider: $('listenProvider').value, freeModels: freeModels(), models: listenModels() } },
       },
       quiz: { enabled: $('quizOn').checked, onFail: $('onFail').value, maxAttempts: int('maxAttempts', 1, 10) },
@@ -390,7 +388,7 @@ export function mountSettings(root) {
 
   $('tryVoice').addEventListener('click', () => {
     const name = $('friendName').value.trim() || 'Zippy';
-    say({ text: `Hi! I'm ${name}. Let's watch a video and learn something new!` }, { lang: voiceLang, pitch: Number($('pitch').value), rate: 1.05 });
+    say({ text: `Hi! I'm ${name}. Let's watch a video and learn something new!` }, { lang: voiceLang });
   });
 
   // Allowing the microphone here also allows it on the friend's screen (same extension).

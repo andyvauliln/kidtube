@@ -27,18 +27,23 @@ function babbleWav(seconds = 4, rate = 16000) {
   return URL.createObjectURL(new Blob([head, data], { type: 'audio/wav' }));
 }
 
-// The talk screen's speak(): talking on, the line (recording or tablet voice) with its [mood] tags, talking off.
-async function speak(raw, audioUrl) {
+let playing = null;
+
+// The talk screen's speak(): the line (a recording, or one made here with the stored Groq / Gemini keys) with its
+// [mood] tags and, when given, its mouth shapes (lips: [[seconds, shape], ...]).
+async function speak(raw, audioUrl, lips = null) {
   if (!friend || busy) return;
   const { text, moods, unknown } = parseMoods(raw);
   busy = true;
   log(`Moods: ${moods.map((m) => `${m.mood} at "${text.slice(m.at, m.at + 18)}…"`).join(', ') || 'none'}${unknown.length ? `\nUnknown tags (ignored): ${unknown.join(', ')}` : ''}`);
-  friend.talking(true);
+  friend.unlock();
   const reach = moodTrack(moods, (m) => { friend.mood(m); $('mood').textContent = `Mood now: ${m}`; });
   reach(0);
-  const follow = (a) => a.addEventListener('timeupdate', () => { if (a.duration) reach((a.currentTime / a.duration) * text.length); });
-  try { await say({ text, audioUrl }, { lang: 'en-US', pitch: 1.6 }, { onWord: () => friend.word(), onAudio: (a) => { friend.audio(a); follow(a); }, onSentence: reach }); }
-  finally { friend.talking(false); busy = false; }
+  try {
+    await say({ text, audioUrl, lips }, { lang: 'en-US' }, {
+      onAudio: (a, l) => { playing = a; friend.talking(true); friend.audio(a, l); $('shapes').textContent = l ? `Mouth shapes: ${l.length} from the track` : 'Mouth shapes: none (loudness only)'; },
+      onProgress: (f) => reach(f * text.length) });
+  } finally { playing = null; friend.talking(false); busy = false; }
 }
 
 async function load() {
@@ -70,7 +75,13 @@ for (const m of MOODS) {
   $('moods').append(b);
 }
 $('wave').onclick = () => friend?.wave();
-$('stop').onclick = () => speechSynthesis?.cancel();
+$('stop').onclick = () => { if (playing) { playing.pause(); playing.dispatchEvent(new Event('ended')); } };
+// A real recording from the helper with its mouth shapes, when lab-sample/ has one (not in git).
+$('real').onclick = async () => {
+  const [text, lips] = await Promise.all(['lab-sample/text.txt', 'lab-sample/lips.json'].map((u) => fetch(u).then((r) => (r.ok ? (u.endsWith('.json') ? r.json() : r.text()) : null)).catch(() => null)));
+  if (!lips) return log('No sample here: put line.mp3, lips.json and text.txt in ui/lab-sample/.');
+  speak(text ?? '', 'lab-sample/line.mp3', lips);
+};
 
 // How wide the mouth is open now, from the engine.
 (function meter() {

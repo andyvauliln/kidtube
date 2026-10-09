@@ -1,61 +1,120 @@
-// Speaking and listening: the browser's own speech engines, or a recording sent to an audio model.
-// Both can be missing or refused on a given tablet, so every function has a quiet fallback.
+// Speaking and listening. Speaking is always a recording (the helper's, or one made here by Groq or Gemini); listening
+// sends his answer to an audio model, or uses the browser's own recognition. Each can be missing or refused on a
+// given tablet, so every function has a quiet fallback.
+import { whisperWords, lipTrack } from '../lib/lips.js';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-function pickVoice(lang) {
-  const voices = speechSynthesis.getVoices();
-  const base = lang.split('-')[0];
-  return voices.find((v) => v.lang.replace('_', '-') === lang) ?? voices.find((v) => v.lang.startsWith(base)) ?? null;
+// --- the friend's voice: always a recording, never the device's own voice ------------------------------------------
+// A line the helper recorded plays from the data repo (recordedUrl). Any other line is recorded here, once, and kept:
+// Groq's Orpheus first (English, the tablet's Groq key), then the Gemini speech models (its Gemini key) — the same
+// order the helper uses. With no key or no internet the words only show in the bubble.
+export const SPEAK = {
+  groq: { model: 'canopylabs/orpheus-v1-english', voice: 'hannah', direction: '[cheerful]', langs: ['en'] },
+  gemini: { models: ['gemini-3.8-flash-tts', 'gemini-3.8-flash-lite-tts', 'gemini-2.5-flash-preview-tts'], voice: 'Puck',
+    style: 'Say this in a cheerful, squeaky, excited cartoon-creature voice for a small child' },
+};
+export const TTS_CACHE = 'kidtube-tts';
+const TTS_KEEP = 300;                    // lines kept on the tablet; the oldest go first
+const made = new Map();                  // text → Promise<{ blob, lips } | null>, so a line is asked for once
+let groqResting = false;                 // Groq said "limit": the rest of this page uses Gemini
+
+async function sha1(text) {
+  const d = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(text));
+  return [...new Uint8Array(d)].map((b) => b.toString(16).padStart(2, '0')).join('').slice(0, 20);
 }
 
-// Long text is spoken sentence by sentence: Chrome cuts off long utterances on Android.
-function sentences(text) {
-  return String(text).match(/[^.!?…]+[.!?…]*\s*/g)?.map((x) => x.trim()).filter(Boolean) ?? [String(text)];
+// 16-bit PCM (Gemini) → a WAV the <audio> element can play.
+export function pcmToWav(pcm, rate = 24000) {
+  const head = new DataView(new ArrayBuffer(44));
+  const text = (o, t) => [...t].forEach((c, k) => head.setUint8(o + k, c.charCodeAt(0)));
+  text(0, 'RIFF'); head.setUint32(4, 36 + pcm.length, true); text(8, 'WAVE'); text(12, 'fmt ');
+  head.setUint32(16, 16, true); head.setUint16(20, 1, true); head.setUint16(22, 1, true); head.setUint32(24, rate, true);
+  head.setUint32(28, rate * 2, true); head.setUint16(32, 2, true); head.setUint16(34, 16, true); text(36, 'data'); head.setUint32(40, pcm.length, true);
+  return new Blob([head, pcm], { type: 'audio/wav' });
 }
 
-function speakOne(text, voice, onWord) {
-  return new Promise((resolve) => {
-    const u = new SpeechSynthesisUtterance(text);
-    u.lang = voice.lang || 'en-US';
-    u.pitch = voice.pitch ?? 1.9;
-    u.rate = voice.rate ?? 1.05;
-    const v = pickVoice(u.lang);
-    if (v) u.voice = v;
-    // onend sometimes never fires on Android: give up after a generous reading time.
-    const guard = setTimeout(done, 2500 + text.length * 120);
-    function done() { clearTimeout(guard); resolve(); }
-    u.onend = done;
-    u.onerror = done;
-    // Word events move the friend's mouth in time with the words (many Android voices never send them).
-    if (onWord) u.onboundary = (e) => { if (!e.name || e.name === 'word') onWord(); };
-    speechSynthesis.speak(u);
+async function groqSpeak(text, key, fetchImpl) {
+  const g = SPEAK.groq;
+  const r = await fetchImpl('https://api.groq.com/openai/v1/audio/speech', {
+    method: 'POST', headers: { Authorization: `Bearer ${key}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: g.model, voice: g.voice, response_format: 'wav', input: `${g.direction} ${text}` }), signal: AbortSignal.timeout(30000),
   });
+  if (r.status === 429) groqResting = true;
+  if (!r.ok) throw new Error(`Groq ${r.status}`);
+  return new Blob([await r.arrayBuffer()], { type: 'audio/wav' });
 }
 
-// line: { text, audioUrl? }. Resolves when it has finished. onWord is called at each spoken word, when the engine says so;
-// onAudio gets a recording's <audio> just before it plays (the mesh friend measures its loudness);
-// onSentence(at) is called with the character position of each sentence the device's voice starts.
-export async function say(line, voice = {}, { onWord, onAudio, onSentence } = {}) {
-  if (line.audioUrl) {
-    const ok = await new Promise((resolve) => {
-      const a = new Audio(line.audioUrl);
-      onAudio?.(a);
-      a.onended = () => resolve(true);
-      a.onerror = () => resolve(false);
-      a.play().catch(() => resolve(false));
-    });
-    if (ok) return;
+async function geminiSpeak(text, key, fetchImpl) {
+  const g = SPEAK.gemini;
+  for (const model of g.models) {
+    const r = await fetchImpl(`https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`, {
+      method: 'POST', headers: { 'x-goog-api-key': key, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ contents: [{ parts: [{ text: `${g.style}: ${text}` }] }],
+        generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: g.voice } } } } }),
+      signal: AbortSignal.timeout(45000),
+    }).catch(() => null);
+    const part = r?.ok ? (await r.json().catch(() => ({}))).candidates?.[0]?.content?.parts?.find((x) => x.inlineData)?.inlineData : null;
+    if (!part) continue;
+    const bytes = Uint8Array.from(atob(part.data), (c) => c.charCodeAt(0));
+    return /L16|pcm/i.test(part.mimeType) ? pcmToWav(bytes, Number(part.mimeType.match(/rate=(\d+)/)?.[1] ?? 24000)) : new Blob([bytes], { type: part.mimeType });
   }
-  if (!('speechSynthesis' in window)) return wait(1500 + String(line.text).length * 60);
-  speechSynthesis.cancel();
-  let from = 0;
-  for (const s of sentences(line.text)) {
-    const at = String(line.text).indexOf(s, from);
-    if (at >= 0) from = at + s.length;
-    onSentence?.(Math.max(0, at));
-    await speakOne(s, voice, onWord);
+  throw new Error('Gemini: no model answered');
+}
+
+// A recording of `text` made here (or kept from before): { blob, lips } or null. keys: { groq, gemini } (listenKeys()).
+export function makeLine(text, lang = 'en-US', keys = {}, { fetchImpl = fetch } = {}) {
+  const id = JSON.stringify([text, String(lang).slice(0, 2), SPEAK.groq.model, SPEAK.groq.voice, SPEAK.gemini.voice]);
+  if (!made.has(id)) made.set(id, (async () => {
+    const name = `https://kidtube.invalid/tts/${await sha1(id)}`;
+    const cache = globalThis.caches ? await caches.open(TTS_CACHE).catch(() => null) : null;
+    const kept = await cache?.match(`${name}.wav`);
+    if (kept) return { blob: await kept.blob(), lips: await cache.match(`${name}.lips.json`).then((r) => r?.json()).catch(() => null) ?? null };
+    let blob = null;
+    const english = SPEAK.groq.langs.some((l) => String(lang).startsWith(l));
+    if (keys.groq && english && !groqResting) blob = await groqSpeak(text, keys.groq, fetchImpl).catch(() => null);
+    if (!blob && keys.gemini) blob = await geminiSpeak(text, keys.gemini, fetchImpl).catch(() => null);
+    if (!blob) { made.delete(id); return null; }
+    // Its mouth shapes, from Groq's Whisper (the avatar uses the loudness alone without them).
+    const lips = keys.groq ? await whisperWords(blob, { key: keys.groq, lang, type: 'audio/wav', fetchImpl }).then(lipTrack).catch(() => null) : null;
+    if (cache) {
+      await cache.put(`${name}.wav`, new Response(blob, { headers: { 'Content-Type': 'audio/wav' } })).catch(() => {});
+      if (lips?.length) await cache.put(`${name}.lips.json`, new Response(JSON.stringify(lips), { headers: { 'Content-Type': 'application/json' } })).catch(() => {});
+      const all = (await cache.keys().catch(() => [])).filter((q) => q.url.endsWith('.wav'));
+      for (const q of all.slice(0, Math.max(0, all.length - TTS_KEEP))) { await cache.delete(q); await cache.delete(q.url.replace(/\.wav$/, '.lips.json')); }
+    }
+    return { blob, lips: lips?.length ? lips : null };
+  })().catch(() => { made.delete(id); return null; }));
+  return made.get(id);
+}
+
+let storedKeys = null;
+const voiceKeys = () => (storedKeys ??= listenKeys());
+
+// line: { text, audioUrl?, lips? } (audioUrl: the helper's recording; lips: its mouth shapes). Resolves when it has
+// finished. onAudio(audio, lips) gets the <audio> just before it plays; onProgress(0..1) follows the line, also when
+// there is no sound (then the words show for as long as reading them takes).
+export async function say(line, voice = {}, { onAudio, onProgress, keys } = {}) {
+  let url = line.audioUrl, lips = line.lips ?? null, own = null;
+  if (!url) {
+    const m = await makeLine(line.text, voice.lang, keys ?? await voiceKeys());
+    if (m) { url = own = URL.createObjectURL(m.blob); lips = m.lips; }
   }
+  try {
+    if (url) {
+      const ok = await new Promise((resolve) => {
+        const a = new Audio(url);
+        a.onended = () => resolve(true);
+        a.onerror = () => resolve(false);
+        a.ontimeupdate = () => { if (a.duration) onProgress?.(a.currentTime / a.duration); };
+        onAudio?.(a, lips);
+        a.play().catch(() => resolve(false));
+      });
+      if (ok) return;
+    }
+    const ms = 1500 + String(line.text).length * 60;
+    for (let t = 0; t < ms; t += 250) { onProgress?.(t / ms); await wait(250); }
+  } finally { if (own) URL.revokeObjectURL(own); }
 }
 
 export const canListen = () => !!(window.SpeechRecognition || window.webkitSpeechRecognition);
@@ -85,6 +144,13 @@ export function listen(lang = 'en-US', { seconds = 8 } = {}) {
 // The service worker keeps them in the Cache Storage under this name; "repo:audio/x.mp3" → a playable URL.
 export const AUDIO_CACHE = 'kidtube-audio';
 export const audioKey = (ref) => `https://kidtube.invalid/${String(ref).replace(/^repo:/, '')}`;
+// The mouth shapes of a recording ("repo:audio/x.mp3" → [[seconds, shape], ...]) from audio/lips.json, or null.
+let lipsFile = null;
+export async function recordedLips(ref) {
+  if (!ref || !('caches' in self)) return null;
+  lipsFile ??= caches.open(AUDIO_CACHE).then((c) => c.match(audioKey('repo:audio/lips.json'))).then((r) => r?.json()).catch(() => null);
+  return (await lipsFile)?.lines?.[String(ref).split('/').pop()] ?? null;
+}
 export async function recordedUrl(ref) {
   if (!ref || !('caches' in self)) return null;
   try {

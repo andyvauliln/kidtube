@@ -1,7 +1,9 @@
 // The talking friend as a mesh avatar (mesh-avatar-studio, extension/vendor/mesh-avatar): one illustration cut into
-// layers and moved on a WebGL2 canvas. It answers the same calls as rig.js (talking, word, react, wave, destroy),
-// plus audio(el): a recording that plays moves the mouth with its real loudness.
+// layers and moved on a WebGL2 canvas. It answers the same calls as rig.js (talking, word, react, mood, wave, destroy),
+// plus audio(el, track): a recording that plays moves the mouth with its loudness and, with a track, its vowels.
 // An avatar folder holds rig.json and built/ (layers.json, the layer PNGs, optional sprites/), as the studio saves them.
+
+import { shapeAt } from '../lib/lips.js';
 
 const clamp = (x) => Math.min(1, Math.max(0, x));
 const rand = (a, b) => a + Math.random() * (b - a);
@@ -59,6 +61,7 @@ export async function createMeshFriend(box, { base, load = () => import('../vend
   catch (e) { canvas.remove(); throw e; }
 
   let talkingNow = false, raf = 0, last = 0, fake = null, analyser = null, samples = null, ctx = null, destroyed = false;
+  let lips = null;                // { track, el, at, shape }: the recording's mouth shapes (lib/lips.js)
 
   function loop(now) {
     const dt = Math.min(0.05, (now - (last || now)) / 1000);
@@ -67,6 +70,13 @@ export async function createMeshFriend(box, { base, load = () => import('../vend
     if (analyser) { analyser.getFloatTimeDomainData(samples); level = rmsLevel(samples, 1.6); }
     else if (fake) level = fake.level(dt);
     avatar.setVoiceLevel(level);
+    if (lips) {
+      // The vowel of this moment; a quiet moment (a consonant, a breath) closes the mouth when we can hear it.
+      const { shape, index } = shapeAt(lips.track, lips.el.currentTime, lips.at);
+      lips.at = index;
+      const want = analyser && level < 0.05 ? 'n' : shape;
+      if (want !== lips.shape) { lips.shape = want; avatar.holdMouth(want); }
+    }
     raf = requestAnimationFrame(loop);
   }
 
@@ -76,18 +86,26 @@ export async function createMeshFriend(box, { base, load = () => import('../vend
     avatar.setSpeaking(on);
     cancelAnimationFrame(raf);
     analyser = null;
+    if (lips) { lips = null; avatar.stopLipSync(); }
     if (!on) { fake = null; avatar.setVoiceLevel(0); return; }
-    // Made here, inside his tap, so the browser lets it run; a later recording can then be measured.
-    try { ctx ??= new AudioContext(); if (ctx.state !== 'running') ctx.resume().catch(() => {}); } catch { ctx = null; }
+    unlock();
     fake = fakeVoice();
     last = 0;
     raf = requestAnimationFrame(loop);
   }
 
-  // A recording about to play. Only our own blob/extension URLs are measured: a sound from another site would come
-  // out silent through the analyser, and a stopped audio engine would silence it too, so those keep the made-up rhythm.
-  function audio(el) {
-    if (!ctx || ctx.state !== 'running' || !talkingNow) return;
+  // The audio engine that measures a recording: made inside his tap (unlock()), or the browser keeps it stopped.
+  function unlock() {
+    try { ctx ??= new AudioContext(); if (ctx.state !== 'running') ctx.resume().catch(() => {}); } catch { ctx = null; }
+  }
+
+  // A recording about to play, with its mouth shapes when there are some (track: [[seconds, shape], ...]).
+  // Only our own blob/extension URLs are measured: a sound from another site would come out silent through the
+  // analyser, and a stopped audio engine would silence it too, so those keep the made-up rhythm.
+  function audio(el, track) {
+    if (!talkingNow) return;
+    if (track?.length) lips = { track, el, at: 0, shape: null };
+    if (!ctx || ctx.state !== 'running') return;
     const url = new URL(el.src, location.href);
     if (url.protocol !== 'blob:' && url.origin !== location.origin) return;
     try {
@@ -104,6 +122,7 @@ export async function createMeshFriend(box, { base, load = () => import('../vend
     avatar,
     talking,
     audio,
+    unlock,
     word() { if (talkingNow) fake?.word(); },
     // happy: smiling face and a nod; sad: a sad face and a sigh. Both end a moment after the next line.
     react(kind) { avatar.setEmotion(kind === 'happy' ? 'happy' : kind === 'sad' ? 'sad' : 'neutral'); },

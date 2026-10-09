@@ -1636,7 +1636,8 @@ async function syncAudio(loc, token) {
   const { config, queue } = await effective({ data, localConfig });
   const want = audioRefs(queue, config);
   const cache = await caches.open(AUDIO_CACHE);
-  for (const req of await cache.keys()) if (!want.has(req.url.replace('https://kidtube.invalid/', ''))) await cache.delete(req);
+  for (const req of await cache.keys()) if (!want.has(req.url.replace('https://kidtube.invalid/', '')) && !req.url.endsWith(`/${LIPS}`)) await cache.delete(req);
+  await syncLips(loc, token, cache, want.size);
   let failed = 0;
   for (const path of want) {
     if (await cache.match(audioKey(path))) continue;
@@ -1645,6 +1646,18 @@ async function syncAudio(loc, token) {
     await cache.put(audioKey(path), new Response(await r.blob(), { headers: { 'Content-Type': path.endsWith('.mp3') ? 'audio/mpeg' : path.endsWith('.ogg') ? 'audio/ogg' : 'audio/wav' } }));
   }
   if (failed) throw new Error(`${failed} of ${want.size} could not be downloaded; the tablet's own voice is used for those.`);
+}
+
+// The mouth shapes of the recordings (audio/lips.json, made with them on the server). Fetched again only when it
+// changed (ETag); none yet is fine.
+const LIPS = 'audio/lips.json';
+async function syncLips(loc, token, cache, recordings) {
+  const old = await cache.match(audioKey(LIPS));
+  if (!recordings) { if (old) await cache.delete(audioKey(LIPS)); return; }
+  const etag = old?.headers.get('ETag');
+  const r = await fetch(contentsUrl(loc, LIPS), { headers: { ...ghHeaders(token), Accept: 'application/vnd.github.raw+json', ...(etag ? { 'If-None-Match': etag } : {}) }, cache: 'no-store' }).catch(() => null);
+  if (r?.status === 404) await cache.delete(audioKey(LIPS));
+  else if (r?.ok) await cache.put(audioKey(LIPS), new Response(await r.blob(), { headers: { 'Content-Type': 'application/json', ...(r.headers.get('ETag') ? { ETag: r.headers.get('ETag') } : {}) } }));
 }
 
 // --- the talking friend's picture from the private data repo ("repo:characters/x.svg") --------

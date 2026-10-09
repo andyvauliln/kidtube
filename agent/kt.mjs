@@ -30,6 +30,7 @@ import { tooHard } from './lib/prompts.mjs';
 import { createGemini } from './lib/gemini.mjs';
 import { createVoices, audioPath } from './lib/voices.mjs';
 import { parseMoods, moodLine, MOODS } from './lib/moods.mjs';
+import { makeLips, LIPS_FILE } from './lib/lips.mjs';
 import { search } from '../tools/video-info.mjs';
 import { locate } from './lib/profile.mjs';
 import { mergeConfig } from '../extension/lib/merge.js';
@@ -436,7 +437,7 @@ function seedProfile() {
 async function makeVoices(queue, pc, s) {
   const cfg = config.voices?.speak ?? { provider: 'device' };
   const voices = createVoices({ env, cfg });
-  const want = new Set();
+  const want = new Set(), langs = new Map();
   const report = { provider: cfg.provider, made: 0, kept: 0, skipped: 0, errors: [] };
   // Gemini can be slow or overloaded (3 models × 60 s per line): after this budget the rest is
   // left to the tablet's own voice and recorded on a later run, so save always finishes.
@@ -450,6 +451,7 @@ async function makeVoices(queue, pc, s) {
     const make = async (text, lang) => {
       const path = audioPath(text, lang, cfg);
       want.add(path);
+      langs.set(path, lang);
       if (existsSync(join(dataDir, path))) { report.kept++; return `repo:${path}`; }
       if (Date.now() > deadline || voices.quotaGone) { report.skipped++; return null; }
       try {
@@ -484,6 +486,11 @@ async function makeVoices(queue, pc, s) {
         for (const t of texts) { const text = t.replace('{name}', name); const ref = await make(text, l); p.phrases[l][key].push(ref ? { text, audioRef: ref } : { text }); }
       }
     }
+  }
+  // The mouth shapes of every recording (Groq's Whisper; voices.speak.lips: false turns it off).
+  if (voices.enabled) {
+    report.lips = await makeLips({ dataDir, want, langs, key: env.GROQ_API_KEY, cfg: cfg.lips ?? {}, deadline: deadline + 3 * 60000 });
+    want.add(LIPS_FILE);
   }
   // Recordings nobody uses any more are removed, so the repo stays small.
   const adir = join(dataDir, 'audio');

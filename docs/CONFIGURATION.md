@@ -105,7 +105,8 @@ Nothing is substituted into the prompt text itself; these numbers reach Claude t
 | `voices.speak.provider`                            | gemini                       | `device` / `gemini` (free) / `openrouter` (paid).                              |
 | `voices.speak.voice`, `pitch`, `style`             | Puck, 1.15, cartoon voice    | Pikachu's recorded voice.                                                      |
 | `voices.speak.groq`                                | orpheus-v1-english, hannah   | English lines first by Groq's Orpheus (`GROQ_API_KEY`; free 100 lines a day), the provider for the rest. |
-| `voices.speak.maxMinutes`                          | 8                            | Recording budget per run; the rest is spoken by the tablet.                    |
+| `voices.speak.maxMinutes`                          | 8                            | Recording budget per run; the tablet records the rest itself (its Groq key, then its Gemini key). It never uses its own device voice. |
+| `voices.speak.lips`                                | {} (on)                      | Mouth shapes for every recording in `audio/lips.json` (Groq's Whisper word times, `GROQ_API_KEY`); `false` turns it off. |
 | `llm.*`, `openrouter.*`                            | free models first            | Text models for the backup script only.                                        |
 
 

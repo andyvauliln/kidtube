@@ -1,6 +1,6 @@
 // The talking friend: says the intro before a video, and after it says what we learned and asks the questions.
 // The service worker decides what comes next; this page only talks, listens and reports.
-import { say, listen, recordedUrl, recordAnswer, transcribeAnswer, listenKeys } from './voice.js';
+import { say, listen, recordedUrl, recordedLips, makeLine, recordAnswer, transcribeAnswer, listenKeys } from './voice.js';
 import { createRig } from './rig.js';
 import { createMeshFriend } from './mesh.js';
 import { isCorrect, correctText } from '../lib/mark.js';
@@ -32,20 +32,35 @@ function talking(on) {
 const withMood = (line, mood) => (line.moods ? line : { ...line, moods: [{ at: 0, mood }] });
 
 // lang: the language of this line (a question can differ from the video); default the video's.
+let playing = null;              // the <audio> of the line now, so a parent's skip can stop it
+
 async function speak(line, lang = script.lang) {
   if (skipAll) return;
   $('bubble').textContent = line.text;
-  talking(true);
-  // line.moods from the helper's [mood] tags: each starts when the voice reaches its character
-  // (the device's voice: at its sentence; a recording: by how far it has played).
+  // line.moods from the helper's [mood] tags: each starts when the voice reaches its character.
   const reach = moodTrack(line.moods, (m) => rig?.mood?.(m));
   reach(0);
   const len = String(line.text).length;
-  const follow = (a) => { a.addEventListener('timeupdate', () => { if (a.duration) reach((a.currentTime / a.duration) * len); }); };
-  // A recording made by the helper plays instead of the tablet's own voice (when the parent allows it).
-  const recorded = script.recorded !== false && line.audioRef ? await recordedUrl(line.audioRef) : null;
-  try { await say(recorded ? { ...line, audioUrl: recorded } : line, { ...script.voice, lang: lang || script.voice?.lang }, { onWord: () => rig?.word(), onAudio: (a) => { rig?.audio?.(a); follow(a); }, onSentence: reach }); }
-  finally { talking(false); if (recorded) URL.revokeObjectURL(recorded); }
+  // The helper's recording with its mouth shapes; without one, say() records the line here (Groq, then Gemini).
+  const recorded = line.audioRef ? await recordedUrl(line.audioRef) : null;
+  const lips = recorded ? await recordedLips(line.audioRef) : null;
+  try {
+    await say(recorded ? { ...line, audioUrl: recorded, lips } : line, { lang: lang || script.voice?.lang },
+      { onAudio: (a, l) => {
+        if (skipAll) { a.muted = true; queueMicrotask(() => a.dispatchEvent(new Event('ended'))); return; }   // skipped while it was made
+        playing = a; talking(true); rig?.audio?.(a, l);
+      }, onProgress: (f) => reach(f * len) });
+  } finally { playing = null; talking(false); if (recorded) URL.revokeObjectURL(recorded); }
+}
+
+// Lines the helper didn't record are recorded here while he looks at the start screen, so they are ready in time.
+async function prepare() {
+  const keys = await listenKeys();
+  const lines = [...script.lines.map((l) => [l, script.lang]), ...script.items.filter((i) => i.supported).map((i) => [{ text: i.prompt, audioRef: i.audioRef }, i.lang])];
+  for (const [l, lang] of lines) {
+    const url = l.audioRef ? await recordedUrl(l.audioRef) : null;
+    if (url) URL.revokeObjectURL(url); else await makeLine(l.text, lang || script.voice?.lang, keys);
+  }
 }
 
 // A line around the questions: the helper's recording of it when there is one, else the built-in text.
@@ -242,6 +257,7 @@ function finish() {
 async function run() {
   running = true;
   $('start').hidden = true;
+  rig?.unlock?.();                // his tap lets the sound be measured (mesh avatar)
   rig?.wave();
   for (const line of script.lines) await speak(line);
   if (mode === 'outro' && script.items.length) {
@@ -265,7 +281,7 @@ $('pinOk').onclick = async () => {
   if (!r.ok) { $('pinErr').textContent = r.error; return; }
   $('pinbox').hidden = true;
   skipAll = true;
-  window.speechSynthesis?.cancel();
+  if (playing) { playing.pause(); playing.dispatchEvent(new Event('ended')); }
   skipNow?.('skip');
   if (!running) finish();
 };
@@ -274,6 +290,7 @@ script = await send({ type: 'talk', videoId, mode });
 // The keys for listening never leave this tablet (the parent stores them in Settings).
 const listenKey = await listenKeys();
 await setupFriend();
+prepare();
 if (!script.lines.length && !script.items.length) finish();
 // Browsers only let a page speak after a tap, so he taps the friend to start.
 $('start').onclick = run;

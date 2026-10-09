@@ -509,8 +509,9 @@ async function renderDetail(videoId) {
   if (d.tooHard) section('⚠️ Maybe too hard', el('p', '', d.tooHard));
   const speakLine = (line, lang) => {
     const b = btn('🔊', async () => {
-      const url = d.friend.recorded && line.audioRef ? await recordedUrl(line.audioRef) : null;
-      try { await say(url ? { ...line, audioUrl: url } : line, { ...d.friend.voice, lang: lang || d.friend.voice.lang }); }
+      // the helper's recording, or one made on this tablet (Groq, then Gemini): never the device's own voice
+      const url = line.audioRef ? await recordedUrl(line.audioRef) : null;
+      try { await say(url ? { ...line, audioUrl: url } : line, { lang: lang || d.friend.voice.lang }); }
       finally { if (url) URL.revokeObjectURL(url); }
     });
     b.title = `Hear ${d.friend.name}`;

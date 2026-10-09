@@ -109,13 +109,16 @@ test('moods become the avatar’s emotions and motions', async () => {
     ['setEmotion', 'happy', { playMotion: false }], ['play', 'giggle'], ['setEmotion', 'relaxed'], ['setEmotion', 'happy', { playMotion: false }], ['play', 'wink']]);
 });
 
-test('the device voice tells where each sentence starts, so a mood can start with it', async () => {
-  globalThis.window = globalThis;
-  globalThis.SpeechSynthesisUtterance = class { constructor(text) { this.text = text; } };
-  globalThis.speechSynthesis = { cancel() {}, getVoices: () => [], speak: (u) => setTimeout(() => u.onend(), 1) };
-  const { say } = await import('../extension/ui/voice.js');
-  const starts = [];
-  const text = 'Wow, a spider! How many legs? Count them.';
-  await say({ text }, {}, { onSentence: (at) => starts.push(text.slice(at)) });
-  assert.deepEqual(starts, ['Wow, a spider! How many legs? Count them.', 'How many legs? Count them.', 'Count them.']);
+
+test('a recording with mouth shapes: the vowel of each moment, closed when quiet, released at the end', async () => {
+  const e = fakeEngine();
+  const f = await createMeshFriend(box, { base: 'a', load: e.load });
+  f.unlock();
+  f.talking(true);
+  const el = { src: 'blob:chrome-extension://abc/9', currentTime: 0 };
+  f.audio(el, [[0.1, 'a'], [0.3, 'n'], [0.4, 'o']]);
+  for (const t of [0, 0.15, 0.2, 0.35, 0.5]) { el.currentTime = t; runFrames(1); }
+  assert.deepEqual(e.calls.filter((c) => c[0] === 'holdMouth').map((c) => c[1]), ['n', 'a', 'n', 'o']);
+  f.talking(false);
+  assert.ok(e.calls.some((c) => c[0] === 'stopLipSync'));
 });
