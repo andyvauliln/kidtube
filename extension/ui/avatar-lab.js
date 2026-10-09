@@ -63,7 +63,10 @@ async function load() {
   }
 }
 
-$('avatar').onchange = () => { $('folder').hidden = !!$('avatar').value; };
+$('avatar').onchange = () => { $('folder').hidden = !!$('avatar').value; if ($('avatar').value) load(); };
+// ?avatar=pikachu opens that one first
+const want = new URLSearchParams(location.search).get('avatar');
+if (want && [...$('avatar').options].some((o) => o.value.endsWith(`/${want}`))) $('avatar').value = `../avatars/${want}`;
 $('load').onclick = load;
 $('say').onclick = () => speak($('text').value);
 $('babble').onclick = () => speak($('text').value, babbleWav(Math.min(12, Math.max(3, Math.round(parseMoods($('text').value).text.length / 14)))));
