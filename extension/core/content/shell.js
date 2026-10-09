@@ -85,6 +85,13 @@
     for (const v of document.querySelectorAll('video')) { v.muted = true; if (!v.paused) v.pause(); }
   }
   const hideLock = () => lockRoot?.host.remove();
+  // Behind the lock, a link that still gets a tap or a key (the cover takes the taps) goes nowhere.
+  const swallow = (e) => {
+    if (!shell?.locked || !e.target.closest?.('a[href]')) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+  };
+  for (const t of ['click', 'auxclick']) document.addEventListener(t, swallow, true);
 
   // --- the state, handed to the app's script ---------------------------------------------------------------
   // shell: the apps header is on (no app runs: plain YouTube, where the parent signs in or switches the account).
@@ -100,7 +107,8 @@
     if (shell?.locked) { hideHeader(); showLock(shell.why); }
     else {
       hideLock();
-      if (shell || parentOn) showHeader(); else hideHeader();
+      // Parent mode: on a video page. Any other YouTube page is about to become the app's parent screens.
+      if (shell || (parentOn && location.pathname === '/watch')) showHeader(); else hideHeader();
     }
     for (const fn of listeners) fn(st);
     // An app was opened at the header, or parent mode ended: the app's rules check this page again.

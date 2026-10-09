@@ -109,6 +109,7 @@ export async function syncKidTube({ loc, token, data, status, acct }) {
     return true;
   }, { account: acct });
   if (!done) return false;
+  await applySiteRules();   // new allowed sites work before the slow uploads below
   if (memory) await chrome.storage.local.set({ memory });
   if (helperInfo) await chrome.storage.local.set({ helperInfo });
   // One cause (usually the token) should show once, not once per file.

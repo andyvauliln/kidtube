@@ -11,8 +11,9 @@ let dnrWorks;
 // Every top-level page outside the app's allowed domains is blocked (PLAN.md C16).
 // Where the header shows (the unlocked apps header, parent mode), all of google.com stays open: its Switch and Sign in
 // can pass through www.google.com or gds.google.com ("make sure you can sign in"), and a blocked step is a dead page.
+// accounts.google.com always: YouTube's own sign-in passes through it, whatever the app.
 const allowedDomains = (allowed, signingIn = false) =>
-  [...new Set([...allowed, 'youtube.com', 'andyvauliln.github.io', ...(signingIn ? ['google.com'] : [])])];
+  [...new Set([...allowed, 'youtube.com', 'accounts.google.com', 'andyvauliln.github.io', ...(signingIn ? ['google.com'] : [])])];
 const signingIn = (s) => (s.shell?.on ? !s.shell.locked : parentMode(s));
 
 // { block, allowed, signingIn }: the profile's app decides (an app without rules: everything else closed).

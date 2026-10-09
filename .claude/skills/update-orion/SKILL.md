@@ -8,7 +8,7 @@ description: Build and publish the Orion (iPad/iPhone/Mac) version of KidTube fr
 `extension/` is the one source. It is developed and released for Quetta (Android) as usual. The Orion build is made from that same code **only when the user asks**, so Orion's version can lag behind Quetta's.
 
 The Orion build differs only in two ways, both done by `build/build-orion.mjs`:
-- `lib/target.js` gets `TARGET = 'orion'`. Code that must behave differently checks `TARGET` (today: no blocking rules, manual updates, its own `orion/latest.json`).
+- `core/lib/target.js` gets `TARGET = 'orion'`. Code that must behave differently checks `TARGET` (today: no blocking rules, manual updates, its own `orion/latest.json`).
 - The manifest has no `update_url`, no `minimum_chrome_version`, and no `declarativeNetRequest` permission.
 
 The published files are in `site/orion/`: `kidtube-orion-<version>.zip`, the same file as `kidtube-orion.zip` (a link that never changes, always the newest build) and `latest.json`, which records `sourceCommit` and `sourceHash`. The install page (`site/index.html#orion`) links to them.
@@ -27,7 +27,7 @@ The published files are in `site/orion/`: `kidtube-orion-<version>.zip`, the sam
 
 3. **Check Orion compatibility.**
    - Run `node build/orion-check.mjs`.
-     - `✗` (error): a `chrome.*` API Orion lacks. Fix it before releasing. Either put it behind `TARGET !== 'orion'` (import from `lib/target.js`), or make it optional with `?.` and a fallback. Then add it to `HANDLED` in `build/orion-check.mjs` with a one-line reason.
+     - `✗` (error): a `chrome.*` API Orion lacks. Fix it before releasing. Either put it behind `TARGET !== 'orion'` (import from `core/lib/target.js`), or make it optional with `?.` and a fallback. Then add it to `HANDLED` in `build/orion-check.mjs` with a one-line reason.
      - `?` (warning): partial or not in Orion's table. Look at the call; prefer a fallback. Tell the user it needs a check on the iPad.
    - Read the diff for things the API check can't see. Mention any that appear:
      - manifest changes: permissions, content scripts, `world`, `web_accessible_resources`;

@@ -62,11 +62,14 @@ async function doSync() {
   if (!loc.base) {   // no YouTube account seen yet, so no profile: the app's built-in files until one is
     status.errors.push('Waiting for the YouTube account: open YouTube once, signed in. Until then the built-in list is used.');
   } else {
-    if (token && !data.profileFile) {
-      try { await writeProfileFile(loc, token); await withState((s) => { s.data.profileFile = true; }, { account: acct }); } catch {}
-    }
     const app = partOf(account);
-    if (app.sync && (await app.sync({ loc, token, data, status, acct })) === false) return status;   // the profile changed meanwhile
+    if (token && !data.profileFile) {
+      try { await writeProfileFile(loc, token); await withState((s) => { s.data.profileFile = true; }, { account: acct }); }
+      catch (e) { if (!app.sync) status.errors.push(e.message); }   // an app with files of its own reports the cause there
+    }
+    try {
+      if (app.sync && (await app.sync({ loc, token, data, status, acct })) === false) return status;   // the profile changed meanwhile
+    } catch (e) { status.errors.push(String(e.message ?? e)); }
   }
   status.errors = [...new Set(status.errors)];
   await applySiteRules();
