@@ -22,14 +22,16 @@ export function installFakeChrome() {
     } },
     tabs: {
       onUpdated: on('tabUpdated'), onRemoved: on('tabRemoved'),
-      update: async (id, { url }) => { nav.updates.push(url); },
+      update: async (id, { url }) => { nav.updates.push(url); (nav.at ??= {})[id] = url; },
+      // Where a tab is: the last address update() sent it to (nav.at), else the open tabs' list.
+      get: async (id) => ({ id, url: nav.at?.[id] ?? (nav.tabs ?? []).find((t) => t.id === id)?.url ?? 'https://m.youtube.com/' }),
       create: async ({ url }) => { nav.created = [...(nav.created ?? []), url]; return { id: 99 }; },
       // The open tabs (nav.tabs: [{ id, url }]); remove() takes them away and notes the ids.
       query: async () => structuredClone(nav.tabs ?? []),
       remove: async (ids) => { nav.removed = [...(nav.removed ?? []), ...[].concat(ids)]; nav.tabs = (nav.tabs ?? []).filter((t) => !nav.removed.includes(t.id)); },
     },
-    alarms: { create: () => {}, onAlarm: on('alarm') },
-    declarativeNetRequest: { updateDynamicRules: async (r) => { fake.rules = r.addRules; } },
+    alarms: { create: (name, info) => { fake.alarms.set[name] = { name, ...info }; }, get: async (name) => fake.alarms.set[name], set: {}, onAlarm: on('alarm') },
+    declarativeNetRequest: { updateDynamicRules: async (r) => { fake.rules = r.addRules; }, getDynamicRules: async () => structuredClone(fake.rules ?? []) },
   };
   globalThis.chrome = fake;
   globalThis.fetch = async (url) => {

@@ -3,7 +3,7 @@
 // is delivered and the callback form returns the answer. One call, callback only, so a tick is never counted twice.
 export function ask(msg) {
   return new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(undefined), 8000);
+    const timer = setTimeout(() => { globalThis.KidTubeWatch?.noAnswer(msg, 8000); resolve(undefined); }, 8000);
     try {
       chrome.runtime.sendMessage(msg, (value) => {
         clearTimeout(timer);

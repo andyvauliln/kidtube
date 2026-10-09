@@ -10,11 +10,24 @@
   td:first-child { width: 1.5em; } td:nth-child(2) { width: 40%; font-weight: 600; }
   button { font: inherit; padding: 10px 16px; border-radius: 10px; border: 1px solid #999; background: #f4f4f4; }
   #out { font-size: 13px; color: #555; }
+  h2 { font-size: 18px; margin: 24px 0 4px; }
+  .fail td:first-child, .fail { color: #b71c1c; } .warn td:first-child { color: #b26a00; }
+  .report { border: 1px solid #e3b4b4; border-radius: 10px; padding: 10px 12px; margin: 10px 0; background: #fff7f7; }
+  .report h3 { margin: 0 0 4px; font-size: 15px; }
+  .report table { margin: 6px 0; font-size: 13px; } .report td:first-child { width: 30%; }
+  .report pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; background: #f4f4f4; padding: 8px; border-radius: 8px; max-height: 18em; overflow: auto; }
+  .muted { color: #666; font-size: 13px; }
 </style>
 <h1>KidTube: check this browser</h1>
 <p>Tests what KidTube needs in this browser. Wait until it says "Done", then press <b>Copy the result</b> and send it.</p>
 <p id="status">Running…</p>
 <button id="copy">Copy the result</button> <span id="out"></span>
 <table id="rows"></table>
+<h2>KidTube’s checks</h2>
+<p class="muted">What KidTube checks by itself after a start and after each action. A failure becomes a report with what was expected, what happened, and the steps before it.</p>
+<p id="chkStart" class="muted"></p>
+<button id="runChecks">Run the start checks</button> <button id="copyReports">Copy the problem reports</button> <button id="clearReports">Clear the reports</button> <span id="chkOut"></span>
+<div id="reports"></div>
+<table id="checkRows"></table>
 <script src="check-module.js" type="module"></script>
 <script src="check.js"></script>

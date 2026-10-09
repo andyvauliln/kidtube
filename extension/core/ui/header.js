@@ -7,7 +7,7 @@
   if (globalThis.KidTubeHeader) return;
   // Same as lib/ask.js. Orion only returns sendMessage answers to the callback.
   const ask = (msg) => new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(undefined), 15000);
+    const timer = setTimeout(() => { globalThis.KidTubeWatch?.noAnswer(msg, 15000); resolve(undefined); }, 15000);
     try {
       chrome.runtime.sendMessage(msg, (value) => { clearTimeout(timer); void chrome.runtime.lastError; resolve(value); });
     } catch { clearTimeout(timer); resolve(undefined); }
@@ -193,6 +193,8 @@
     root.replaceChildren(style, box);
     const picker = Object.assign(el('input'), { type: 'file', accept: '.json,application/json', hidden: true });
     root.append(picker);
+    const W = globalThis.KidTubeWatch;   // the checks (core/ui/watch.js)
+    W?.watchTaps(root, 'header');
 
     let data = null, alive = true, busy = '', loading = false, again = null;
     const ui = { menu: false, add: false, pick: null, github: false, repo: null, token: '', note: '', noteKind: '', apps: false };
@@ -200,12 +202,18 @@
     const say = (text, kind = '') => { ui.note = text; ui.noteKind = kind; draw(); };
 
     // A refresh asked for while one is running is not dropped: it runs right after (the storage can change twice).
+    let first = true;
     async function refresh(force = false) {
       if (!alive) return;
       if (loading) { again = again || force; return; }
       loading = true;
       try {
         const h = await ask({ type: 'header', refresh: force });
+        if (first && alive) {
+          first = false;
+          W?.check({ id: 'header.loads', area: 'header', expect: 'The apps header gets what to show from the background',
+            code: ['core/ui/header.js refresh', 'core/background/profiles.js headerView'] }, (t) => { t.ok('answer to "header"', !!h?.ok, h ?? 'no answer in 15 s', '{ ok: true, … }'); });
+        }
         if (!alive || !h?.ok) return;
         data = h;
         // Typing in the GitHub form: don't redraw under the cursor.
@@ -313,7 +321,9 @@
       const go = button('btn primary', goLabel(), connect);
       go.disabled = !!busy || (!ui.token.trim() && !data.github.connected);
       const side = el('div', 'side');
-      side.append(go, button('btn', 'Load from file', () => picker.click(), PATH.upload), button('btn', 'Save to file', exportFile, PATH.download));
+      const load = button('btn', 'Load from file', () => picker.click(), PATH.upload);
+      load.dataset.check = 'none';   // opens the file picker: nothing on the page changes until a file is picked
+      side.append(go, load, button('btn', 'Save to file', exportFile, PATH.download));
       if (!first) side.append(button('btn', 'Cancel', () => { ui.github = false; ui.token = ''; ui.repo = null; ui.note = ''; draw(); }));
       card.append(el('h2', '', first ? 'Connect your data on GitHub' : 'GitHub connection'), lead, fields);
       if (data.github.connected) card.append(el('p', 'status ok', `Token saved on this tablet: ${data.github.tokenHint ?? '…'}. Type a new one only to change it.`));
@@ -364,6 +374,12 @@
         const grid = button('round', '', () => {
           ui.apps = !ui.apps;
           draw();
+          const want = ui.apps;
+          W?.check({ id: 'header.appsToggle', area: 'header', expect: 'The round apps button shows or hides the apps row',
+            code: ['core/ui/header.js draw (grid)'] }, (t) => {
+            if (ui.github || ui.menu) return t.skip('a card or the menu is open');
+            t.eq('the apps row shown', want, !!box.querySelector('.apps'));
+          }, 1000);
         }, PATH.grid);
         grid.title = ui.apps ? 'Hide the apps' : 'Show the apps';
         grid.setAttribute('aria-label', grid.title);

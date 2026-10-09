@@ -14,6 +14,8 @@
 //   siteRules(stored) { block, allowed }: other websites closed, and the domains still open
 //   created(s)    a new profile of the app (the header's Add app): its starting state
 //   tabRemoved(s, tabId)
+//   checks        { start: [...], actions: { type: check } } what the app's start and messages must do
+//                 (core/checks/README.md)
 import { appOf } from '../../apps/registry.js';
 
 const parts = {};

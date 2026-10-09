@@ -228,7 +228,7 @@
     const u = new URL(location.href);
     const vid = u.pathname === '/watch' ? u.searchParams.get('v') : null;
     if (vid) {
-      if (page !== 'watch' || vid !== videoId) { page = 'watch'; videoId = vid; drop('home'); drop('lock'); played = 0; maxReached = 0; S.refresh(); }
+      if (page !== 'watch' || vid !== videoId) { page = 'watch'; videoId = vid; drop('home'); drop('lock'); played = 0; maxReached = 0; S.refresh(); checkPlayer(vid); }
       if (parentOn) return showParentView();
       document.documentElement.classList.add('kidtube-on');
       layoutWatch();
@@ -237,6 +237,18 @@
       showHome();
       silenceVideos();
     }
+  }
+
+  // The video element must be where player() looks: else his time is not counted and the end never comes.
+  // YouTube renaming its player is an outside change, so it fails only on the second video in a row (strikes).
+  function checkPlayer(vid) {
+    globalThis.KidTubeWatch?.check({ id: 'yt.player', kind: 'probe', strikes: 2, area: 'youtube', expect: 'KidTube finds YouTube’s video player on a watch page',
+      code: ['apps/kidtube/content/youtube.js player'] }, (t) => {
+      if (parentOn || frames.lock || !active || videoId !== vid) return t.skip('not his video page now');
+      if (t.ok('the video element', !!player(), 'not found', 'found by video.html5-main-video / #movie_player video / #player video / video')) return;
+      t.note('page', { videos: document.querySelectorAll('video').length, moviePlayer: !!document.querySelector('#movie_player'),
+        html5Player: !!document.querySelector('.html5-video-player'), mobilePlayer: !!document.querySelector('ytm-player, #player-container-id'), path: location.pathname });
+    }, 10000);
   }
 
   // Playback time: only while the video plays and the page is visible (PLAN.md §3.1).

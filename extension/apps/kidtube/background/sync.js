@@ -15,8 +15,8 @@ import { dropDoneNotes, getMemory, runView } from './parent.js';
 import { uploadTranscripts } from './transcripts.js';
 import { syncAudio, loadCharacter } from './media.js';
 
-const okConfig = (c) => c && c.schemaVersion === 1 && typeof c === 'object' && !Array.isArray(c);
-const okQueue = (q) => q && q.schemaVersion === 1 && Array.isArray(q.videos) && q.videos.every((v) => isVideoId(v.videoId) && Number.isFinite(v.durationSeconds));
+export const okConfig = (c) => c && c.schemaVersion === 1 && typeof c === 'object' && !Array.isArray(c);
+export const okQueue = (q) => q && q.schemaVersion === 1 && Array.isArray(q.videos) && q.videos.every((v) => isVideoId(v.videoId) && Number.isFinite(v.durationSeconds));
 
 // Context documents (parent mode → Context): Markdown in the profile's context/, written by the helper.
 async function pullContext(loc, token, etags) {

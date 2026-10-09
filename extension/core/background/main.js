@@ -10,9 +10,16 @@ import { sync } from './sync.js';
 import { latestRelease, autoUpdate } from './updates.js';
 import { handle } from './messages.js';
 import { keepOneTab } from './tabs.js';
+import { registerChecks, runStartChecks } from '../checks/runner.js';
+import { CORE_START } from '../checks/start.js';
+import { CORE_ACTIONS } from '../checks/actions.js';
 import APP_BACKGROUNDS from '../../apps/backgrounds.js';
 
 registerApps(APP_BACKGROUNDS);
+registerChecks({ start: CORE_START, actions: CORE_ACTIONS });
+for (const p of APP_BACKGROUNDS) if (p.checks) registerChecks(p.checks);
+// The start checks, once the start is done and the reloaded YouTube tabs had time to ask (core/checks/start.js).
+const checkStart = (reason) => setTimeout(() => runStartChecks(reason).catch(() => {}), 5000);
 
 // --- the tabs: every URL change goes through the guard -------------------------------------------
 chrome.tabs.onUpdated.addListener((tabId, info) => {
@@ -51,8 +58,9 @@ chrome.runtime.onInstalled.addListener(async ({ reason } = {}) => {
   if (reason === 'install' && !settings.token) chrome.tabs.create({ url: INSTALL_PAGE }).catch(() => {});
   // After an update the open YouTube tabs still run the old content script, cut off from KidTube: reload them.
   if (reason === 'update') for (const t of (await chrome.tabs.query?.({ url: '*://*.youtube.com/*' }).catch(() => [])) ?? []) chrome.tabs.reload(t.id).catch(() => {});
+  checkStart(reason === 'install' || reason === 'update' ? reason : 'startup');
 });
-chrome.runtime.onStartup.addListener(start);
+chrome.runtime.onStartup.addListener(async () => { await start(); checkStart('startup'); });
 chrome.alarms.onAlarm.addListener(async (a) => {
   if (a.name !== 'poll') return;
   sync();

@@ -13,6 +13,7 @@ const TABLE = JSON.parse(readFileSync(join(ROOT, 'build/orion-apis.json'), 'utf8
 // (behind TARGET === 'orion' in extension/core/lib/target.js, or with ?. and a fallback).
 export const HANDLED = {
   'declarativeNetRequest.updateDynamicRules': 'skipped when TARGET is orion (applySiteRules); externalGuard sends other sites home',
+  'declarativeNetRequest.getDynamicRules': 'the start check start.rules skips it when TARGET is orion (core/checks/start.js)',
 };
 
 const EVENT_METHODS = new Set(['addListener', 'removeListener', 'hasListener']);

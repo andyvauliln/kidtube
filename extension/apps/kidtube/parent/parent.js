@@ -83,8 +83,18 @@ hooks.afterRun = () => showDock();
 globalThis.KidTubeHeader.mount($('appHeader'));
 $('mode').replaceChildren(globalThis.KidTubeHeader.modeSwitch('parent'));
 
+const W = globalThis.KidTubeWatch;   // the checks (core/ui/watch.js)
+W?.watchTaps(document, 'parent');
+let loadChecked = false;
 async function refresh() {
   const r = await ask({ type: 'parentData' });
+  if (!loadChecked) {
+    loadChecked = true;
+    W?.check({ id: 'parent.loads', area: 'parent', expect: 'The parent screens get their data from the background',
+      code: ['apps/kidtube/parent/parent.js refresh', 'apps/kidtube/background/parent.js parentData'] }, (t) => {
+      t.ok('answer to "parentData"', !!r && r.ok !== false, r ?? 'no answer in 8 s', 'the lists');
+    });
+  }
   if (!r || r.ok === false) { view.replaceChildren(el('p', 'err', 'KidTube’s background did not answer. Close this page and open it again.')); return; }
   data = r;
   // These are KidTube's screens: a profile with another app goes to that app's page.
@@ -116,7 +126,7 @@ function render() {
   if (r.video) { shownTab = null; return renderDetail(r.video); }
   // The settings page keeps its own state: redrawn only when you come to the tab.
   if (r.tab === 'settings' && shownTab === 'settings') return;
-  if (shownTab !== r.tab) scrollTo(0, 0);
+  if (shownTab !== r.tab) { scrollTo(0, 0); checkTab(r.tab); }
   lastTab = shownTab = r.tab;
   if (r.tab === 'planned') return renderPlanned();
   if (r.tab === 'history') return renderHistory();
@@ -126,6 +136,16 @@ function render() {
   return renderToday();
 }
 addEventListener('hashchange', render);
+
+// A tab tapped: it is marked, and its screen has something on it.
+function checkTab(tab) {
+  W?.check({ id: `parent.tab.${tab}`, area: 'parent', expect: `The ${tab} tab shows its screen`,
+    code: ['apps/kidtube/parent/parent.js render'] }, (t) => {
+    if (route().tab !== tab) return t.skip('another tab now');
+    t.eq('the marked tab', tab, document.querySelector('.tabs a.on')?.dataset.tab ?? null);
+    t.ok('the screen', view.childElementCount > 0, 'empty', 'something drawn');
+  }, 3000);
+}
 
 // Swipe left / right between the tabs (on a video's page, swipe right goes back).
 let touch = null;

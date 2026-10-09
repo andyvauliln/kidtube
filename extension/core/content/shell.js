@@ -8,7 +8,7 @@
   const Z = '2147483647';
   // Same as core/lib/ask.js. Content scripts are not modules, and Orion only returns sendMessage answers to the callback.
   const ask = (msg) => new Promise((resolve) => {
-    const timer = setTimeout(() => resolve(undefined), 8000);
+    const timer = setTimeout(() => { globalThis.KidTubeWatch?.noAnswer(msg, 8000); resolve(undefined); }, 8000);
     try {
       chrome.runtime.sendMessage(msg, (value) => { clearTimeout(timer); void chrome.runtime.lastError; resolve(value); });
     } catch { clearTimeout(timer); resolve(undefined); }

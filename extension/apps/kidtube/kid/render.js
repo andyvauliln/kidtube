@@ -153,11 +153,19 @@
     const bar = topbar(ask);
     const body = el('div', 'body');
     root.append(bar.el, body);
-    let shown = null, alive = true;
+    let shown = null, alive = true, checked = false;
     const open = (v) => ask({ type: 'open', videoId: v.videoId });
     async function refresh() {
       const st = await ask({ type: 'state' });
       if (!alive) return;
+      if (!checked && !locked) {
+        checked = true;
+        globalThis.KidTubeWatch?.check({ id: 'kid.list', area: 'kid', expect: 'His list (or the lock or the “videos are over” screen) comes from the background',
+          code: ['apps/kidtube/kid/render.js mountHome', 'apps/kidtube/background/rules.js viewState'] }, (t) => {
+          if (t.ok('answer to "state"', !!st, 'no answer in 8 s', 'his list')) t.ok('state.videos', Array.isArray(st.videos), st.videos, 'a list (maybe empty)');
+          if (st) t.note('shown', { videos: st.videos?.length ?? null, lock: st.lock?.reason ?? null, app: st.app ?? null, parentMode: !!st.parentMode });
+        });
+      }
       if (!st) { if (shown === null) { shown = 'problem'; root.classList.toggle('night', locked); body.replaceChildren(locked ? lockView({ reason: 'dailyCap' }) : problemView()); } return; }
       const lock = st.lock ?? (locked ? { reason: 'dailyCap' } : null);
       bar.update({ ...st, lock });

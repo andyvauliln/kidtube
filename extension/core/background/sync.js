@@ -6,6 +6,8 @@ import { PAGES_URL, BACKUP_KEYS } from './constants.js';
 import { withState, dataLocation } from './store.js';
 import { applySiteRules } from './sites.js';
 import { partOf } from './apps.js';
+import { Expect } from '../checks/kit.js';
+import { probe } from '../checks/runner.js';
 
 // profile.json: who this folder belongs to. The helper on the server finds new profiles by it.
 async function writeProfileFile(loc, token) {
@@ -74,6 +76,11 @@ async function doSync() {
   status.errors = [...new Set(status.errors)];
   await applySiteRules();
   await withState((s) => { s.syncStatus = status; }, { account: acct });
+  if (token && loc.base) {
+    const t = new Expect();
+    t.eq('sync errors', [], status.errors);
+    probe('gh.sync', { area: 'sync', expect: 'A sync with GitHub ends without errors', code: ['core/background/sync.js doSync', 'apps/kidtube/background/sync.js syncKidTube'] }, t).catch(() => {});
+  }
   return status;
 }
 

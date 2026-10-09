@@ -12,12 +12,12 @@ let dnrWorks;
 // Where the header shows (the unlocked apps header, parent mode), all of google.com stays open: its Switch and Sign in
 // can pass through www.google.com or gds.google.com ("make sure you can sign in"), and a blocked step is a dead page.
 // accounts.google.com always: YouTube's own sign-in passes through it, whatever the app.
-const allowedDomains = (allowed, signingIn = false) =>
+export const allowedDomains = (allowed, signingIn = false) =>
   [...new Set([...allowed, 'youtube.com', 'accounts.google.com', 'andyvauliln.github.io', ...(signingIn ? ['google.com'] : [])])];
 const signingIn = (s) => (s.shell?.on ? !s.shell.locked : parentMode(s));
 
 // { block, allowed, signingIn }: the profile's app decides (an app without rules: everything else closed).
-async function rulesInput() {
+export async function rulesInput() {
   const s = await chrome.storage.local.get(['data', 'localConfig', 'shell', 'settings', 'account']);
   const app = partOf(s.account);
   const rules = (await app.siteRules?.({ data: s.data ?? {}, localConfig: s.localConfig })) ?? { block: true, allowed: [] };

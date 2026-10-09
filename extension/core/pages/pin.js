@@ -82,4 +82,5 @@ async function done() {
 }
 
 start();
+globalThis.KidTubeWatch?.watchTaps(document, 'pin');
 window.kidtubeParentReady = true;   // boot.js: the script ran

@@ -26,6 +26,7 @@ Use it to find what "this", "here" or "the button" means, and to reproduce a pro
 - **Secrets stay out:** the GitHub token, API keys and `~/kidtube-key.pem` never go into a commit, a log or the summary.
 - **Data repo:** the helper writes it (`kidtube-data`, cloned at the path given below). You don't edit it.
 - **Git:** never force-push or rewrite history. Commit messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
+- **Checks inside the app:** a new screen, button or message gets its checks in the same change: what it must do, in `core/checks/` or the app's `background/checks.js` (see `extension/core/checks/README.md`). A report from those checks (`type: "problem"`) names the check, the mismatch and the code to look at.
 - **Tests:** `npm test` must pass before you push. Add or update tests for what you changed. `tests/agent.test.mjs` "quiz from the model" fails now and then (random sums repeat), so rerun it once before treating it as real.
 - If something fails and you can't fix it, push nothing broken. Say what happened in the summary.
 

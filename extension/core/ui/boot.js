@@ -16,5 +16,13 @@
   setTimeout(() => {
     if (window.kidtubeParentReady) return;
     show(`The parent screens did not start (KidTube ${chrome?.runtime?.getManifest?.().version ?? '?'}, ${navigator.userAgent}).\nPlease send a screenshot of this box.`);
+    const W = globalThis.KidTubeWatch;
+    if (W) {
+      const t = new W.Expect();
+      t.mismatch.push({ what: 'the page’s script', expected: 'started within 6 s', actual: 'did not start' });
+      t.note('shown', document.getElementById('bootErr')?.textContent.slice(0, 1500) ?? '');
+      W.send({ id: 'page.start', kind: 'screen', area: 'page', expect: 'A KidTube page starts within 6 s', code: [location.pathname], status: 'fail',
+        mismatch: t.mismatch, evidence: t.evidence, ms: 6000, page: { path: location.pathname, tab: location.hash.slice(1) || null } });
+    }
   }, 6000);
 })();

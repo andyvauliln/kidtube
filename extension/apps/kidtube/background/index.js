@@ -4,6 +4,7 @@ import { effective } from './config.js';
 import { guard, viewState, leaveSession } from './rules.js';
 import { HANDLERS, PAGE_ONLY } from './handlers.js';
 import { syncKidTube, releaseNotes } from './sync.js';
+import { KIDTUBE_CHECKS } from './checks.js';
 
 export default {
   id: 'kidtube',
@@ -25,6 +26,7 @@ export default {
   view: viewState,
   handlers: HANDLERS,
   pageOnly: PAGE_ONLY,
+  checks: KIDTUBE_CHECKS,
   sync: syncKidTube,
   beforeSync: (msg) => (msg.notes ? releaseNotes() : undefined),
   async siteRules(stored) {

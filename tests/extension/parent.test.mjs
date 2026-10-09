@@ -366,10 +366,12 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
     const keep = structuredClone(fake.store.outbox);
     assert.equal((await fromPage({ type: 'dropNote', all: true })).removed, 2);
     assert.equal(fake.store.outbox.filter((e) => e.held).length, 0);
-    assert.ok(fake.store.outbox.some((e) => e.liked === true), 'a 👍 waiting to upload is not a note: it stays');
-    fake.store.outbox = keep;   // back, for the rest of this test
-    await fromPage({ type: 'sync' });   // an ordinary sync (after a video, on open) leaves the notes
     const sent = () => Object.entries(files).filter(([p]) => p.startsWith('activity/')).flatMap(([, f]) => f.json.events);
+    // A 👍 is not a note: Clear all leaves it (still waiting, or already sent by its own sync).
+    assert.ok(fake.store.outbox.some((e) => e.liked === true) || sent().some((e) => e.liked === true), 'a 👍 is not a note: it stays');
+    await fromPage({ type: 'sync' });   // the 👍's own sync first: it writes the outbox when it ends
+    fake.store.outbox = keep.filter((e) => e.held || !sent().some((x) => x.eventId === e.eventId));   // back, for the rest of this test
+    await fromPage({ type: 'sync' });   // an ordinary sync (after a video, on open) leaves the notes
     assert.deepEqual(sent().map((e) => e.type), ['parentNote']);
     assert.equal(sent()[0].liked, true);
     assert.equal(fake.store.outbox.length, 2);

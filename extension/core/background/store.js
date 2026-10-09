@@ -4,6 +4,7 @@ import { profileFolder } from '../lib/account.js';
 import { DEFAULT_APP } from '../../apps/registry.js';
 import { DEFAULT_REPO } from './constants.js';
 import { allParts } from './apps.js';
+import { record } from '../checks/runner.js';
 
 // --- the current profile's state --------------------------------------------------------------------------
 // settings: the PIN, the mode, the GitHub connection, the device id (DEVICE_SETTINGS move along with every switch).
@@ -27,6 +28,9 @@ export function serial(fn) {
     timer = setTimeout(() => {
       release();
       chrome.storage.local.set({ bgStuck: { at: new Date().toISOString(), from } }).catch(() => {});
+      record({ id: 'rule.bgStuck', kind: 'rule', area: 'background', expect: `a background step finishes within ${STUCK_MS / 1000} s`,
+        code: ['core/background/store.js serial'], mismatch: [{ what: 'a background step', expected: `done in ${STUCK_MS / 1000} s`, actual: 'still running' }],
+        evidence: { calledFrom: from } }).catch(() => {});
     }, STUCK_MS);
     return fn();
   });

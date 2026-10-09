@@ -12,6 +12,7 @@ import { youtubeAccount, headerView, openApp, plainYouTube, connectGitHub, expor
 import { sync, syncIfStale, settingsBackup } from './sync.js';
 import { checkUpdate, appVersion, updateApp } from './updates.js';
 import { partOf, allParts } from './apps.js';
+import { observe, pageResult, checksView, runStartChecks, clearReports } from '../checks/runner.js';
 
 const pinPage = (purpose) => chrome.runtime.getURL(`${PIN_PAGE}?for=${purpose}`);
 
@@ -105,12 +106,18 @@ const HANDLERS = {
     return sync();
   },
   checkUpdate: () => checkUpdate(),
+
+  // The checks (core/checks/): a page's own result, what parent mode and "Check this browser" show, run them now.
+  checkResult: (msg, { sender }) => pageResult(msg, sender),
+  checks: (msg) => checksView({ seen: !!msg.seen }),
+  runChecks: () => runStartChecks('asked'),
+  clearChecks: () => clearReports(),
   version: () => appVersion(),
   updateApp: () => updateApp(),
 };
 
 // Messages that change the mode or the profile come only from the extension's own pages.
-const PAGE_ONLY = new Set(['leaveApp', 'apps', 'setMode', 'kidHome']);
+const PAGE_ONLY = new Set(['leaveApp', 'apps', 'setMode', 'kidHome', 'checks', 'runChecks', 'clearChecks']);
 
 export async function handle(msg, sender) {
   const type = msg?.type;
@@ -122,5 +129,6 @@ export async function handle(msg, sender) {
   }
   const tabId = sender.tab?.id;
   const host = sender.tab?.url ? new URL(sender.tab.url).hostname : 'm.youtube.com';
-  return fn(msg, { tabId, host, sender });
+  // Every answer is checked against what the message should have done (core/checks/runner.js).
+  return observe(type, msg, { tabId, host, sender }, () => fn(msg, { tabId, host, sender }));
 }
