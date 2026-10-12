@@ -167,7 +167,7 @@ test('a page’s own result: a failure with the page’s steps; a pass; nonsense
   const fail = await fromPage({ type: 'checkResult', steps: [{ at: new Date().toISOString(), kind: 'tap', label: 'Load from GitHub', where: 'parent.html' }],
     result: { id: 'rule.deadButton.Load-from-GitHub', kind: 'rule', area: 'header', status: 'fail', expect: '“Load from GitHub” does something',
       mismatch: [{ what: 'the tap on “Load from GitHub”', expected: 'something changes within 5 s', actual: 'nothing changed' }], page: { path: '/apps/kidtube/parent/parent.html', tab: 'settings' } } });
-  assert.deepEqual(fail, { ok: true, status: 'fail' });
+  assert.deepEqual(fail, { ok: true, status: 'fail', again: false });
   const rep = await report('rule.deadButton.Load-from-GitHub');
   assert.equal(rep.context.page.tab, 'settings');
   assert.ok(rep.steps.some((s) => s.page && s.label === 'Load from GitHub'));
@@ -214,7 +214,7 @@ test('the reports go to GitHub: problems/<day>.json at the top of the data repo,
     assert.ok(puts.at(-1).sha, 'the second write updates the file (its sha)');
     // The same problem again on this version: counted on the tablet, not sent again (the server may be fixing it).
     const writes = puts.length;
-    await fromPage(fail);
+    assert.equal((await fromPage(fail)).again, true, 'the page learns it was reported before (Send to AI says so)');
     await fromPage(fail);
     assert.equal((await fromPage({ type: 'sendChecks' })).sent, 0, 'a repeat is not sent');
     assert.equal(puts.length, writes);

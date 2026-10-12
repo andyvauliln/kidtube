@@ -1,0 +1,15 @@
+{
+  "schemaVersion": 1,
+  "note": "Values KidTube reads without a new version (extension/core/background/remote.js, every 30 minutes). Only data: each app checks its part and keeps its defaults for a wrong value. instagram.reader: how the Instagram app finds the saved posts in what Instagram's own Saved page receives (extension/apps/instagram/lib/rules.js says what each key means).",
+  "instagram": {
+    "reader": {
+      "savedPath": "/{user}/saved/all-posts/",
+      "savedMatch": ["saved"],
+      "collectionsMatch": ["collection"],
+      "cursorKeys": ["next_max_id", "end_cursor", "max_id"],
+      "moreKeys": ["more_available", "has_next_page"],
+      "cursorVars": ["max_id", "after", "cursor"],
+      "api": true
+    }
+  }
+}

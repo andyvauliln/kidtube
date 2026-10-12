@@ -594,6 +594,9 @@ test('the Instagram screen: saved posts come in not handled, new ones at the top
   assert.equal(fake.store.account.app, 'instagram');
   const ig = (msg) => send(msg, { tab: { id: 7, url: IG_HOME } });
   assert.equal((await ig({ type: 'igState' })).who, '@ann', 'the screen knows whose posts it shows');
+  // Instagram's pages: the app is the profile's Saved page; the reader's rules (defaults: remote.json not reachable here).
+  const here = await send({ type: 'igSite' }, IG_SITE);
+  assert.deepEqual([here.open, here.who, here.rules.savedPath, here.rules.api], [true, 'ann', '/{user}/saved/all-posts/', true]);
   const cdn = (name) => `https://scontent-ams2-1.cdninstagram.com/v/${name}`;
   const media = (pk, extra = {}) => ({ pk, id: `${pk}_42`, code: `C${pk}x`, media_type: 2, product_type: 'clips', taken_at: 1790000000,
     user: { username: 'chef' }, caption: { text: `Post ${pk}` }, image_versions2: { candidates: [{ url: cdn(`${pk}.jpg`), width: 640 }] },

@@ -119,7 +119,7 @@ export async function record(r, extra = {}) {
 const sawOf = (mm) => mm.map((m) => `${m.what}: expected ${short(m.expected)}, saw ${short(m.actual)}`).join('; ').slice(0, 400);
 const short = (v) => (typeof v === 'string' ? v : JSON.stringify(v))?.slice(0, 120);
 
-async function addReport(b, r, res, { sender, pageSteps = [], page = null } = {}) {
+async function addReport(b, r, res, { sender, pageSteps = [], page = null, quiet = false } = {}) {
   const m = chrome.runtime.getManifest();
   const fp = fingerprint(r.id, m.version, TARGET);
   // The same problem on this version: counted on the tablet, never sent again. The server has it (and its fix agent
@@ -142,8 +142,9 @@ async function addReport(b, r, res, { sender, pageSteps = [], page = null } = {}
     steps: [...stepsNow(), ...redact(pageSteps).map((s) => ({ ...s, page: true }))].sort((a, x) => String(a.at).localeCompare(String(x.at))).slice(-MAX_STEPS),
   };
   b.reports = [...b.reports, report].slice(-MAX_REPORTS);
-  // The banner (core/ui/watch.js): a page where the parent is shows it for 15 s, once (never in kid mode).
-  chrome.storage.local.set({ checkAlert: { reportId: report.reportId, at: report.firstAt, check: report.check, expect: report.expect, saw: report.saw, shown: false } }).catch(() => {});
+  // The banner (core/ui/watch.js): a page where the parent is shows it for 15 s, once (never in kid mode). Not for a
+  // report the parent sent themselves (quiet).
+  if (!quiet) chrome.storage.local.set({ checkAlert: { reportId: report.reportId, at: report.firstAt, check: report.check, expect: report.expect, saw: report.saw, shown: false } }).catch(() => {});
   sendSoon();
   return report;
 }
@@ -332,9 +333,10 @@ export async function pageResult(msg, sender) {
     id: r.id, kind: ['screen', 'rule', 'probe'].includes(r.kind) ? r.kind : 'screen', area: str(r.area, 40) ?? 'page',
     expect: str(r.expect, 300) ?? '', code: [].concat(r.code ?? []).slice(0, 6).map((x) => str(x, 200)).filter(Boolean),
     strikes: Math.min(5, r.strikes | 0) || 0, mismatch, evidence: r.evidence ?? {}, skipped: r.status === 'skip' ? (str(r.skipped, 200) ?? 'skipped') : null, ms: Number(r.ms) || null,
-  }, { sender, pageSteps: [].concat(msg.steps ?? []).slice(-20), page: r.page ?? null });
+  }, { sender, pageSteps: [].concat(msg.steps ?? []).slice(-20), page: r.page ?? null, quiet: r.quiet === true });
   if (r.status === 'fail') step({ kind: 'check', type: r.id, ok: false, from: from(sender) });
-  return { ok: true, status: out.status };
+  // again: the same problem was reported before on this version (counted here, not sent again).
+  return { ok: true, status: out.status, again: (out.report?.count ?? 1) > 1 };
 }
 
 // --- what the pages show: the results and the reports ----------------------------------------------------------

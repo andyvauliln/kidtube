@@ -58,6 +58,8 @@
 
   globalThis.KidTubeIgApi = {
     LoginNeeded,
+    // A post cut down to what lib/posts.js parseMedia reads (also for posts found in the page's own answers).
+    slim,
     // The saved posts, newest saved first: { media, next }.
     saved: async (maxId) => page(await get(`/api/v1/feed/saved/posts/${q(maxId)}`)),
     // One collection's posts: { media, next }.

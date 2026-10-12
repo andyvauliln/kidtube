@@ -34,6 +34,20 @@ Secrets are never in a report (`(hidden)` where they were). Never try to get the
 5. **Add the check that was missing.** If the problem showed a case no check covers, add that check (`extension/core/checks/README.md` says how).
 6. **Prove it.** `npm test` must pass (`tests/agent/agent.test.mjs` "quiz from the model" fails now and then: rerun once). `node build/orion-check.mjs` must show no `✗`.
 
+## Instagram: the saved posts not read (`ig.read`, `ig.parentSent`)
+
+The Instagram app reads the saved posts from what Instagram's own Saved page receives (`extension/apps/instagram/README.md`).
+When Instagram changes, the report's `evidence` shows what the page asked and got now: `requests` (each one's path,
+GraphQL `query` name, variable names, status, `posts` found, and for some the `answer` structure as text) and `dom`
+(the page's outline). Compare them with `extension/apps/instagram/lib/reader.js` and the rules in `evidence.rules`.
+
+- **A data fix first:** when other words or keys are enough (the request's name, the position's key), change
+  `instagram.reader` in `site/remote.json` (the keys are explained in `extension/apps/instagram/lib/rules.js`). The
+  tablets read it within 30 minutes, with no new version. Test it with `readerRules` and the answer's structure in
+  `tests/extension/igreader.test.mjs`.
+- **Otherwise a code fix** in `lib/reader.js` (a new form of a post, of the position) with a test in
+  `tests/extension/igreader.test.mjs` built from the report's `answer`, then a release.
+
 ## Releasing
 
 When you changed `extension/`, release it exactly as `agent/NOTES.md` says under "Releasing a change to the app" (one new version for Quetta and Orion, `site/orion/CHANGES.md`, commit messages, push). Several problems fixed in one run go into one version. A change only to a test or to `agent/` needs no release: commit and push it.

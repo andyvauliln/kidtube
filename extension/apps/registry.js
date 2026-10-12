@@ -22,8 +22,8 @@ export const APPS = {
   },
   // Instagram: the connected Instagram account's saved posts, with voice notes, and the server's posts agent
   // (agent/instagram.mjs) writing down what each queued video says. No parent or kid mode. Its screen is drawn
-  // by its content script on www.instagram.com (home), so the page can read the saved posts with the
-  // Instagram login; YouTube sends every page there.
+  // by its content script over Instagram's own Saved page of the account; home is a launch address that goes on
+  // there (a light page of Instagram's: robots.txt). YouTube sends every page there.
   instagram: {
     id: 'instagram',
     label: 'Instagram (saved posts)',

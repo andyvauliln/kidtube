@@ -1,15 +1,24 @@
-// The Instagram app's screen. YouTube sends the tab to www.instagram.com/robots.txt?kidtube=app (registry.js home):
-// a plain text page of Instagram's, so none of Instagram's own scripts run, but the page reads Instagram's API with
-// the signed-in account (content/api.js). This script draws the app there: the apps header, the tabs, and the
-// post sheet with the voice notes. On Instagram's own pages it only adds the Connect bar: App | Instagram and Connect.
-// On every page it tells the background which Instagram account is signed in (the profile is that account's).
-// The background keeps everything (apps/instagram/background/); this page only reads Instagram and shows.
-// No innerHTML anywhere (the header's rule too).
+// The Instagram app's screen. The app is Instagram's own Saved page of the profile's account with two views: App
+// (this script draws the app over the page: the apps header, the tabs, the post sheet with the voice notes) and
+// Instagram (the page itself, with the Connect bar: App | Instagram and Connect). The saved posts come from what the
+// page itself receives (content/net.js in the page world, lib/reader.js finds them), else from Instagram's web API
+// (content/api.js). YouTube sends the tab to a launch address (registry.js home, ?kidtube=app), which goes on to
+// the Saved page. On every page it tells the background which Instagram account is signed in (the profile is that
+// account's). The background keeps everything (apps/instagram/background/); this page only reads Instagram and
+// shows. No innerHTML anywhere (the header's rule too).
 (() => {
   if (globalThis.KidTubeInstagram) return;
   globalThis.KidTubeInstagram = true;
-  const HOME = '/robots.txt?kidtube=app';
-  const isApp = location.pathname === '/robots.txt' && new URLSearchParams(location.search).get('kidtube') === 'app';
+  const LAUNCH = new URLSearchParams(location.search).get('kidtube') === 'app';
+  // The view of this tab: 'app' or 'instagram' (kept while the tab goes from page to page).
+  const VIEW = 'kidtubeIgView';
+  const view = {
+    get: () => { try { return sessionStorage.getItem(VIEW) ?? 'instagram'; } catch { return 'instagram'; } },
+    set: (v) => { try { sessionStorage.setItem(VIEW, v); } catch {} },
+  };
+  // The account whose Saved page this is (lowercase), or null on any other page.
+  const savedUser = () => location.pathname.match(/^\/([\w.]+)\/saved(?:\/|$)/)?.[1]?.toLowerCase() ?? null;
+  const savedPath = (rules, user) => rules.savedPath.replace('{user}', encodeURIComponent(user));
 
   // Same as core/lib/ask.js (Orion returns answers only to the callback). Long: a note is written down in the background.
   const ask = (msg, ms = 15000) => new Promise((resolve) => {
@@ -91,21 +100,20 @@
   }
   if (window.top === window) globalThis.KidTubeAccount = { read: reportMe };   // the header's Connect asks it first
 
-  // --- the switch: the app, or Instagram's own site (no app on it; the app stays one tap away) ----------------------
-  const SITE = 'https://www.instagram.com/';
+  // --- the switch: the app's view, or Instagram's own page under it (the same page) -----------------------------------
   const SWITCH_CSS = `:host { all: initial; display: inline-block; }
     .seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 18px; background: #efefef; font: 600 13px system-ui, -apple-system, sans-serif; }
     a, button { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 15px; color: #737373; text-decoration: none;
       font: inherit; border: 0; background: none; cursor: pointer; }
     .on { background: #fff; color: #262626; box-shadow: 0 1px 3px rgba(0,0,0,.15); pointer-events: none; }
     @media (prefers-color-scheme: dark) { .seg { background: #262626; } a, button { color: #a8a8a8; } .on { background: #000; color: #f5f5f5; } }`;
-  // The app's screen: App (here) | Instagram (its own site).
+  // The app's screen: App (here) | Instagram (the Saved page itself, under the app).
   function siteSwitch() {
     const host = h('span');
     const root = host.attachShadow({ mode: 'closed' });
     root.append(h('style', { text: SWITCH_CSS }), h('span', { class: 'seg', role: 'group', 'aria-label': 'App or Instagram' },
-      h('a', { class: 'on', href: HOME, 'aria-current': 'page', title: 'Your saved posts, notes and the list' }, 'App'),
-      h('a', { href: SITE, title: 'Instagram’s own site, without the app' }, 'Instagram')));
+      h('a', { class: 'on', 'aria-current': 'page', title: 'Your saved posts, notes and the list' }, 'App'),
+      h('button', { type: 'button', title: 'Instagram’s own Saved page, without the app', onclick: () => { view.set('instagram'); update(); } }, 'Instagram')));
     return host;
   }
 
@@ -132,10 +140,13 @@
       clearTimeout(timer);
       timer = setTimeout(() => { msg.hidden = true; }, 10000);
     };
+    // On the profile's own Saved page: the app's view over it. Elsewhere: the app opens (its Saved page).
     const openIt = async () => {
+      view.set('app');
+      if (site?.who && savedUser() === site.who.toLowerCase()) return update();
       say('Opening…');
       const r = await ask({ type: 'openApp', app: 'instagram' });
-      if (!r?.ok) return say(r?.error ?? 'Could not open the app.', true);
+      if (!r?.ok) { view.set('instagram'); return say(r?.error ?? 'Could not open the app.', true); }
       if (r.url && !r.navigated) location.href = r.url;
     };
     const go = h('button', { class: 'connect', type: 'button', title: 'Connect the Instagram account signed in here',
@@ -147,33 +158,30 @@
       go)));
     return host;
   }
-  if (!isApp) {
-    if (window.top !== window) return;
-    reportMe();
-    // Only where the header could act (not in kid mode, not at a locked header).
-    ask({ type: 'igSite' }).then((r) => {
-      if (!r?.open) return;
-      const add = () => document.documentElement.append(connectBar());
-      if (document.documentElement) add(); else addEventListener('DOMContentLoaded', add, { once: true });
-    });
+  if (window.top !== window) return;
+  // The launch address: on to the Saved page of the running profile, in the app's view.
+  if (LAUNCH) {
+    view.set('app');
+    ask({ type: 'igSite' }).then((r) => location.replace(r?.who && r.rules ? savedPath(r.rules, r.who) : '/'));
     return;
   }
+  reportMe();
 
   // --- the app's screen ---------------------------------------------------------------------------------------------
   const CSS = `
-    :root { color-scheme: light; --bg: #fff; --ink: #262626; --muted: #737373; --line: #dbdbdb; --soft: #efefef; --blue: #0095f6;
+    :host { all: initial; color-scheme: light; --bg: #fff; --ink: #262626; --muted: #737373; --line: #dbdbdb; --soft: #efefef; --blue: #0095f6;
       --ok: #1e8e3e; --bad: #ed4956; --queued: #0095f6; --sheet: #fff; }
-    @media (prefers-color-scheme: dark) { :root { color-scheme: dark; --bg: #000; --ink: #f5f5f5; --muted: #a8a8a8; --line: #363636;
+    @media (prefers-color-scheme: dark) { :host { color-scheme: dark; --bg: #000; --ink: #f5f5f5; --muted: #a8a8a8; --line: #363636;
       --soft: #262626; --sheet: #121212; --ok: #58c322; } }
     * { box-sizing: border-box; }
-    html, body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    #app { background: var(--bg); color: var(--ink); font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
       -webkit-tap-highlight-color: transparent; }
-    body > pre { display: none; }
+    .linkbtn { color: var(--blue); font-weight: 600; font-size: 12px; }
     button, select, textarea { font: inherit; color: inherit; }
     button { cursor: pointer; border: 0; background: none; padding: 0; }
     button:disabled { opacity: .5; cursor: default; }
     svg { display: block; flex: none; }
-    #app { min-height: 100vh; padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
+    #app { min-height: 100%; padding-bottom: calc(56px + env(safe-area-inset-bottom)); }
     .top { position: sticky; top: 0; z-index: 3; background: var(--bg); border-bottom: 1px solid var(--line); }
     .bar { display: flex; align-items: center; gap: 8px; padding: 10px 12px; }
     .bar h1 { font-size: 20px; margin: 0 4px 0 0; font-weight: 700; }
@@ -274,16 +282,78 @@
 
   let toastTimer;
   function toast(text) {
-    document.querySelector('.toast')?.remove();
+    root.querySelector('.toast')?.remove();
     const t = h('div', { class: 'toast', role: 'status', text });
-    document.body.append(t);
+    root.append(t);
     clearTimeout(toastTimer);
     toastTimer = setTimeout(() => t.remove(), 4000);
   }
 
-  // --- reading Instagram ---------------------------------------------------------------------------------------------
+  // --- Instagram's own page: what it receives (content/net.js in the page world) -------------------------------------
   const API = () => globalThis.KidTubeIgApi;
-  let reading = false;
+  // on: the page world answers (a browser without it: only the web API). first: the page's first answer with saved
+  // posts ({ id, media, next }; id: its request, to send again for the next page). collections: the last ones seen.
+  const net = { on: !!document.documentElement?.hasAttribute('data-kidtube-net'), rules: null, first: null, collections: null,
+    waits: new Map(), n: 0 };
+  let rulesReady;
+  net.ready = new Promise((r) => { rulesReady = r; });
+  const toPage = (m) => window.postMessage({ 'kidtube-ig-cmd': true, ...m }, location.origin);
+  addEventListener('message', (e) => {
+    const m = e.data;
+    if (e.source !== window || !m || m['kidtube-ig'] !== true) return;
+    net.on = true;
+    if (m.type === 'record' || m.type === 'replayed') return net.waits.get(m.tag)?.(m);
+    if (m.type !== 'answer' || !m.found) return;
+    // found: what the page world's reader found in one answer (lib/reader.js classify).
+    const found = m.found;
+    if (found.collections) net.collections = found.collections;
+    if (m.tag) return net.waits.get(m.tag)?.(m);
+    if (found.saved && !net.first) net.first = { id: m.meta.id, media: found.saved.map(API().slim), next: found.next };
+  });
+  // The rules go to the page world too: it sorts the answers by them (and keeps the early ones until then).
+  function useRules(rules) {
+    net.rules = rules;
+    toPage({ cmd: 'rules', rules });
+    rulesReady();
+  }
+  // A command to the page world, and its answer (null after ms).
+  function askPage(cmd, ms = 20000) {
+    const tag = `t${++net.n}`;
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => { net.waits.delete(tag); resolve(null); }, ms);
+      net.waits.set(tag, (m) => { clearTimeout(timer); net.waits.delete(tag); resolve(m); });
+      toPage({ ...cmd, tag });
+    });
+  }
+  const apiAllowed = () => net.rules?.api !== false;
+
+  // --- reading Instagram ---------------------------------------------------------------------------------------------
+  // The saved posts come from Instagram's own page first: its first answer, then its request again for the next
+  // pages. Else (no page world, or the page gave nothing) from Instagram's web API, when the rules allow it.
+  // fresh: the newest page again (↻), not the one the page got when it opened.
+  async function firstPage(fresh) {
+    for (let i = 0; i < (net.on ? 40 : 6) && !net.first; i++) await wait(250);   // it comes with the page (≤ 10 s)
+    if (net.first) {
+      if (!fresh) return { ...net.first, via: 'page' };
+      const m = await askPage({ cmd: 'replay', id: net.first.id, cursor: null });
+      if (m?.found?.saved) return { id: net.first.id, media: m.found.saved.map(API().slim), next: m.found.next, via: 'page' };
+      return { ...net.first, via: 'page' };
+    }
+    if (!apiAllowed()) throw new Error('Instagram’s Saved page gave no saved posts.');
+    const r = await API().saved(null);
+    return { media: r.media, next: r.next, via: 'api' };
+  }
+  async function pageAfter(prev, cursor) {
+    if (prev.via === 'page') {
+      const m = await askPage({ cmd: 'replay', id: prev.id, cursor });
+      if (m?.found?.saved) return { id: prev.id, media: m.found.saved.map(API().slim), next: m.found.next, via: 'page' };
+      if (!apiAllowed()) throw new Error(`Instagram’s page did not give the next page${m?.error ? `: ${m.error}` : m?.status ? ` (it answered ${m.status})` : ''}.`);
+    }
+    const r = await API().saved(cursor);
+    return { media: r.media, next: r.next, via: 'api' };
+  }
+
+  let reading = false, reads = 0;
   // The newest saved posts until a page with nothing new, then (once) the rest of the list; the collections; the
   // collection on screen.
   async function readInstagram() {
@@ -292,42 +362,40 @@
     ui.readError = '';
     ui.collectionsError = '';
     ui.login = false;
+    const fresh = reads++ > 0;
     try {
       ui.reading = 'Reading your collections…';
       draw();
       // Without the collections the saved posts are still read: only the collections' names are missing.
-      try { await ask({ type: 'igCollections', list: await API().collections() }); }
-      catch (e) { if (e instanceof API().LoginNeeded) throw e; ui.collectionsError = `Collections: ${String(e.message ?? e)}`; }
+      try {
+        const list = net.collections ?? (apiAllowed() ? await API().collections() : null);
+        if (list) await ask({ type: 'igCollections', list });
+      } catch (e) { if (e instanceof API().LoginNeeded) throw e; ui.collectionsError = `Collections: ${String(e.message ?? e)}`; }
       await refresh();
+      ui.reading = 'Reading your saved posts…';
+      draw();
       const d = ui.data;
+      const top = !!(d.posts.length && d.complete);
       let count = 0;
       const show = (n) => { count += n; ui.reading = `Reading your saved posts… ${count}`; draw(); };
-      if (d.posts.length && d.complete) {
-        let next = null;
-        for (let page = 0; page < 50; page++) {
-          const r = await API().saved(next);
-          const a = await ask({ type: 'igSaved', media: r.media, at: 'top', page });
-          show(r.media.length);
-          if (!a?.ok || !r.next || a.known === r.media.length) break;
-          next = r.next;
-          await wait(400);
-        }
-      } else {
-        let next = d.cursor;
-        for (let page = 0; page < 1000; page++) {
-          const r = await API().saved(next);
-          const a = await ask({ type: 'igSaved', media: r.media, at: 'end', page, cursor: r.next });
-          show(r.media.length);
-          if (!a?.ok || !r.next) break;
-          next = r.next;
-          if (page % 5 === 4) await refresh();
-          await wait(500);
-        }
+      let page = await firstPage(fresh);
+      ui.via = page.via;
+      // The long first read goes on where it stopped (its position is kept), else from the newest.
+      if (!top && d.cursor) page = await pageAfter(page, d.cursor).catch(() => page);
+      for (let n = 0; ; n++) {
+        const a = await ask({ type: 'igSaved', media: page.media, at: top ? 'top' : 'end', page: n, cursor: page.next });
+        show(page.media.length);
+        if (!a?.ok || !page.next || (top && a.known === page.media.length) || n >= (top ? 50 : 1000)) break;
+        if (!top && n % 5 === 4) await refresh();
+        await wait(top ? 400 : 500);
+        page = await pageAfter(page, page.next);
       }
       await ask({ type: 'igSaved', media: [], at: 'none', finished: true });
       if (ui.collection && ui.collection !== 'all') await readCollection(ui.collection);
     } catch (e) {
       readFailed(e);
+      // Not a sign-in: what the page asked and got goes to the fix agent (once per version: core/checks).
+      if (!ui.login) sendToAi(ui.readError, true);
     } finally {
       reading = false;
       ui.reading = '';
@@ -346,7 +414,7 @@
   }
 
   async function readCollection(id) {
-    if (ui.loadedCollections.has(id)) return;
+    if (ui.loadedCollections.has(id) || !apiAllowed()) return;
     ui.loadedCollections.add(id);
     const ids = [];
     let next = null;
@@ -443,7 +511,77 @@
     if (!d.github) bits.push(h('span', { class: 'err', text: 'GitHub is not connected: the notes stay on this device (header → account menu).' }));
     else if (d.unsent) bits.push(h('span', { text: 'Changes wait to go to GitHub…' }));
     for (const e of d.sync?.errors ?? []) bits.push(h('span', { class: 'err', text: e }));
+    bits.push(h('button', { class: 'linkbtn', type: 'button', title: 'Send what Instagram’s page asked and received, and its outline (no texts, no names), to the fix agent',
+      onclick: async () => toast((await sendToAi('The parent sent it from the app.')) ?? 'Could not send it.') }, 'Send to AI'));
     return h('div', { class: 'line' }, bits);
+  }
+
+  // --- Send to AI: what Instagram's page asked and received, and the page's outline, to the fix agent ---------------
+  // No values: the requests' addresses, names and answer structures (content/net.js) and the page's elements without
+  // their texts; the account's username becomes {user}. It goes as a problem report (core/checks), like the app's own
+  // checks: one per version, so a second send only counts.
+  function outline() {
+    const lines = [];
+    const SKIP = new Set(['SCRIPT', 'STYLE', 'NOSCRIPT', 'LINK', 'META', 'TEMPLATE', 'svg', 'SVG']);
+    const pat = (href) => {
+      try {
+        const u = new URL(href, location.origin);
+        return u.origin !== location.origin ? u.host : u.pathname.replace(/\/(p|reel|reels|stories|explore)\/[^/]+/g, '/$1/*').replace(/\d{6,}/g, '#');
+      } catch { return '?'; }
+    };
+    const walk = (el, d) => {
+      if (lines.length >= 400 || el === host || SKIP.has(el.tagName)) return;
+      const tag = el.tagName.toLowerCase();
+      const bits = [tag];
+      for (const a of ['role', 'type']) if (el.hasAttribute(a)) bits.push(`${a}=${el.getAttribute(a).slice(0, 20)}`);
+      if (el.hasAttribute('href')) bits.push(`href=${pat(el.getAttribute('href'))}`);
+      for (const a of el.attributes) if (a.name === 'aria-label' || a.name === 'src' || a.name === 'tabindex' || a.name.startsWith('data-') || a.name.startsWith('aria-')) bits.push(`[${a.name}]`);
+      const kids = [...el.children];
+      // A wrapper with nothing of its own: its child in its place.
+      if (bits.length === 1 && kids.length === 1 && (tag === 'div' || tag === 'span')) return walk(kids[0], d);
+      lines.push(`${' '.repeat(d)}${bits.join(' ')}${kids.length > 12 ? ` (${kids.length} children)` : ''}`);
+      for (const c of kids.slice(0, 12)) walk(c, d + 1);
+    };
+    if (document.body) walk(document.body, 0);
+    return lines;
+  }
+  // Lines → texts of at most n characters (a long line is cut into pieces), at most 30.
+  const chunks = (lines, n = 580) => {
+    const out = [];
+    let cur = '';
+    for (const line of lines) {
+      for (let i = 0; i < Math.max(1, line.length); i += n) {
+        const l = line.slice(i, i + n);
+        if (cur && cur.length + l.length + 1 > n) { out.push(cur); cur = ''; if (out.length >= 30) return out; }
+        cur += (cur ? (i ? '' : '\n') : '') + l;
+      }
+    }
+    if (cur) out.push(cur);
+    return out;
+  };
+  // → the words for the parent (null: no answer).
+  async function sendToAi(why, auto = false) {
+    const rec = net.on ? await askPage({ cmd: 'record' }, 3000) : null;
+    const me = (ui.me?.username ?? site?.who ?? '').toLowerCase();
+    const clean = (x) => (me ? String(x).split(me).join('{user}') : String(x));
+    // The answers' structures as text (a report keeps only 6 levels of an object): for the 8 requests that matter
+    // most (with posts or collections first, then the newest), in pieces of 580 characters.
+    const all = (rec?.requests ?? []).slice(-30);
+    const useful = (r) => (r.posts || r.collections ? 1 : 0);
+    const keep = new Set([...all.keys()].sort((a, b) => useful(all[b]) - useful(all[a]) || b - a).slice(0, 8));
+    const requests = all.map(({ shape, ...r }, i) => ({ ...r, path: clean(r.path),
+      ...(keep.has(i) && shape ? { answer: chunks([clean(JSON.stringify(shape))]).slice(0, 6) } : {}) }));
+    const r = await ask({ type: 'checkResult', result: {
+      id: auto ? 'ig.read' : 'ig.parentSent', kind: 'probe', area: 'instagram', status: 'fail',
+      expect: 'The app reads the saved posts from Instagram’s own Saved page',
+      mismatch: [{ what: 'the saved posts', expected: 'read from Instagram', actual: why || 'nothing said' }],
+      evidence: { pageWorld: net.on, via: ui.via ?? null, rules: net.rules, page: clean(location.pathname), posts: posts().length,
+        requests, dom: chunks(outline().map(clean)) },
+      code: ['apps/instagram/lib/reader.js', 'apps/instagram/lib/rules.js (site/remote.json instagram.reader)', 'apps/instagram/content/net.js', 'apps/instagram/content/app.js readInstagram'],
+      page: { path: clean(location.pathname), tab: ui.tab }, quiet: !auto,
+    } });
+    if (!r?.ok) return null;
+    return r.again ? 'Already sent for this version: the AI has it.' : 'Sent to the AI. A fix comes as a new version.';
   }
 
   function tile(p) {
@@ -498,7 +636,7 @@
     ui.open = id;
     ui.notice = '';
     ui.expanded = false;
-    history.pushState({ post: id }, '', `${HOME}#${id}`);
+    history.pushState({ post: id }, '', `${location.pathname}#${id}`);
     draw();
     const p = posts().find((x) => x.id === id);
     // Fresh addresses when the old ones may have expired (a day), so the video plays.
@@ -527,6 +665,7 @@
     await refresh();
   }
 
+  const postLink = (p) => `https://www.instagram.com/${p.reel ? 'reel' : 'p'}/${p.code}/`;
   function postSheet(p) {
     const media = h('div', { class: 'media' }, p.items.map((i) => (i.video
       ? h('video', { src: i.video, poster: i.src ?? undefined, controls: true, playsinline: true, preload: 'metadata' })
@@ -558,8 +697,10 @@
     return h('div', { class: 'sheet', role: 'dialog', 'aria-label': `Post by ${p.author}` },
       h('div', { class: 'bar' }, h('button', { class: 'ibtn', type: 'button', title: 'Back', onclick: () => history.back() }, icon('back')),
         h('b', { class: 'grow', text: `@${p.author}` }),
-        h('a', { class: 'ibtn', href: `https://www.instagram.com/${p.reel ? 'reel' : 'p'}/${p.code}/`, title: 'Open on Instagram' }, icon('open'))),
+        h('a', { class: 'ibtn', href: postLink(p), title: 'Open on Instagram', onclick: () => view.set('instagram') }, icon('open'))),
       media, p.items.length > 1 ? h('div', { class: 'count', text: `${p.items.length} items · swipe` }) : null,
+      p.kind !== 'image' ? h('div', { class: 'block play' }, h('a', { class: 'btn small', href: postLink(p), onclick: () => view.set('instagram') }, '▶ Play on Instagram'),
+        h('span', { text: ' The post in Instagram’s own player. App (bottom left) brings you back.' })) : null,
       cap,
       h('div', { class: 'block' }, h('h4', null, 'Status ', h('span', { class: `pill ${p.status}`, text: STATUS[p.status] })), h('p', { text: statusText }), acts),
       resultBlock,
@@ -665,14 +806,14 @@
     if (!ui.data) { main.replaceChildren(h('div', { class: 'empty', text: 'Loading…' })); return; }
     // Under an open post the tab is not drawn again (its pictures would load again for nothing).
     if (!ui.open || !main.childElementCount) {
-      const y = scrollY;
+      const y = host.scrollTop;
       main.replaceChildren(...[ui.tab === 'saved' ? savedTab() : queueTab()].flat(Infinity).filter(Boolean));
-      scrollTo(0, y);
+      host.scrollTop = y;
     }
     const waiting = posts().filter((p) => p.status === 'queued').length;
     tabsBar.replaceChildren(
-      h('button', { class: ui.tab === 'saved' ? 'on' : '', type: 'button', onclick: () => { ui.tab = 'saved'; draw(); scrollTo(0, 0); } }, icon('saved'), 'Saved'),
-      h('button', { class: ui.tab === 'queue' ? 'on' : '', type: 'button', onclick: () => { ui.tab = 'queue'; draw(); scrollTo(0, 0); } }, icon('list'), `To handle${waiting ? ` (${waiting})` : ''}`));
+      h('button', { class: ui.tab === 'saved' ? 'on' : '', type: 'button', onclick: () => { ui.tab = 'saved'; draw(); host.scrollTop = 0; } }, icon('saved'), 'Saved'),
+      h('button', { class: ui.tab === 'queue' ? 'on' : '', type: 'button', onclick: () => { ui.tab = 'queue'; draw(); host.scrollTop = 0; } }, icon('list'), `To handle${waiting ? ` (${waiting})` : ''}`));
     const p = ui.open && posts().find((x) => x.id === ui.open);
     // Keep what is typed in a note while the sheet draws again.
     const typing = sheet.querySelector('textarea')?.value ?? '';
@@ -683,20 +824,11 @@
       if (ta && typing) ta.value = typing;
       sheet.firstChild.scrollTop = sheetScroll;
     }
-    document.body.style.overflow = p ? 'hidden' : '';
+    host.style.overflowY = p ? 'hidden' : 'auto';
   }
 
+  // The first time the app's view shows: what the background has, then Instagram.
   async function start() {
-    document.title = 'Instagram · Saved';
-    const head = document.head ?? document.documentElement.insertBefore(document.createElement('head'), document.body);
-    head.replaceChildren(h('meta', { charset: 'utf-8' }), h('meta', { name: 'viewport', content: 'width=device-width, initial-scale=1, viewport-fit=cover' }),
-      h('title', { text: 'Instagram · Saved' }), h('style', { text: CSS }));
-    headerBox = h('div');
-    main = h('main');
-    tabsBar = h('nav', { class: 'tabs', 'aria-label': 'Tabs' });
-    sheet = h('div');
-    root = h('div', { id: 'app' }, headerBox, main, tabsBar, sheet);
-    document.body.replaceChildren(root);
     globalThis.KidTubeHeader?.mount(headerBox);
     draw();
     await refresh();
@@ -706,15 +838,65 @@
     if (!me.loggedIn) { ui.login = true; ui.readError = me.detail; draw(); return; }
     if (me.username && ui.data?.who && `@${me.username}` !== ui.data.who) { ui.other = me.username; draw(); return; }
     const id = location.hash.slice(1);
-    if (/^\d+$/.test(id) && posts().some((p) => p.id === id)) { history.replaceState(null, '', HOME); openPost(id); }
+    if (/^\d+$/.test(id) && posts().some((p) => p.id === id)) { history.replaceState(null, '', location.pathname); openPost(id); }
     ask({ type: 'sync' });   // the agent's latest results
+    // The rules come with igSite; without them (no answer in 15 s) the web API still reads.
+    await Promise.race([net.ready, wait(15000)]);
     readInstagram();
     // While posts wait for the agent: its results every minute; the screen every 20 s (the background's syncs).
-    setInterval(() => { if (document.visibilityState === 'visible' && posts().some((p) => p.status === 'queued')) ask({ type: 'sync' }); }, 60000);
-    setInterval(() => { if (document.visibilityState === 'visible' && !ui.rec) refresh(); }, 20000);
+    setInterval(() => { if (shown() && document.visibilityState === 'visible' && posts().some((p) => p.status === 'queued')) ask({ type: 'sync' }); }, 60000);
+    setInterval(() => { if (shown() && document.visibilityState === 'visible' && !ui.rec) refresh(); }, 20000);
     chrome.storage.onChanged.addListener((ch) => { if ((ch.account || ch.shell) && !ui.rec) refresh(); });
   }
 
+  // --- the two views of the Saved page ---------------------------------------------------------------------------------
+  // App: the app over the page, in its own layer (a shadow root: Instagram's styles and scripts do not reach it).
+  // Instagram: the layer hidden, the page itself, with the Connect bar. site: igSite's answer (null until it comes).
+  let host = null, site = null, bar = null, started = false;
+  const shown = () => host?.style.display === 'block';
+  function mountView() {
+    if (host) return;
+    host = document.createElement('div');
+    host.style.cssText = 'position:fixed;inset:0;z-index:2147483646;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;display:none';
+    const shadow = host.attachShadow({ mode: 'closed' });
+    headerBox = h('div');
+    main = h('main');
+    tabsBar = h('nav', { class: 'tabs', 'aria-label': 'Tabs' });
+    sheet = h('div');
+    root = h('div', { id: 'app' }, headerBox, main, tabsBar, sheet);
+    shadow.append(h('style', { text: CSS }), root);
+    document.documentElement.append(host);
+  }
+  function showView(on) {
+    if (on) {
+      mountView();
+      if (shown()) return;
+      host.style.display = 'block';
+      document.documentElement.style.overflow = 'hidden';   // the page under it stays still
+      if (!started) { started = true; start(); } else refresh();
+    } else if (shown()) {
+      host.style.display = 'none';
+      document.documentElement.style.overflow = '';
+      ui.rec?.stop();
+    }
+  }
+  // Which view, after every page change (Instagram changes pages without loading them).
+  function update() {
+    const app = view.get() === 'app' && !!savedUser() && site?.open !== false;
+    showView(app);
+    if (!site?.open || !document.documentElement) return;
+    if (!bar) bar = connectBar();
+    if (!bar.isConnected) document.documentElement.append(bar);
+    bar.style.display = app ? 'none' : '';
+  }
   document.documentElement?.classList.add('ktig');
-  if (document.readyState === 'loading') addEventListener('DOMContentLoaded', start, { once: true }); else start();
+  // The app's view at once (before Instagram draws its page), when this tab was in it.
+  if (view.get() === 'app' && savedUser()) showView(true);
+  ask({ type: 'igSite' }).then((r) => {
+    site = r?.ok ? r : { open: false };
+    if (r?.rules) useRules(r.rules);
+    update();
+  });
+  setInterval(update, 700);
+  addEventListener('popstate', update);
 })();

@@ -64,7 +64,7 @@ export function checkExtension(dir = join(ROOT, 'extension')) {
   const manifest = JSON.parse(readFileSync(join(dir, 'manifest.json'), 'utf8'));
   const notes = [];
   for (const cs of manifest.content_scripts ?? []) {
-    if (cs.world === 'MAIN') notes.push(`content script ${cs.js.join(', ')} uses world "MAIN": not documented for Orion; if it doesn't run there, its job (real channel and length) is skipped`);
+    if (cs.world === 'MAIN') notes.push(`content script ${cs.js.join(', ')} uses world "MAIN": not documented for Orion; if it doesn't run there, its job is skipped (${cs.js.some((f) => f.includes('instagram')) ? 'Instagram: the web API reads the saved posts instead' : 'the real channel and length'})`);
   }
   for (const p of manifest.permissions ?? []) {
     if (p.startsWith('declarativeNetRequest')) continue;

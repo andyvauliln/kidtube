@@ -6,6 +6,8 @@ import { syncSoon, fetchDataFile } from '../../../core/background/sync.js';
 // The notes are written down like KidTube's parent notes: Groq's Whisper, then Gemini, then OpenRouter (keys.json or Settings).
 import { transcribeAnswer, listenKeys, NOTE_LISTEN_MODELS } from '../../kidtube/lib/voice.js';
 import { statusOf, mergeSaved, mergeCollection, cleanPost, parseMedia } from '../lib/posts.js';
+import { readerRules } from '../lib/rules.js';
+import { remoteData } from '../../../core/background/remote.js';
 
 const NOT_HERE = { ok: false, notHere: true, error: 'Instagram is not the app that runs now.' };
 const running = async () => appOf((await chrome.storage.local.get('account')).account).id === 'instagram';
@@ -45,8 +47,14 @@ async function writeDown(b64, lang) {
 }
 
 export const HANDLERS = {
-  // Instagram's own pages: show the Connect bar only where the header could act (not in kid mode, not locked).
-  igSite: async () => ({ ok: true, open: await headerOpen() }),
+  // Instagram's pages: show the Connect bar and the app only where the header could act (not in kid mode, not
+  // locked); who: the running Instagram profile's username (its Saved page is the app); rules: how the app reads
+  // Instagram's own page (lib/rules.js, with site/remote.json).
+  igSite: async () => {
+    const { account } = await chrome.storage.local.get('account');
+    const who = appOf(account).id === 'instagram' ? account?.username ?? null : null;
+    return { ok: true, open: await headerOpen(), who, rules: readerRules((await remoteData()).instagram?.reader) };
+  },
 
   // The screen.
   igState: async () => ((await running()) ? withState(view) : NOT_HERE),

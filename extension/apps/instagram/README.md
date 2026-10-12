@@ -5,11 +5,45 @@ mode: opening the app from the apps header always shows the header too.
 
 ## Where it runs
 
-YouTube sends every page to `https://www.instagram.com/robots.txt?kidtube=app` (`home` in `../registry.js`). That
-is a plain text page of Instagram's, so none of Instagram's own scripts run there, but the page can read Instagram's
-web API with the signed-in Instagram account on every browser (same origin). `content/app.js` draws the app there.
-The App | Instagram switch (top right in the app) goes to Instagram's own site. There the Connect bar (bottom left)
-has App | Instagram and **Connect**. YouTube always opens the app.
+The app is Instagram's own Saved page of the profile's account (`/<username>/saved/all-posts/`, `savedPath` in
+`lib/rules.js`), with two views of the same page:
+
+| View | What you see |
+| --- | --- |
+| **App** | The app over the page, in its own layer (a closed shadow root): the apps header, the tabs, the post sheet |
+| **Instagram** | The page itself. The Connect bar (bottom left) has App \| Instagram and **Connect** |
+
+The App | Instagram switch (top right in the app) changes the view without loading a page; the tab keeps its view
+(`sessionStorage`). YouTube and the header's tile send the tab to the launch address `robots.txt?kidtube=app` (`home`
+in `../registry.js`), which goes on to the Saved page in the App view. **▶ Play on Instagram** in a post opens the
+post in Instagram's own player (the Instagram view); App in the Connect bar comes back.
+
+## Where the saved posts come from
+
+1. **What Instagram's own page receives.** `content/net.js` runs in the page's world (manifest `world: "MAIN"`). It
+   sees the page's requests (fetch and XMLHttpRequest) and the data that comes with the page. `lib/reader.js` finds
+   the saved posts, the collections and the next page's position in any answer (the web API's JSON or GraphQL's).
+2. **The next pages:** the page's own request again, with the next position (`withCursor`). The page's tokens stay in
+   the page world.
+3. **Else Instagram's web API** from the page (`content/api.js`), when the page gave nothing (`api` in the rules).
+   Orion may not run page-world scripts: there only this one works.
+
+The rules (which requests mean "saved", where the position is) are data: `lib/rules.js` has the defaults, and
+`site/remote.json` `instagram.reader` can change them without a new version (`core/background/remote.js`).
+
+## When reading fails: Send to AI
+
+A read that fails (not a sign-in) sends a problem report `ig.read` by itself; **Send to AI** on the status line
+sends `ig.parentSent` (no banner: the parent sent it). The report holds what the fix agent needs to adjust the
+reader, and no values:
+
+| Evidence | What it is |
+| --- | --- |
+| `requests` | The last 30 requests of the page: method, path, parameter names, GraphQL's query name and `docId`, variable names, status, size, how many posts and collections were found; for 8 of them `answer`: the structure of the answer (keys and types), as text |
+| `dom` | The page's outline: tags, roles, link patterns (`/p/*/`), which attributes there are; no texts |
+| `rules`, `via`, `pageWorld`, `posts` | The rules in use, where the posts came from (`page` or `api`), whether the page world ran |
+
+The account's username becomes `{user}` in the evidence. A report goes once per version (`core/checks`).
 
 ## Whose posts
 
@@ -55,8 +89,11 @@ The rule is `statusOf` in `lib/posts.js`; the agent on the server uses the same 
 | `background/handlers.js` | The screen's messages (`ig…`): the saved pages, collections, the default, the list, notes (a recording is written down here by Groq's Whisper, Gemini or OpenRouter, with the keys of `keys.json` or Settings) |
 | `background/sync.js` | The data repo: writes `posts.json` and `notes/<id>.wav`, reads `handled.json` |
 | `lib/posts.js` | Plain rules: a post from Instagram's API, merging pages, the status, what goes to the repo |
+| `lib/reader.js` | Plain rules (a plain script, loaded in the page world): the posts, collections and next position in an answer; the page's request with the next position |
+| `lib/rules.js` | The reader's rules and their defaults; `site/remote.json` can change them |
+| `content/net.js` | The page world: the page's requests and answers, the request again for the next page, the record for Send to AI |
 | `content/api.js` | Instagram's web API: the signed-in account, saved posts, collections, one collection, one post |
-| `content/app.js` | The screen (tabs, grid, sheet, notes, recording), the Connect bar on Instagram's pages, and the account report |
+| `content/app.js` | The two views of the Saved page, the screen (tabs, grid, sheet, notes, recording), the Connect bar, Send to AI, and the account report |
 
 ## In the data repo (`instagram/<folder>/`)
 

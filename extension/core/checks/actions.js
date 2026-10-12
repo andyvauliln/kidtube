@@ -23,6 +23,11 @@ function sameAccount(t, after) {
 // The tab went where the answer said (the background moves it; Orion sometimes doesn't, then the page does).
 async function tabWent(t, c, want, what = 'the tab’s address') {
   if (c.tabId == null || !want) return;
+  // A launch address (?kidtube=app: Instagram's) goes on by itself to the app's page on the same site.
+  if (typeof want === 'string' && want.includes('kidtube=app')) {
+    const site = new URL(want).host, launch = want;
+    want = (now) => now.startsWith(launch) || (() => { try { return new URL(now).host === site; } catch { return false; } })();
+  }
   const now = await c.tabUrl(c.tabId);
   if (now == null) return t.note('tab', 'the browser did not say where the tab is');
   t.ok(what, typeof want === 'function' ? want(now) : now.startsWith(want), now, typeof want === 'function' ? 'the expected page' : want);
