@@ -96,7 +96,7 @@ This is the list that F1 and F2 build. Each row is one check.
 | `header.appsToggle` | Tap the round apps button | The apps row shows or hides, and the choice is saved | 2 s |
 | `header.youtubeTile` | Tap **YouTube** | No app runs, and the tab is on YouTube's home | 5 s |
 | `header.appTile` | Tap an app tile | That app runs, and its home screen shows | 5 s |
-| `account.switch` | Tap **Switch** and sign in as another account | The header shows the new email, and that account's data is used | 15 s |
+| `account.connect` | Switch the account with the site's own buttons, then tap **Connect** | That account's profile runs (loaded, or new and empty); the same one again says so | 15 s |
 | `account.menu` | Tap the account button | The menu opens with the email and "checked HH:MM:SS" | 2 s |
 
 **GitHub and settings file**

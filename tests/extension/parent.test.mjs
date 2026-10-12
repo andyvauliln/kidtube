@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { installFakeChrome } from '../helpers/fake-chrome.mjs';
 import { applyPlan, pendingPlan, applyPlanEvent } from '../../extension/apps/kidtube/lib/plan.js';
-import { accountFromSwitcher, accountKey, profileFolder, chooserUrl } from '../../extension/core/lib/account.js';
+import { accountFromSwitcher, accountKey, profileFolder } from '../../extension/core/lib/account.js';
 import { APPS } from '../../extension/apps/registry.js';
 
 const fake = installFakeChrome();
@@ -177,6 +177,9 @@ test('parent mode stays on until Kid (no timer); an old tablet’s ended timer m
 // YouTube's page names its account (core/content/shell.js sends the account switcher's answer).
 const switcherFor = (email) => `)]}'\n${JSON.stringify({ header: { email: { simpleText: email } }, items: [{ accountItem: { isSelected: true } }] })}`;
 const youtubeHas = (email, datasyncId = 'X||') => send(email ? { type: 'account', loggedIn: true, datasyncId, switcher: switcherFor(email) } : { type: 'account', loggedIn: false, datasyncId: '' });
+// Instagram's pages (apps/instagram/content/app.js): who is signed in there, and its Connect.
+const IG_SITE = { tab: { id: 7, url: 'https://www.instagram.com/' } };
+const instagramHas = (username, id = '9001') => send({ type: 'siteAccount', loggedIn: username !== null, username: username || null, id }, IG_SITE);
 // A data repo with these profiles (<app>/<folder>/profile.json); every other GitHub call is a 404.
 async function withRepo(profiles, fn) {
   const realFetch = globalThis.fetch;
@@ -190,13 +193,13 @@ async function withRepo(profiles, fn) {
     const dirs = profiles.filter((p) => p.app === path);
     if (dirs.length) return { ok: true, status: 200, json: async () => dirs.map((p) => ({ type: 'dir', name: p.folder })) };
     const p = profiles.find((x) => path === `${x.app}/${x.folder}/profile.json`);
-    if (p) return { ok: true, status: 200, json: async () => ({ sha: 's', content: Buffer.from(JSON.stringify({ schemaVersion: 1, email: p.email })).toString('base64') }) };
+    if (p) return { ok: true, status: 200, json: async () => ({ sha: 's', content: Buffer.from(JSON.stringify({ schemaVersion: 1, email: p.email ?? null, username: p.username })).toString('base64') }) };
     return no;
   };
   try { return await fn(); } finally { globalThis.fetch = realFetch; delete fake.store.repoProfiles; }
 }
 
-test('the apps header: sign in, connect GitHub, open or create this account’s apps; each has its own data; the PIN and GitHub stay', async () => {
+test('the apps header: connect GitHub, Connect the account YouTube has, open its apps; each has its own data; the PIN and GitHub stay', async () => {
   fake.store.settings = { ...fake.store.settings, pinHash: 'H', pinSalt: 'S', repo: 'me/data', token: '' };
   await fromPage({ type: 'leaveApp' });
   assert.equal(await navigate('https://m.youtube.com/results?search_query=x'), 'https://m.youtube.com/results?search_query=x', 'plain YouTube');
@@ -205,22 +208,24 @@ test('the apps header: sign in, connect GitHub, open or create this account’s 
 
   await youtubeHas(null);
   let h = await send({ type: 'header' });
-  assert.equal(h.signedIn, false);
-  assert.equal(h.apps.length, 0, 'not signed in: no apps');
+  assert.deepEqual([h.site, h.here.signedIn, h.here.name], ['youtube', false, null]);
+  assert.equal(h.apps.length, 0, 'no GitHub yet: no apps');
   assert.equal((await send({ type: 'openApp', app: 'kidtube', create: true })).ok, false);
-  assert.match(h.switchAccount, /^https:\/\/accounts\.google\.com\/AccountChooser\?service=youtube&continue=/);
+  assert.match((await send({ type: 'connect' })).error, /YouTube has no account signed in/, 'Connect says why');
+  for (const k of ['switchAccount', 'signOut']) assert.equal(h[k], undefined, 'no Switch or Sign out: the site’s own buttons do that');
 
   await youtubeHas('first@example.com', 'AAA||');
   h = await send({ type: 'header' });
-  assert.equal(h.email, 'first@example.com');
+  assert.equal(h.here.name, 'first@example.com');
   assert.equal(h.github.connected, false, 'no GitHub yet: the header asks for it');
   assert.equal(h.apps.length, 0);
 
   fake.store.settings.token = 't1';
   await withRepo([{ app: 'kidtube', folder: 'first', email: 'first@example.com' }, { app: 'kidtube', folder: 'zed', email: 'zed@example.com' }], async () => {
     h = await send({ type: 'header' });
-    assert.deepEqual(h.apps.map((a) => [a.id, a.has, a.folder]), [['kidtube', true, 'first'], ['instagram', false, null]], 'the repo knows its KidTube');
-    assert.equal((await send({ type: 'openApp', app: 'instagram' })).ok, false, 'not there yet: Create, not Open');
+    assert.deepEqual(h.apps.map((a) => [a.id, a.has, a.folder, a.who]), [['kidtube', true, 'first', 'first@example.com'], ['instagram', false, null, null]], 'the repo knows its KidTube');
+    assert.deepEqual(h.sites.map((x) => [x.id, x.here]), [['youtube', true], ['instagram', false]], 'the plain sites');
+    assert.match((await send({ type: 'openApp', app: 'instagram' })).error, /Sign in on Instagram itself/, 'no Instagram account seen yet');
     const r = await send({ type: 'openApp', app: 'kidtube', mode: 'kid' });
     assert.equal(r.ok, true);
     assert.equal(r.url, 'https://m.youtube.com/', 'kid mode: his list on YouTube');
@@ -247,9 +252,15 @@ test('the apps header: sign in, connect GitHub, open or create this account’s 
   await withRepo([], async () => {
     h = await send({ type: 'header' });
     assert.deepEqual(h.apps.map((a) => a.has), [false, false], 'nothing for this account yet');
-    assert.equal((await send({ type: 'openApp', app: 'kidtube', mode: 'kid' })).ok, false);
-    const r = await send({ type: 'openApp', app: 'kidtube', create: true });
+    assert.match((await send({ type: 'openApp', app: 'kidtube', mode: 'kid' })).error, /No KidTube for other@example\.com yet: press Connect on YouTube/);
+    assert.match((await send({ type: 'connect' }, PAGE)).error, /Open YouTube or Instagram/, 'no Connect on an extension page');
+    const r = await send({ type: 'connect' });
     assert.equal(r.url, 'ext://apps/kidtube/parent/parent.html', 'a new KidTube starts in parent mode');
+    assert.equal(r.created, true);
+    assert.match(r.message, /Connected: other@example\.com\. A new KidTube profile starts now/);
+    const again = await send({ type: 'connect' });
+    assert.deepEqual([again.ok, again.same, again.url], [true, true, undefined], 'the same account again: nothing changes');
+    assert.match(again.message, /Already connected: other@example\.com \(KidTube\)\. Nothing changed\./);
   });
   assert.equal(fake.store.account.key, 'other@example.com');
   assert.equal(fake.store.account.folder, 'other');
@@ -421,26 +432,19 @@ test('profile folders: the email’s name part, given once; a clash adds the dom
   assert.equal(profileFolder({ email: 'kid@school.org' }, ['kid', 'kid-school']), 'kid-school-2');
   assert.equal(profileFolder({ datasyncId: 'AbC||' }), 'yt-abc');
   assert.equal(profileFolder({}), null);
-  // Back through YouTube's own sign-in handler, so YouTube takes the account Google signed in.
-  const u = new URL(chooserUrl('a+b@x.com'));
-  assert.equal(u.origin + u.pathname, 'https://accounts.google.com/AccountChooser');
-  assert.equal(u.searchParams.get('Email'), 'a+b@x.com');
-  assert.equal(u.searchParams.get('service'), 'youtube');
-  const back = new URL(u.searchParams.get('continue'));
-  assert.equal(back.origin + back.pathname, 'https://m.youtube.com/signin');
-  assert.equal(back.searchParams.get('action_handle_signin'), 'true');
-  assert.equal(back.searchParams.get('noapp'), '1', 'Android must not open the YouTube app');
-  assert.equal(back.searchParams.get('next'), 'https://m.youtube.com/');
-  assert.equal(new URL(new URL(chooserUrl('a@x.com', 'www.youtube.com')).searchParams.get('continue')).searchParams.get('app'), 'desktop');
+  // An Instagram profile: its username.
+  assert.equal(profileFolder({ username: 'ann.cooks' }), 'ann.cooks');
+  assert.equal(profileFolder({ username: 'ann.cooks' }, ['ann.cooks']), 'ann.cooks-2');
 });
 
-test('the header’s pages: parent mode opens the parent screens of the account’s KidTube; Switch account and Sign out', async () => {
+test('the header’s pages: parent mode opens the parent screens of the account’s KidTube; the header names the connected profile', async () => {
   const first = fake.store.account.key;
   await fromPage({ type: 'leaveApp' });
   await youtubeHas(first, 'AAA||');
   const h = await send({ type: 'header' });
-  assert.match(h.signOut, /^https:\/\/m\.youtube\.com\/logout$/);
-  assert.ok(new URL(new URL(h.switchAccount).searchParams.get('continue')).searchParams.get('noapp'), 'Android must not open the YouTube app');
+  assert.deepEqual(h.connected, { app: 'kidtube', label: 'KidTube', who: first, site: 'YouTube' });
+  const onPage = await fromPage({ type: 'header' });
+  assert.deepEqual([onPage.site, onPage.here], [null, null], 'an extension page has no site: no Connect there');
   assert.equal(await navigate('https://m.youtube.com/'), 'https://m.youtube.com/', 'the header, not the parent page');
   await withRepo([], async () => assert.equal((await send({ type: 'openApp', app: 'kidtube', mode: 'parent' })).url, 'ext://apps/kidtube/parent/parent.html'));
   assert.equal(fake.store.settings.mode, 'parent');
@@ -485,25 +489,44 @@ test('the tablet keeps no history: notes the AI worked on (notes-done.json) and 
   assert.ok(fake.store.outbox.some((e) => e.eventId === darker.eventId)); // not sent yet: still waits for ↻ Update
 });
 
-test('a profile in the Instagram app: created from the header, YouTube goes to its screen on instagram.com in either mode, only profile.json until it has posts', async () => {
-  const first = fake.store.account.key;
-  const folder = first.split('@')[0];
+test('an Instagram profile is its Instagram username: Connect on Instagram makes it, loads it, or says it is the same; YouTube goes to its screen; another YouTube account does not stop it', async () => {
+  const first = fake.store.account.key;   // KidTube runs, in parent mode
   fake.store.settings = { ...fake.store.settings, token: 't1' };
   await fromPage({ type: 'leaveApp' });
   await youtubeHas(first, 'AAA||');
+
+  // The header's Instagram tile: plain Instagram, no app; instagram.com is open to sign in.
+  const plain = await send({ type: 'plainSite', site: 'instagram' });
+  assert.deepEqual([plain.ok, plain.url], [true, 'https://www.instagram.com/']);
+  assert.ok(fake.rules[0].condition.excludedRequestDomains.includes('instagram.com'), 'where the header can act, Instagram is open');
+  assert.equal((await send({ type: 'igSite' }, IG_SITE)).open, true, 'Instagram’s pages show the Connect bar');
+
+  // Signed out, or Instagram did not name the account: Connect says why.
+  await instagramHas(null);
+  assert.match((await send({ type: 'connect' }, IG_SITE)).error, /Instagram has no account signed in/);
+  await instagramHas('');
+  assert.match((await send({ type: 'connect' }, IG_SITE)).error, /did not say which account/);
+  assert.equal((await send({ type: 'siteAccount', loggedIn: true, username: 'x' })).ok, false, 'only Instagram’s pages say its account');
+
+  await instagramHas('Ann');
   const puts = [];
+  let r;
   await withRepo([], async () => {
     const real = globalThis.fetch;
-    globalThis.fetch = async (url, init = {}) => { if (init.method === 'PUT') puts.push(String(url)); return real(url, init); };
-    const r = await send({ type: 'openApp', app: 'instagram', create: true });
-    assert.equal(r.url, IG_HOME);
-    await new Promise((ok) => setTimeout(ok, 50));   // the sync Create started
+    globalThis.fetch = async (url, init = {}) => {
+      if (init.method === 'PUT') puts.push([decodeURIComponent(String(url).split('/contents/')[1]), JSON.parse(Buffer.from(JSON.parse(init.body).content, 'base64').toString())]);
+      return real(url, init);
+    };
+    r = await send({ type: 'connect' }, IG_SITE);
+    await new Promise((ok) => setTimeout(ok, 50));   // the sync Connect started
     globalThis.fetch = real;
   });
-  assert.equal(fake.store.account.key, `instagram:${first}`, 'another app’s profile: "<app>:<email>"');
-  assert.equal(fake.store.account.app, 'instagram');
-  assert.equal(fake.store.account.folder, folder, 'folders are unique within an app: kidtube/x and instagram/x');
-  assert.deepEqual(puts.map((u) => decodeURIComponent(u.split('/contents/')[1])), [`instagram/${folder}/profile.json`], 'no posts yet: only profile.json, so the header finds it');
+  assert.deepEqual([r.ok, r.created, r.url, r.app], [true, true, IG_HOME, 'instagram']);
+  assert.match(r.message, /Connected: @ann\. A new Instagram profile starts now/);
+  assert.equal(fake.store.account.key, 'instagram:@ann', 'the Instagram username names the profile, not the YouTube email');
+  assert.deepEqual([fake.store.account.username, fake.store.account.email, fake.store.account.folder], ['ann', null, 'ann']);
+  assert.deepEqual(puts.map(([p]) => p), ['instagram/ann/profile.json'], 'no posts yet: only profile.json');
+  assert.deepEqual([puts[0][1].username, puts[0][1].email], ['ann', null]);
   assert.equal(fake.store.settings.mode, 'parent', 'no modes: the header stays open');
   assert.equal(await navigate('https://m.youtube.com/'), IG_HOME);
   await fromPage({ type: 'setMode', mode: 'kid' });
@@ -512,28 +535,40 @@ test('a profile in the Instagram app: created from the header, YouTube goes to i
   assert.equal(await navigate('https://accounts.youtube.com/accounts/SetSID?ssdc=1&sidt=x'), 'https://accounts.youtube.com/accounts/SetSID?ssdc=1&sidt=x');
   await fromPage({ type: 'setMode', mode: 'parent' });
   assert.equal(await navigate('https://m.youtube.com/'), IG_HOME, 'KidTube’s parent screens are not this app’s screens');
-  assert.ok(fake.rules[0].condition.excludedRequestDomains.includes('instagram.com'), 'instagram.com is open');
 
-  // The header's Switch while it runs: Google's chooser, then plain YouTube, so YouTube can say the new account
-  // (before, the guard sent YouTube straight back to the app's page and the header kept the old account).
-  fake.nav.updates.length = 0;
-  const sw = await send({ type: 'switchAccount' }, { tab: { id: 7, url: IG_HOME } });
-  assert.equal(sw.ok, true);
-  assert.match(fake.nav.updates.at(-1), /^https:\/\/accounts\.google\.com\/AccountChooser\?service=youtube/);
-  assert.deepEqual(fake.store.shell, { on: true, locked: false });
-  assert.equal(await navigate('https://m.youtube.com/'), 'https://m.youtube.com/', 'YouTube loads and reports the account');
-  await withRepo([{ app: 'instagram', folder, email: first }], () => send({ type: 'openApp', app: 'instagram' }));
-  assert.equal(await navigate('https://m.youtube.com/'), IG_HOME, 'the app again after Open');
+  // The same account again: it says so, and nothing changes.
+  const same = await send({ type: 'connect' }, IG_SITE);
+  assert.deepEqual([same.ok, same.same, same.navigated], [true, true, undefined]);
+  assert.match(same.message, /Already connected: @ann \(Instagram\)\. Nothing changed\./);
 
-  // Its account on YouTube changes: Instagram stops too.
+  // Another YouTube account does not stop it: its account is Instagram's.
   await youtubeHas('someone@example.com', 'ZZZ||');
-  assert.equal(fake.store.shell.on, true);
+  assert.equal(fake.store.shell.on, false, 'Instagram keeps running');
   await youtubeHas(first, 'AAA||');
-  await withRepo([{ app: 'instagram', folder, email: first }], async () => {
-    const h = await send({ type: 'header' });
-    assert.deepEqual(h.apps.map((a) => [a.id, a.has]), [['kidtube', true], ['instagram', true]]);
-    assert.equal((await send({ type: 'openApp', app: 'kidtube', mode: 'kid' })).ok, true);
+  await withRepo([{ app: 'instagram', folder: 'ann', username: 'ann' }], async () => {
+    const h = await send({ type: 'header' }, { tab: { id: 7, url: IG_HOME } });
+    assert.deepEqual([h.site, h.here.name, h.running], ['instagram', '@ann', 'instagram']);
+    assert.deepEqual(h.connected, { app: 'instagram', label: 'Instagram', who: '@ann', site: 'Instagram' });
+    assert.deepEqual(h.apps.map((a) => [a.id, a.has, a.who]), [['kidtube', true, first], ['instagram', true, '@ann']], 'each app with its own site’s account');
   });
+
+  // Another Instagram account signed in: Connect makes its own profile. Connect as @ann again loads hers.
+  await instagramHas('bob');
+  await withRepo([], async () => { r = await send({ type: 'connect' }, IG_SITE); });
+  assert.deepEqual([r.created, fake.store.account.key, fake.store.account.folder], [true, 'instagram:@bob', 'bob']);
+  await instagramHas('ann');
+  await withRepo([{ app: 'instagram', folder: 'ann', username: 'ann' }], async () => { r = await send({ type: 'connect' }, IG_SITE); });
+  assert.deepEqual([r.created, fake.store.account.key], [false, 'instagram:@ann']);
+  assert.match(r.message, /Connected: @ann\. Its Instagram profile is loaded\./);
+  // A profile only the repo has (another tablet made it): Connect finds its folder by the username.
+  await instagramHas('cara');
+  await withRepo([{ app: 'instagram', folder: 'cara-kitchen', username: 'cara' }, { app: 'instagram', folder: 'mail', email: 'cara@example.com' }], async () => {
+    r = await send({ type: 'connect' }, IG_SITE);
+  });
+  assert.deepEqual([r.created, fake.store.account.key, fake.store.account.folder], [false, 'instagram:@cara', 'cara-kitchen']);
+
+  // KidTube's tile: back to the YouTube account's profile.
+  await withRepo([], async () => assert.equal((await send({ type: 'openApp', app: 'kidtube', mode: 'kid' })).ok, true));
   assert.equal(fake.store.account.key, first);
   assert.equal(fake.store.account.app, 'kidtube');
   assert.equal((await send({ type: 'igState' }, { tab: { id: 7, url: IG_HOME } })).notHere, true, 'its screen does nothing for another app');
@@ -542,12 +577,13 @@ test('a profile in the Instagram app: created from the header, YouTube goes to i
 
 test('the Instagram screen: saved posts come in not handled, new ones at the top, collections and the default, notes and requests put a post in the list; posts.json and the agent’s handled.json', async () => {
   const first = fake.store.account.key;
-  const folder = first.split('@')[0];
+  const folder = 'ann';
   await fromPage({ type: 'leaveApp' });
-  await youtubeHas(first, 'AAA||');
-  await withRepo([{ app: 'instagram', folder, email: first }], () => send({ type: 'openApp', app: 'instagram' }));
+  await instagramHas('ann');
+  await withRepo([{ app: 'instagram', folder, username: 'ann' }], () => send({ type: 'openApp', app: 'instagram' }));
   assert.equal(fake.store.account.app, 'instagram');
   const ig = (msg) => send(msg, { tab: { id: 7, url: IG_HOME } });
+  assert.equal((await ig({ type: 'igState' })).who, '@ann', 'the screen knows whose posts it shows');
   const cdn = (name) => `https://scontent-ams2-1.cdninstagram.com/v/${name}`;
   const media = (pk, extra = {}) => ({ pk, id: `${pk}_42`, code: `C${pk}x`, media_type: 2, product_type: 'clips', taken_at: 1790000000,
     user: { username: 'chef' }, caption: { text: `Post ${pk}` }, image_versions2: { candidates: [{ url: cdn(`${pk}.jpg`), width: 640 }] },
@@ -585,7 +621,7 @@ test('the Instagram screen: saved posts come in not handled, new ones at the top
   // A sync: posts.json goes up (video addresses only for the posts in the list); handled.json comes down.
   const wrote = {};
   let handled = null;
-  await withRepo([{ app: 'instagram', folder, email: first }], async () => {
+  await withRepo([{ app: 'instagram', folder, username: 'ann' }], async () => {
     const real = globalThis.fetch;
     globalThis.fetch = async (url, init = {}) => {
       const path = decodeURIComponent(String(url).split('/contents/')[1] ?? '');
@@ -629,32 +665,48 @@ test('the Instagram screen: saved posts come in not handled, new ones at the top
   await fromPage({ type: 'setMode', mode: 'parent' });
 });
 
-test('profiles of the Blank test app (any key) become Instagram profiles, keyed "instagram:<email>", and write profile.json in instagram/', async () => {
+test('profiles that cannot stay go with their data: the Blank test app’s, and Instagram profiles named by an email (0.11.0); when the current one goes, only the tablet’s settings stay', async () => {
   const first = fake.store.account.key;
   fake.store.accounts = { ...fake.store.accounts,
     'old@example.com': { email: 'old@example.com', app: 'blank', folder: 'old', datasyncId: null, name: null, lastSeen: '2026-10-07T00:00:00Z' },
-    'blank:new@example.com': { email: 'new@example.com', app: 'blank', folder: 'new', datasyncId: null, name: null, lastSeen: '2026-10-08T00:00:00Z' } };
+    'blank:new@example.com': { email: 'new@example.com', app: 'blank', folder: 'new', datasyncId: null, name: null, lastSeen: '2026-10-08T00:00:00Z' },
+    'instagram:mail@example.com': { email: 'mail@example.com', app: 'instagram', folder: 'mail', datasyncId: null, name: null, lastSeen: '2026-10-12T00:00:00Z' } };
   fake.store['acct:old@example.com'] = { settings: { queueSize: 7 }, data: { profileFile: true } };
   fake.store['acct:blank:new@example.com'] = { data: { profileFile: true } };
+  fake.store['acct:instagram:mail@example.com'] = { ig: { posts: {} } };
   await fromPage({ type: 'leaveApp' });
   await youtubeHas('old@example.com', 'OLD||');
-  await withRepo([], () => send({ type: 'openApp', app: 'kidtube', create: true }));
+  await withRepo([], () => send({ type: 'connect' }));
   assert.equal(fake.store.account.key, 'old@example.com', 'a new KidTube profile, not the old Blank one');
   assert.equal(fake.store.account.app, 'kidtube');
-  assert.equal(fake.store.accounts['instagram:old@example.com']?.app, 'instagram');
-  assert.equal(fake.store.accounts['instagram:new@example.com']?.app, 'instagram');
-  assert.equal(fake.store.accounts['blank:new@example.com'], undefined);
-  assert.deepEqual(fake.store['acct:instagram:old@example.com'], { settings: { queueSize: 7 }, data: { profileFile: false } }, 'its saved data moves with it, and its profile.json is written again');
-  assert.deepEqual(fake.store['acct:instagram:new@example.com'], { data: { profileFile: false } });
-  assert.equal(fake.store['acct:blank:new@example.com'], undefined);
-  await fromPage({ type: 'leaveApp' });
+  assert.equal(fake.store.settings.queueSize, undefined, 'it starts empty');
+  for (const k of ['blank:new@example.com', 'instagram:mail@example.com']) {
+    assert.equal(fake.store.accounts[k], undefined, `${k} is gone`);
+    assert.equal(fake.store[`acct:${k}`], undefined, `and its data`);
+  }
+
+  // The current profile is an Instagram one named by an email: at the next start no profile runs (the header),
+  // and only the tablet's settings stay. A profile that waits in "acct:" comes back when it is opened.
+  fake.store.accounts['instagram:mail@example.com'] = { email: 'mail@example.com', app: 'instagram', folder: 'mail' };
+  fake.store.account = { key: 'instagram:mail@example.com', email: 'mail@example.com', app: 'instagram', folder: 'mail' };
+  fake.store.ig = { posts: { 1: {} }, order: ['1'] };
+  fake.store.settings = { ...fake.store.settings, queueSize: 4 };
+  fake.store.shell = { on: false, locked: false };
+  const { pinHash, token } = fake.store.settings;
+  for (const fn of fake.listeners.startup) await fn();
+  assert.equal(fake.store.account, undefined);
+  assert.equal(fake.store.accounts['instagram:mail@example.com'], undefined);
+  assert.deepEqual(fake.store.shell, { on: true, locked: false });
+  assert.equal(fake.store.ig?.order?.length ?? 0, 0, 'its posts are gone');
+  assert.deepEqual([fake.store.settings.queueSize, fake.store.settings.pinHash, fake.store.settings.token], [undefined, pinHash, token], 'the PIN and GitHub stay');
   await youtubeHas(first, 'AAA||');
   await withRepo([], () => send({ type: 'openApp', app: 'kidtube', mode: 'kid' }));
   assert.equal(fake.store.account.key, first);
+  assert.ok(fake.store.data.queue.videos.length > 0, 'its own data came back from "acct:"');
   await fromPage({ type: 'setMode', mode: 'parent' });
 });
 
-test('the header in parent mode: tiles open apps, Add app starts with no list; GitHub and the settings file only where the header shows', async () => {
+test('the header in parent mode: tiles open apps, Connect starts a new one with no list; GitHub and the settings file only where the header shows', async () => {
   const first = fake.store.account.key;   // KidTube runs in parent mode (the test before)
   await youtubeHas(first, 'AAA||');
   const before = { ...fake.store.settings };
@@ -709,14 +761,15 @@ test('the header in parent mode: tiles open apps, Add app starts with no list; G
   assert.equal((await send({ type: 'importSettings', file })).ok, true);
   assert.deepEqual([fake.store.settings.repo, fake.store.settings.token], ['me/new', 't2']);
 
-  // Add app for a new account: no starter list; the helper fills it.
+  // Connect for a new account: no starter list; the helper fills it.
   await youtubeHas('fresh@example.com', 'FRESH||');
   assert.deepEqual([fake.store.shell.on, fake.store.shell.locked], [true, false], 'parent mode: the header stays open');
   await withRepo([], async () => {
     const h = await send({ type: 'header' });
-    assert.deepEqual([h.running, h.apps.filter((a) => a.has).length], [null, 0]);
-    assert.equal((await send({ type: 'openApp', app: 'kidtube' })).ok, false, 'not there yet: Add app');
-    assert.equal((await send({ type: 'openApp', app: 'kidtube', create: true })).url, 'ext://apps/kidtube/parent/parent.html');
+    assert.deepEqual([h.running, h.apps.find((a) => a.id === 'kidtube').has], [null, false]);
+    assert.deepEqual(h.apps.find((a) => a.id === 'instagram').who, '@ann', 'Instagram’s tile follows the Instagram account, not this email');
+    assert.equal((await send({ type: 'openApp', app: 'kidtube' })).ok, false, 'not there yet: Connect');
+    assert.equal((await send({ type: 'connect' })).url, 'ext://apps/kidtube/parent/parent.html');
   });
   assert.equal(fake.store.account.key, 'fresh@example.com');
   assert.deepEqual(fake.store.data.queue.videos, [], 'a new app has no list, not the built-in starter list');

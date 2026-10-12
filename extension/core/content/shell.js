@@ -175,6 +175,9 @@
   });
   refresh();
 
+  // The header's Connect asks first: YouTube's account is read again now (its own account switch may have changed it).
+  globalThis.KidTubeAccount = { read: () => (lastWho ? reportAccount(...lastWho) : accountReady) };
+
   globalThis.KidTubeShell = {
     ask, Z,
     // Ask the background again now (an app's script after a page change).

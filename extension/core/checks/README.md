@@ -59,7 +59,7 @@ Name the value in `what` (`settings.mode`, `answer.error`), not a feeling. Put w
   "context": { "app": { "version", "target" }, "browser": { "userAgent", "online", "language", "timeZone" },
     "profile": { "app", "folder", "running", "mode", "shell", "youtube": { "signedIn", "sameAsProfile" }, "github": { "connected", "repo" } },
     "sync": { "at", "errors" }, "worker": { "blockingRules", "stuckStep" }, "page": { "url", "tab", "viewport" } },
-  "steps": [{ "at": "…", "kind": "message", "type": "setMode", "ok": true }, { "kind": "tap", "label": "Switch", "page": true }] }
+  "steps": [{ "at": "…", "kind": "message", "type": "setMode", "ok": true }, { "kind": "tap", "label": "Connect", "page": true }] }
 ```
 
 The same fingerprint within 6 hours counts up (`count`) instead of a new report.

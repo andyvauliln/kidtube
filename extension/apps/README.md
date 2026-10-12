@@ -12,8 +12,10 @@ The apps. A profile is one YouTube account in one app; the app decides what the 
 ## Add an app
 
 1. Make `apps/<id>/` with a `README.md`.
-2. Add an entry to `registry.js`: `id`, `label`, `color`, `glyph`, `about`, `sites`, and `page`, `parentPage` or `home`
+2. Add an entry to `registry.js`: `id`, `label`, `color`, `glyph`, `about`, `sites`, `account` (the site in `SITES` whose
+   signed-in account names its profiles: Connect on that site's page makes them), and `page`, `parentPage` or `home`
    (a web address its content script draws on, like Instagram's). `modes: false` for an app without parent and kid mode.
+   A new site in `SITES` needs a content script that sets `globalThis.KidTubeAccount.read` and sends `siteAccount`.
 3. Write its background part (`apps/<id>/background.js`, or a `background/` folder for a bigger app) and add it
    to `backgrounds.js`. The fields are listed at the top of `core/background/apps.js`.
 4. Pages of the app go in its folder. To show the apps header, load `core/ui/header.js`.

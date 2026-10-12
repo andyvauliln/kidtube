@@ -1,7 +1,7 @@
 // The messages of Instagram's screen (content/app.js on instagram.com). Each one works only while the running
 // profile is an Instagram one: the screen may still be open after a switch.
 import { appOf } from '../../registry.js';
-import { withState, dataLocation, folderShown } from '../../../core/background/store.js';
+import { withState, dataLocation, folderShown, headerOpen } from '../../../core/background/store.js';
 import { syncSoon, fetchDataFile } from '../../../core/background/sync.js';
 // The notes are written down like KidTube's parent notes: Groq's Whisper, then Gemini, then OpenRouter (keys.json or Settings).
 import { transcribeAnswer, listenKeys, NOTE_LISTEN_MODELS } from '../../kidtube/lib/voice.js';
@@ -26,8 +26,8 @@ async function view(s) {
     return { ...p, status: statusOf(p, done), error: statusOf(p, done) === 'failed' ? done.error : null, handledAt: done?.at ?? null,
       transcript: done?.transcript ?? null, notes: p.notes.map((n) => (n.text == null && texts[n.id] ? { ...n, text: texts[n.id] } : n)) };
   });
-  const { igAudio = {} } = await chrome.storage.local.get('igAudio');
-  return { ok: true, folder: await folderShown(), posts, collections: s.ig.collections, defaultCollection: s.ig.defaultCollection,
+  const { igAudio = {}, account } = await chrome.storage.local.get(['igAudio', 'account']);
+  return { ok: true, folder: await folderShown(), who: account?.username ? `@${account.username}` : null, posts, collections: s.ig.collections, defaultCollection: s.ig.defaultCollection,
     loadedAt: s.ig.loadedAt, complete: s.ig.complete, cursor: s.ig.cursor, sync: s.syncStatus ?? {},
     unsent: s.ig.rev !== s.ig.pushedRev || Object.keys(igAudio).length > 0, github: !!s.settings.token };
 }
@@ -45,12 +45,11 @@ async function writeDown(b64, lang) {
 }
 
 export const HANDLERS = {
-  // The screen (light: a native Instagram page asks only whether to show its "back to the app" button).
-  igState: async (msg) => {
-    if (!(await running())) return NOT_HERE;
-    if (msg.light) return { ok: true };
-    return withState(view);
-  },
+  // Instagram's own pages: show the Connect bar only where the header could act (not in kid mode, not locked).
+  igSite: async () => ({ ok: true, open: await headerOpen() }),
+
+  // The screen.
+  igState: async () => ((await running()) ? withState(view) : NOT_HERE),
 
   // One page of the saved list (media: Instagram's posts). at 'top': the newest; at 'end': the rest, read once
   // (cursor: where to go on). finished: this read of Instagram is over.

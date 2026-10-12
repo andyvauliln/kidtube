@@ -1,7 +1,9 @@
 // The apps header: KidTube's bar above YouTube (core/content/shell.js), above an app's own pages (parent screens) and
 // above Instagram's screen on instagram.com (apps/instagram/content/app.js).
-// One bar for every state: signed out → Sign in; signed in → the account, Switch, and either the GitHub connection
-// (first time) or this account's apps with + Add app. Hidden in kid mode (shell.js and the pages decide).
+// One bar: the connected profile (its menu: GitHub, the settings file), and Connect on a site's own page (YouTube,
+// Instagram): the account signed in there becomes the profile (core/background/profiles.js connect). Signing in and
+// switching accounts happen with the site's own buttons. Below: the GitHub connection (first time), or the apps row:
+// the plain sites and each app that has a profile for its site's account. Hidden in kid mode (shell.js and the pages decide).
 // A plain script, not a module, so the YouTube content script can use it too: it sets globalThis.KidTubeHeader.
 // No innerHTML anywhere: YouTube's Trusted Types policy refuses it.
 (() => {
@@ -37,13 +39,12 @@
     .btn:not(:disabled):hover { background: var(--hover); }
     .btn.primary { background: var(--ink); color: var(--bg); }
     .btn.primary:not(:disabled):hover { opacity: .85; background: var(--ink); }
-    .btn.signin { background: transparent; border: 1px solid var(--line); color: var(--blue); padding: 0 14px 0 10px; }
-    .btn.signin:hover { background: var(--blue-soft); border-color: transparent; }
     .round { width: 40px; height: 40px; border-radius: 50%; display: grid; place-items: center; flex: none; color: var(--muted); }
     .round:hover, .round[aria-pressed=true] { background: var(--soft); color: var(--ink); }
     .who { display: flex; align-items: center; gap: 8px; height: 40px; padding: 0 10px 0 4px; border-radius: 20px; min-width: 0; }
     .who:hover, .who[aria-expanded=true] { background: var(--soft); }
     .who .email { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--muted); }
+    .who .email b { color: var(--ink); font-weight: 500; }
     .avatar { width: 32px; height: 32px; border-radius: 50%; display: grid; place-items: center; color: #fff; font-weight: 600; font-size: 15px;
       flex: none; text-transform: uppercase; }
     .avatar.big { width: 40px; height: 40px; font-size: 18px; }
@@ -85,16 +86,8 @@
     .item > span:first-of-type { white-space: nowrap; }
     .item .sub { margin-left: auto; color: var(--muted); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sep { height: 1px; background: var(--line); margin: 8px 0; }
-    .add { top: calc(100% - 4px); padding: 16px; }
-    .add h2 { margin: 0; font-size: 16px; font-weight: 600; }
-    .add p { margin: 4px 0 8px; color: var(--muted); font-size: 13px; }
-    .choice { display: flex; gap: 12px; align-items: center; width: 100%; padding: 10px; border-radius: 10px; border: 1px solid var(--line);
-      text-align: left; margin-top: 8px; }
-    .choice.on { border-color: var(--blue); background: var(--blue-soft); }
-    .choice .icon { width: 36px; height: 36px; }
-    .choice b { display: block; font-weight: 500; }
-    .choice span { color: var(--muted); font-size: 12px; }
-    .add .row { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+    .app.plain .icon { box-shadow: 0 0 0 2px var(--bg), 0 0 0 2px transparent; opacity: .9; }
+    .here { font-size: 12px; color: var(--muted); padding: 0 16px 8px; margin-top: -4px; }
     @media (max-width: 600px) {
       .who .email { display: none; }
       .card { grid-template-columns: 1fr; }
@@ -127,13 +120,10 @@
     play: 'M9 6.8v10.4c0 .6.7 1 1.2.7l8.2-5.2c.5-.3.5-1 0-1.3L10.2 6.1C9.7 5.8 9 6.2 9 6.8z',
     square: 'M7 6h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z',
     camera: 'M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM9 2 7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3.17L15 2H9zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10z',
-    person: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-3.3 0-8 1.7-8 5v1h16v-1c0-3.3-4.7-5-8-5z',
-    swap: 'M6.99 11 3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z',
-    logout: 'M10.09 15.59 11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5a2 2 0 0 0-2 2v4h2V5h14v14H5v-4H3v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z',
+    link: 'M3.9 12a3.1 3.1 0 0 1 3.1-3.1h4V7H7a5 5 0 0 0 0 10h4v-1.9H7A3.1 3.1 0 0 1 3.9 12zM8 13h8v-2H8v2zm9-6h-4v1.9h4a3.1 3.1 0 0 1 0 6.2h-4V17h4a5 5 0 0 0 0-10z',
     cloud: 'M19.35 10.04A7.49 7.49 0 0 0 12 4C9.11 4 6.6 5.64 5.35 8.04A6 6 0 0 0 6 20h13a5 5 0 0 0 .35-9.96z',
     download: 'M5 20h14v-2H5v2zM19 9h-4V3H9v6H5l7 7 7-7z',
     upload: 'M5 20h14v-2H5v2zm4-4h6v-6h4l-7-7-7 7h4v6z',
-    plus: 'M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z',
     caret: 'M7 10l5 5 5-5z',
     grid: 'M4 4h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 10h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 16h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4z',
     youtube: 'M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4a2.5 2.5 0 0 0-1.8 1.8C2 8.8 2 12 2 12s0 3.2.4 4.8a2.5 2.5 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8c.4-1.6.4-4.8.4-4.8s0-3.2-.4-4.8zM10 15V9l5.2 3z',
@@ -187,7 +177,7 @@
   function mount(host, { dark = !!globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches } = {}) {
     const root = host.shadowRoot ?? host.attachShadow({ mode: 'closed' });
     host.classList.toggle('dark', dark);
-    // The account menu and Add app drop down over the page below, its sticky toolbar too (the parent tabs):
+    // The account menu drops down over the page below, its sticky toolbar too (the parent tabs):
     // lift the bar above the page's own layers. On YouTube shell.js already pins it on top.
     if (!host.style.position) { host.style.position = 'relative'; host.style.zIndex = '100'; }
     const style = el('style', '', CSS);
@@ -199,7 +189,7 @@
     W?.watchTaps(root, 'header');
 
     let data = null, alive = true, busy = '', loading = false, again = null;
-    const ui = { menu: false, add: false, pick: null, github: false, repo: null, token: '', note: '', noteKind: '', apps: false };
+    const ui = { menu: false, github: false, repo: null, token: '', note: '', noteKind: '', apps: false };
     // The round apps button shows or hides the apps row. It starts closed on every page and every reload.
     const say = (text, kind = '') => { ui.note = text; ui.noteKind = kind; draw(); };
 
@@ -217,7 +207,7 @@
             code: ['core/ui/header.js refresh', 'core/background/profiles.js headerView'] }, (t) => { t.ok('answer to "header"', !!h?.ok, h ?? 'no answer in 15 s', '{ ok: true, … }'); });
         }
         if (!alive || !h?.ok) return;
-        data = h;
+        data = { github: {}, sites: [], apps: [], ...h };
         // Typing in the GitHub form: don't redraw under the cursor.
         if (!root.activeElement || root.activeElement.tagName !== 'INPUT') draw();
       } finally {
@@ -236,19 +226,24 @@
       else draw();
       return r;
     }
-    const openApp = (id, create = false) => act(create ? 'Creating…' : 'Opening…', { type: 'openApp', app: id, create }).then((r) => {
-      if (r?.ok) { ui.add = false; ui.pick = null; }
+    const openApp = (id) => act('Opening…', { type: 'openApp', app: id }).then((r) => {
       if (r?.ok && r.url && !r.navigated) location.href = r.url;
     });
 
-    // Switch and Sign in: Google's account chooser, back on plain YouTube (no app runs until one is opened for the new account).
-    const switchAccount = () => act('Opening…', { type: 'switchAccount' }).then((r) => {
-      if (!r?.ok) { location.href = data.switchAccount; return; }
+    // Connect: the site's page reads its account again (shell.js on YouTube, apps/instagram/content/app.js on
+    // Instagram), then that account's profile runs: loaded, or made new. The same profile: only the message.
+    async function connectHere() {
+      busy = 'Connecting…'; ui.note = ''; ui.menu = false; draw();
+      await globalThis.KidTubeAccount?.read?.();
+      const r = await ask({ type: 'connect' });
+      busy = '';
+      if (!r?.ok) return say(r?.error ?? 'Could not connect. Try again.', 'err');
+      say(r.message, 'ok');
       if (r.url && !r.navigated) location.href = r.url;
-    });
+    }
 
-    // The YouTube tile: plain YouTube, no app running (the apps header stays above it).
-    const plainYouTube = () => act('Opening…', { type: 'plainYouTube' }).then((r) => { if (r?.ok && r.url && !r.navigated) location.href = r.url; });
+    // The site tiles: the plain site, no app running (YouTube with this header above it, Instagram with its Connect bar).
+    const plainSite = (site) => act('Opening…', { type: 'plainSite', site }).then((r) => { if (r?.ok && r.url && !r.navigated) location.href = r.url; });
 
     async function connect() {
       const repo = (ui.repo ?? data.github.repo ?? '').trim();
@@ -283,22 +278,26 @@
       m.setAttribute('role', 'menu');
       const head = el('div', 'head');
       const t = el('div');
-      // When YouTube last said who is signed in: after Switch, this shows whether the new account reached KidTube.
-      const seen = data.checkedAt ? ` · checked ${new Date(data.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : '';
-      t.append(el('b', '', data.email ?? 'Signed in'), el('span', 'muted', `YouTube account${seen}`));
-      head.append(avatar(data.email, true), t);
+      const c = data.connected;
+      t.append(el('b', '', c?.who ?? 'Not connected'), el('span', 'muted', c ? `${c.label} · ${c.site} account` : 'Press Connect on YouTube or Instagram'));
+      head.append(avatar(c?.who?.replace(/^@/, ''), true), t);
       const item = (path, label, onTap, sub) => {
         const b = button('item', label, onTap, path);
         b.setAttribute('role', 'menuitem');
         if (sub) b.append(el('span', 'sub', sub));
         return b;
       };
-      m.append(head,
+      m.append(head);
+      // What this page's site said last: after the site's own account switch, Connect takes this one.
+      const here = data.here;
+      if (here) {
+        const at = here.checkedAt ? ` · checked ${new Date(here.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : '';
+        m.append(el('p', 'here', `${here.label} here: ${here.name ?? (here.signedIn ? 'an account it did not name' : here.seen ? 'nobody signed in' : 'not read yet')}${at}`));
+      }
+      m.append(
         item(PATH.cloud, 'GitHub connection', () => { ui.menu = false; ui.github = true; draw(); }, data.github.connected ? data.github.repo : 'not connected'),
         item(PATH.download, 'Save settings to a file', exportFile),
-        item(PATH.upload, 'Load settings from a file', () => { ui.menu = false; draw(); picker.click(); }),
-        el('div', 'sep'),
-        item(PATH.logout, 'Sign out of YouTube', () => { location.href = data.signOut; }));
+        item(PATH.upload, 'Load settings from a file', () => { ui.menu = false; draw(); picker.click(); }));
       return m;
     }
 
@@ -340,26 +339,6 @@
       return card;
     }
 
-    function addPopover(missing) {
-      const p = el('div', 'pop add');
-      p.append(el('h2', '', 'Add an app'), el('p', '', `For ${data.email}. It starts empty, in parent mode; its settings go to GitHub.`));
-      for (const a of missing) {
-        const c = el('button', `choice${ui.pick === a.id ? ' on' : ''}`);
-        c.type = 'button';
-        const t = el('div');
-        t.append(el('b', '', a.label), el('span', '', a.about ?? ''));
-        c.append(appIcon(a), t);
-        c.addEventListener('click', () => { ui.pick = a.id; draw(); });
-        p.append(c);
-      }
-      const row = el('div', 'row');
-      const create = button('btn primary', busy === 'Creating…' ? busy : 'Add app', () => openApp(ui.pick, true));
-      create.disabled = !ui.pick || !!busy;
-      row.append(button('btn', 'Cancel', () => { ui.add = false; ui.pick = null; draw(); }), create);
-      p.append(row);
-      return p;
-    }
-
     function draw() {
       if (!alive) return;
       const h = data;
@@ -369,16 +348,15 @@
       kids.push(bar);
       if (!h) {
         bar.append(el('span', 'muted', 'Loading…'));
-      } else if (!h.signedIn) {
-        bar.append(h.seen
-          ? button('btn signin', 'Sign in', switchAccount, PATH.person)
-          : el('span', 'muted', 'Checking the YouTube account…'));
       } else {
-        const who = button('who', '', () => { ui.menu = !ui.menu; ui.add = false; draw(); });
+        const c = h.connected;
+        const who = button('who', '', () => { ui.menu = !ui.menu; draw(); });
         who.setAttribute('aria-haspopup', 'menu');
         who.setAttribute('aria-expanded', String(ui.menu));
-        who.title = h.email ?? '';
-        who.append(avatar(h.email), el('span', 'email', h.email ?? 'Reading the email…'), icon(PATH.caret, 20));
+        who.title = c ? `${c.label}: ${c.who}` : 'No account connected';
+        const name = el('span', 'email');
+        if (c) name.append(el('b', '', c.who)); else name.append('Not connected');
+        who.append(avatar(c?.who?.replace(/^@/, '')), name, icon(PATH.caret, 20));
         const grid = button('round', '', () => {
           ui.apps = !ui.apps;
           draw();
@@ -392,59 +370,66 @@
         grid.title = ui.apps ? 'Hide the apps' : 'Show the apps';
         grid.setAttribute('aria-label', grid.title);
         grid.setAttribute('aria-pressed', String(ui.apps));
-        if (h.github.connected && h.email) bar.append(grid);
-        bar.append(who, button('btn', 'Switch', switchAccount, PATH.swap));
+        if (h.github.connected) bar.append(grid);
+        bar.append(who);
+        // Connect only on a site's own page (an extension page has no signed-in account to take).
+        if (h.site && h.open) {
+          const go = button('btn primary', busy === 'Connecting…' ? busy : 'Connect', connectHere, PATH.link);
+          go.title = `Connect the ${h.here.label} account signed in here${h.here.name ? ` (${h.here.name})` : ''}`;
+          go.disabled = !!busy;
+          bar.append(go);
+        }
 
         if (!h.github.connected || ui.github) kids.push(githubCard(!h.github.connected));
-        else if (h.email && ui.apps) {
+        else if (ui.apps) {
           const row = el('div', 'apps');
           const tiles = el('div', 'tiles');
-          const mine = h.apps.filter((a) => a.has), missing = h.apps.filter((a) => !a.has);
-          // First: YouTube itself, with no app (ringed while no app runs).
-          const yt = el('button', `app${h.running ? '' : ' on'}`);
-          yt.type = 'button';
-          yt.title = 'YouTube without any app';
-          yt.append(appIcon({ color: '#ff0033', glyph: 'youtube' }), el('span', 'name', 'YouTube'));
-          yt.disabled = !!busy;
-          yt.addEventListener('click', plainYouTube);
-          tiles.append(yt);
-          for (const a of mine) {
+          // First the plain sites, with no app (ringed: the one this page is on, while no app runs).
+          for (const x of h.sites) {
+            const t = el('button', `app plain${!h.running && x.here ? ' on' : ''}`);
+            t.type = 'button';
+            t.title = `${x.label} without any app`;
+            t.append(appIcon(x), el('span', 'name', x.label));
+            t.disabled = !!busy;
+            t.addEventListener('click', () => plainSite(x.id));
+            tiles.append(t);
+          }
+          // Then each app with a profile for the account its site has signed in.
+          for (const a of h.apps.filter((x) => x.has)) {
             const t = el('button', `app${a.active ? ' on' : ''}`);
             t.type = 'button';
-            t.title = a.active ? `${a.label}: its home` : `Open ${a.label}`;
+            t.title = a.active ? `${a.label}: its home` : `Open ${a.label} for ${a.who}`;
             t.append(appIcon(a), el('span', 'name', a.label));
             t.disabled = !!busy;
             t.addEventListener('click', () => openApp(a.id));
             tiles.append(t);
           }
-          if (!mine.length) tiles.append(el('span', 'empty', 'No apps for this account yet.'));
           row.append(tiles, el('div', 'grow'));
           if (busy) row.append(el('span', 'muted', busy));
-          if (missing.length) {
-            const add = button('btn', 'Add app', () => { ui.add = !ui.add; ui.menu = false; ui.pick ??= missing[0].id; draw(); }, PATH.plus);
-            add.disabled = !!busy && busy !== 'Creating…';
-            row.append(add);
-          }
           kids.push(row);
-          if (ui.add && missing.length) kids.push(addPopover(missing));
+          const missing = h.apps.filter((a) => !a.has);
+          if (missing.length) {
+            kids.push(el('p', 'note muted', missing.map((a) => (a.who ? `${a.label}: no profile for ${a.who} yet. Press Connect on ${a.site}.`
+              : `${a.label}: sign in on ${a.site}, then press Connect there.`)).join(' ')));
+          }
         }
         const note = ui.note || h.error;
         if (note && h.github.connected && !ui.github) kids.push(el('p', `note ${ui.note ? ui.noteKind : 'err'}`, note));
         if (ui.menu) kids.push(accountMenu());
       }
-      if (ui.menu || ui.add) {
+      if (ui.menu) {
         const scrim = el('div', 'scrim');
-        scrim.addEventListener('click', () => { ui.menu = false; ui.add = false; draw(); });
+        scrim.addEventListener('click', () => { ui.menu = false; draw(); });
         kids.unshift(scrim);
       }
       box.replaceChildren(...kids);
     }
 
     const onStorage = (ch) => {
-      if (ch.ytAccount || ch.settings || ch.accounts || ch.repoProfiles || ch.account || ch.shell) refresh();
+      if (ch.ytAccount || ch.igAccount || ch.settings || ch.accounts || ch.repoProfiles || ch.account || ch.shell) refresh();
     };
     chrome.storage.onChanged.addListener(onStorage);
-    const onKey = (e) => { if (e.key === 'Escape' && (ui.menu || ui.add)) { ui.menu = ui.add = false; draw(); } };
+    const onKey = (e) => { if (e.key === 'Escape' && ui.menu) { ui.menu = false; draw(); } };
     root.addEventListener('keydown', onKey);
     draw();
     refresh();

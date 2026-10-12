@@ -12,8 +12,9 @@ What every app uses. Nothing here knows about videos, quizzes or time limits: th
 
 ## The core's jobs
 
-- **Profiles.** One YouTube account in one app. The YouTube account is the identity: the apps header lists that
-  email's apps, and an account change stops the running app (`background/profiles.js`).
+- **Profiles.** One account in one app, the account of the app's own site (`account` in `apps/registry.js`): a YouTube
+  email for KidTube, an Instagram username for Instagram. The header's Connect, on that site's page, takes the account
+  signed in there. Another YouTube account stops a running YouTube app (`background/profiles.js`).
 - **Modes.** Kid mode runs the app's rules. Parent mode (after the PIN) opens the app's parent screens and lifts
   the rules (`background/store.js` `parentMode`).
 - **The apps header** above YouTube and above the apps' own pages (`ui/header.js`): sign in, switch the account,

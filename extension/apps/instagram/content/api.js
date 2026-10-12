@@ -58,6 +58,16 @@
       }
       return out;
     },
+    // The signed-in account: { username, id }; LoginNeeded when nobody is. Instagram's own Edit profile form names it;
+    // without that, the account's info by the id in the ds_user_id cookie.
+    async me() {
+      const id = document.cookie.match(/(?:^|;\s*)ds_user_id=(\d+)/)?.[1] ?? null;
+      let username = null;
+      try { username = (await get('/api/v1/accounts/edit/web_form_data/')).form_data?.username ?? null; }
+      catch (e) { if (e instanceof LoginNeeded || !id) throw e; }
+      if (!username && id) username = (await get(`/api/v1/users/${encodeURIComponent(id)}/info/`)).user?.username ?? null;
+      return { username: username ? String(username).toLowerCase() : null, id };
+    },
     // One post again, with fresh picture and video addresses (they expire after some days).
     async media(id) {
       const j = await get(`/api/v1/media/${encodeURIComponent(id)}/info/`);

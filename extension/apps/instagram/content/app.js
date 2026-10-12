@@ -1,7 +1,8 @@
 // The Instagram app's screen. YouTube sends the tab to www.instagram.com/robots.txt?kidtube=app (registry.js home):
 // a plain text page of Instagram's, so none of Instagram's own scripts run, but the page reads Instagram's API with
 // the signed-in account (content/api.js). This script draws the app there: the apps header, the tabs, and the
-// post sheet with the voice notes. On Instagram's own pages it only adds the App | Instagram switch.
+// post sheet with the voice notes. On Instagram's own pages it only adds the Connect bar: App | Instagram and Connect.
+// On every page it tells the background which Instagram account is signed in (the profile is that account's).
 // The background keeps everything (apps/instagram/background/); this page only reads Instagram and shows.
 // No innerHTML anywhere (the header's rule too).
 (() => {
@@ -69,34 +70,90 @@
   };
   const STATUS = { new: 'Not handled', queued: 'In the list', handled: 'Handled', failed: 'Failed' };
 
+  // --- who is signed in to Instagram, and Connect --------------------------------------------------------------------
+  // Told to the background on every page: the header's Instagram tile opens that account's profile.
+  async function reportMe() {
+    const api = globalThis.KidTubeIgApi;
+    let me = null, loggedIn = true;
+    try { me = await api.me(); } catch (e) { loggedIn = !(e instanceof api.LoginNeeded); }
+    await ask({ type: 'siteAccount', loggedIn, username: me?.username ?? null, id: me?.id ?? null });
+    return { loggedIn, username: me?.username ?? null };
+  }
+  // Connect: Instagram's account is read again now, then that account's Instagram profile runs: loaded, or made new
+  // (core/background/profiles.js connect). say(text, err): where the page shows what happened.
+  async function connectHere(say) {
+    say('Connecting…');
+    await reportMe();
+    const r = await ask({ type: 'connect' });
+    if (!r?.ok) return say(r?.error ?? 'Could not connect. Try again.', true);
+    say(r.message);
+    if (r.url && !r.navigated) location.href = r.url;
+  }
+  if (window.top === window) globalThis.KidTubeAccount = { read: reportMe };   // the header's Connect asks it first
+
   // --- the switch: the app, or Instagram's own site (no app on it; the app stays one tap away) ----------------------
   const SITE = 'https://www.instagram.com/';
   const SWITCH_CSS = `:host { all: initial; display: inline-block; }
     .seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 18px; background: #efefef; font: 600 13px system-ui, -apple-system, sans-serif; }
-    a { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 15px; color: #737373; text-decoration: none; }
-    a.on { background: #fff; color: #262626; box-shadow: 0 1px 3px rgba(0,0,0,.15); pointer-events: none; }
-    .float .seg { background: #262626; box-shadow: 0 4px 16px rgba(0,0,0,.3); } .float a { color: #bbb; } .float a.on { background: #fff; color: #262626; }
-    @media (prefers-color-scheme: dark) { .seg { background: #262626; } a { color: #a8a8a8; } a.on { background: #000; color: #f5f5f5; } }`;
-  function siteSwitch(active, float = false) {
+    a, button { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 15px; color: #737373; text-decoration: none;
+      font: inherit; border: 0; background: none; cursor: pointer; }
+    .on { background: #fff; color: #262626; box-shadow: 0 1px 3px rgba(0,0,0,.15); pointer-events: none; }
+    @media (prefers-color-scheme: dark) { .seg { background: #262626; } a, button { color: #a8a8a8; } .on { background: #000; color: #f5f5f5; } }`;
+  // The app's screen: App (here) | Instagram (its own site).
+  function siteSwitch() {
     const host = h('span');
     const root = host.attachShadow({ mode: 'closed' });
-    const link = (id, label, href, title) => h('a', { class: id === active ? 'on' : '', href, title, 'aria-current': id === active ? 'page' : null }, label);
-    root.append(h('style', { text: SWITCH_CSS }), h('span', { class: float ? 'float' : '' }, h('span', { class: 'seg', role: 'group', 'aria-label': 'App or Instagram' },
-      link('app', 'App', HOME, 'Your saved posts, notes and the list'),
-      link('site', 'Instagram', SITE, 'Instagram’s own site, without the app'))));
+    root.append(h('style', { text: SWITCH_CSS }), h('span', { class: 'seg', role: 'group', 'aria-label': 'App or Instagram' },
+      h('a', { class: 'on', href: HOME, 'aria-current': 'page', title: 'Your saved posts, notes and the list' }, 'App'),
+      h('a', { href: SITE, title: 'Instagram’s own site, without the app' }, 'Instagram')));
     return host;
   }
 
-  // --- Instagram's own pages: the switch, bottom left, to go back to the app ----------------------------------------
+  // --- Instagram's own pages: the Connect bar, bottom left -----------------------------------------------------------
+  // App: the app for the account signed in here (its profile must exist: Connect makes it). Connect: as the header's.
+  const BAR_CSS = `
+    .bar { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; font: 600 13px system-ui, -apple-system, sans-serif; }
+    .row { display: flex; gap: 8px; align-items: center; }
+    .seg { background: #262626; box-shadow: 0 4px 16px rgba(0,0,0,.3); } .seg button, .seg a { color: #bbb; } .seg .on { background: #fff; color: #262626; }
+    .connect { height: 36px; padding: 0 16px; border-radius: 18px; background: #0095f6; color: #fff; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+    .connect:disabled { opacity: .6; cursor: default; }
+    .msg { max-width: min(320px, calc(100vw - 24px)); background: #262626; color: #fff; padding: 10px 12px; border-radius: 10px; font-weight: 400;
+      line-height: 1.35; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
+    .msg.err { background: #b3261e; }
+    .msg[hidden] { display: none; }`;
+  function connectBar() {
+    const host = h('span');
+    host.style.cssText = 'position:fixed;left:12px;bottom:72px;z-index:2147483647';
+    const root = host.attachShadow({ mode: 'closed' });
+    const msg = h('div', { class: 'msg', role: 'status', hidden: true });
+    let timer;
+    const say = (text, err = false) => {
+      msg.textContent = text; msg.className = `msg${err ? ' err' : ''}`; msg.hidden = false;
+      clearTimeout(timer);
+      timer = setTimeout(() => { msg.hidden = true; }, 10000);
+    };
+    const openIt = async () => {
+      say('Opening…');
+      const r = await ask({ type: 'openApp', app: 'instagram' });
+      if (!r?.ok) return say(r?.error ?? 'Could not open the app.', true);
+      if (r.url && !r.navigated) location.href = r.url;
+    };
+    const go = h('button', { class: 'connect', type: 'button', title: 'Connect the Instagram account signed in here',
+      onclick: async () => { go.disabled = true; await connectHere(say); go.disabled = false; } }, 'Connect');
+    root.append(h('style', { text: SWITCH_CSS + BAR_CSS }), h('div', { class: 'bar' }, msg, h('div', { class: 'row' },
+      h('span', { class: 'seg', role: 'group', 'aria-label': 'App or Instagram' },
+        h('button', { type: 'button', title: 'Your saved posts, notes and the list', onclick: openIt }, 'App'),
+        h('a', { class: 'on', 'aria-current': 'page' }, 'Instagram')),
+      go)));
+    return host;
+  }
   if (!isApp) {
     if (window.top !== window) return;
-    ask({ type: 'igState', light: true }).then((r) => {
-      if (!r?.ok) return;
-      const add = () => {
-        const host = siteSwitch('site', true);
-        host.style.cssText = 'position:fixed;left:12px;bottom:72px;z-index:2147483647';
-        document.documentElement.append(host);
-      };
+    reportMe();
+    // Only where the header could act (not in kid mode, not at a locked header).
+    ask({ type: 'igSite' }).then((r) => {
+      if (!r?.open) return;
+      const add = () => document.documentElement.append(connectBar());
       if (document.documentElement) add(); else addEventListener('DOMContentLoaded', add, { once: true });
     });
     return;
@@ -154,6 +211,7 @@
     .btn.small { height: 30px; padding: 0 12px; font-size: 13px; }
     .tabs { position: fixed; left: 0; right: 0; bottom: 0; z-index: 4; display: flex; background: var(--bg); border-top: 1px solid var(--line);
       padding-bottom: env(safe-area-inset-bottom); }
+    .tabs[hidden] { display: none; }
     .tabs button { flex: 1; height: 52px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
       font-size: 11px; color: var(--muted); }
     .tabs button.on { color: var(--ink); font-weight: 600; }
@@ -199,7 +257,7 @@
   // What the page knows: the background's view (igState) and what is shown.
   const ui = {
     tab: 'saved', collection: null, filter: 'all', open: null,
-    data: null, reading: '', readError: '', login: false, notHere: false,
+    data: null, reading: '', readError: '', login: false, notHere: false, other: null, connectNote: '', connectErr: false,
     loadedCollections: new Set(), results: {}, rec: null, writing: false, notice: '', noticeErr: false, expanded: false,
   };
   let root, main, tabsBar, sheet, headerBox;
@@ -355,7 +413,7 @@
         .map(([k, label]) => h('button', { class: `chip${ui.filter === k ? ' on' : ''}`, type: 'button', 'aria-pressed': String(ui.filter === k),
           text: `${label} ${counts[k]}`, onclick: () => { ui.filter = k; draw(); } })));
     const shown = ui.filter === 'all' ? list : list.filter((p) => p.status === ui.filter);
-    const top = h('div', { class: 'top' }, h('div', { class: 'bar' }, h('h1', { text: 'Saved' }), h('div', { class: 'grow' }), syncBtn, siteSwitch('app')),
+    const top = h('div', { class: 'top' }, h('div', { class: 'bar' }, h('h1', { text: 'Saved' }), h('div', { class: 'grow' }), syncBtn, siteSwitch()),
       h('div', { class: 'bar pick' }, sel, star), chips, statusLine());
     let body;
     if (ui.login) body = loginCard();
@@ -390,9 +448,16 @@
   }
 
   function loginCard() {
-    return h('div', { class: 'card' }, h('h2', { text: 'Sign in to Instagram' }),
-      h('p', { text: 'The app reads your saved posts with your Instagram account. Sign in, then come back with the App switch (bottom left).' }),
-      h('a', { class: 'btn primary', href: `/accounts/login/?next=${encodeURIComponent(HOME)}` }, 'Sign in'));
+    return h('div', { class: 'card' }, h('h2', { text: 'Instagram is signed out' }),
+      h('p', { text: 'The app reads the saved posts of the connected account. Sign in on Instagram itself (the Instagram side of the switch), then come back with App.' }));
+  }
+
+  // Connect from the screen's own cards (the header above has it too).
+  function connectCard(title, text) {
+    const say = (t, err) => { ui.connectNote = t; ui.connectErr = !!err; draw(); };
+    return h('div', { class: 'card' }, h('h2', { text: title }), h('p', { text }),
+      h('button', { class: 'btn primary', type: 'button', onclick: () => connectHere(say) }, 'Connect'),
+      ui.connectNote ? h('p', { class: `notice${ui.connectErr ? ' err' : ''}`, text: ui.connectNote }) : null);
   }
 
   // The list the agent handles: waiting first (oldest request first), then the failed, then the latest handled.
@@ -406,7 +471,7 @@
       h('span', { class: 'txt' }, h('b', { text: `@${p.author}` }), h('span', { text: p.error ?? (p.caption.split('\n')[0] || ' ') }),
         h('span', { text: `${p.notes.length ? `${p.notes.length} note${p.notes.length === 1 ? '' : 's'} · ` : ''}${p.status === 'handled' ? `handled ${ago(p.handledAt)}` : p.handle ? `asked ${ago(p.handle.at)}` : ''}` })),
       h('span', { class: `pill ${p.status}`, text: STATUS[p.status] })));
-    const top = h('div', { class: 'top' }, h('div', { class: 'bar' }, h('h1', { text: 'To handle' }), h('div', { class: 'grow' }), siteSwitch('app')),
+    const top = h('div', { class: 'top' }, h('div', { class: 'bar' }, h('h1', { text: 'To handle' }), h('div', { class: 'grow' }), siteSwitch()),
       h('div', { class: 'line' }, h('span', { text: 'The agent writes down what each video says. A note puts the post here by itself.' })), statusLine());
     if (!waiting.length && !failed.length && !done.length) return [top, h('div', { class: 'empty', text: 'The list is empty. Open a saved post and tap “Add to the list”, or record a note about it.' })];
     return [top,
@@ -576,9 +641,11 @@
   // --- drawing ----------------------------------------------------------------------------------------------------------
   function draw() {
     if (!main) return;
-    if (ui.notHere) {
-      main.replaceChildren(h('div', { class: 'card' }, h('h2', { text: 'Instagram is not the app that runs now' }),
-        h('p', { text: 'Open it from the apps header on YouTube.' }), h('a', { class: 'btn primary', href: 'https://m.youtube.com/' }, 'Go to YouTube')));
+    // No Instagram profile runs, or Instagram has another account signed in than the profile's: nothing is read.
+    if (ui.notHere || ui.other) {
+      main.replaceChildren(ui.notHere
+        ? connectCard('No Instagram account is connected', 'Press Connect: the Instagram account signed in here becomes the app’s profile (a new one starts empty).')
+        : connectCard(`Instagram is signed in to @${ui.other}`, `This app shows ${ui.data?.who ?? 'another account'}. Press Connect to use @${ui.other}, or sign in to ${ui.data?.who ?? 'that account'} again on Instagram.`));
       tabsBar.hidden = true;
       return;
     }
@@ -620,7 +687,11 @@
     globalThis.KidTubeHeader?.mount(headerBox);
     draw();
     await refresh();
+    const me = await reportMe();
     if (ui.notHere) return;
+    // Only the profile's own account is read: another one's saved posts must not join its list.
+    if (!me.loggedIn) { ui.login = true; draw(); return; }
+    if (me.username && ui.data?.who && `@${me.username}` !== ui.data.who) { ui.other = me.username; draw(); return; }
     const id = location.hash.slice(1);
     if (/^\d+$/.test(id) && posts().some((p) => p.id === id)) { history.replaceState(null, '', HOME); openPost(id); }
     ask({ type: 'sync' });   // the agent's latest results

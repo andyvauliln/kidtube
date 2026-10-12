@@ -9,12 +9,14 @@ import { partOf } from './apps.js';
 import { Expect } from '../checks/kit.js';
 import { probe, sendReports } from '../checks/runner.js';
 
-// profile.json: who this folder belongs to. The helper on the server finds new profiles by it.
+// profile.json: who this folder belongs to (the YouTube email, or the Instagram username). The helper on the server
+// finds new profiles by it, and the header finds a profile's folder by it.
 async function writeProfileFile(loc, token) {
   const { account } = await chrome.storage.local.get('account');
   if (await getRepoFile(loc, token, 'profile.json')) return;
   await putRepoFile(loc, token, 'profile.json', {
-    schemaVersion: 1, app: account.app, folder: account.folder, email: account.email ?? null, name: account.name ?? null, createdAt: nowIso(),
+    schemaVersion: 1, app: account.app, folder: account.folder, email: account.email ?? null, ...(account.username ? { username: account.username } : {}),
+    name: account.name ?? null, createdAt: nowIso(),
   }, null, `new profile ${account.app}/${account.folder}`);
 }
 

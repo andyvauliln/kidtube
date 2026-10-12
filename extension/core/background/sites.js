@@ -2,6 +2,7 @@
 // browser has no blocking rules (Orion). The current app says whether they are closed and which stay open.
 import { TARGET } from '../lib/target.js';
 import { homeUrl } from '../lib/youtube.js';
+import { APPS } from '../../apps/registry.js';
 import { SITE_RULE_ID, AD_RULE_ID } from './constants.js';
 import { parentMode } from './store.js';
 import { partOf } from './apps.js';
@@ -9,11 +10,13 @@ import { partOf } from './apps.js';
 let dnrWorks;
 
 // Every top-level page outside the app's allowed domains is blocked (PLAN.md C16).
-// Where the header shows (the unlocked apps header, parent mode), all of google.com stays open: its Switch and Sign in
-// can pass through www.google.com or gds.google.com ("make sure you can sign in"), and a blocked step is a dead page.
+// Where the header shows (the unlocked apps header, parent mode), all of google.com stays open: YouTube's own sign-in
+// and account switch can pass through www.google.com or gds.google.com ("make sure you can sign in"), and a blocked
+// step is a dead page. Every app's sites stay open there too: the parent signs in on Instagram and presses Connect.
 // accounts.google.com always: YouTube's own sign-in passes through it, whatever the app.
+const APP_SITES = Object.values(APPS).flatMap((a) => a.sites ?? []);
 export const allowedDomains = (allowed, signingIn = false) =>
-  [...new Set([...allowed, 'youtube.com', 'accounts.google.com', 'andyvauliln.github.io', ...(signingIn ? ['google.com'] : [])])];
+  [...new Set([...allowed, 'youtube.com', 'accounts.google.com', 'andyvauliln.github.io', ...(signingIn ? ['google.com', ...APP_SITES] : [])])];
 const signingIn = (s) => (s.shell?.on ? !s.shell.locked : parentMode(s));
 
 // Ad servers, blocked inside every page when the app asks (KidTube's blockAds). Only other companies' servers:

@@ -236,10 +236,10 @@ export function runStartChecks(reason) {
 const QUIET = new Set(['state', 'tick', 'header', 'ping', 'frameReady', 'runStatus', 'version', 'heldNotes', 'getRules', 'status',
   'parentData', 'videoDetail', 'helperData', 'contextData', 'talk', 'apps', 'checks', 'checkResult', 'details']);
 // How long the asking page waits (core/lib/ask.js 8 s; the apps header 15 s). An answer later than that never arrives.
-const HEADER_TYPES = new Set(['header', 'openApp', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings']);
+const HEADER_TYPES = new Set(['header', 'openApp', 'connect', 'plainSite', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings']);
 const waitOf = (type) => (HEADER_TYPES.has(type) ? 15000 : 8000);
 // Answers the page shows as they are: { ok: false } must say why, or the parent sees "That didn't work".
-const SAYS_WHY = new Set(['openApp', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings', 'runHelper', 'updateApp', 'setMode']);
+const SAYS_WHY = new Set(['openApp', 'connect', 'plainSite', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings', 'runHelper', 'updateApp', 'setMode']);
 // When a content script last spoke, per tab (the start check "the YouTube tab answers").
 export const heardFrom = new Map();
 

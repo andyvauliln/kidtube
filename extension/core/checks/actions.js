@@ -2,6 +2,7 @@
 // A check: { area, expect, code, snap (storage keys read before and after), skip(c), check(t, c), later: { ms, check } }.
 // c: { msg, answer, before, after, tabId, host, sender, ms, tabUrl(tabId) }. later runs once the tab had time to move.
 import { accountFromSwitcher } from '../lib/account.js';
+import { APPS, siteOfApp } from '../../apps/registry.js';
 import { Expect, shapeOf } from './kit.js';
 import { probe } from './runner.js';
 
@@ -9,6 +10,15 @@ const ext = (p) => chrome.runtime.getURL(p);
 const fresh = (iso, since) => !!iso && Date.parse(iso) >= since - 1000;
 const youtube = (u) => { try { return /(^|\.)youtube\.com$/.test(new URL(u).hostname); } catch { return false; } };
 const refused = (t, answer) => { t.has('answer.error (why it was refused)', answer?.error); };
+// The profile now running belongs to the account its app's site has signed in (YouTube's email, Instagram's username).
+function sameAccount(t, after) {
+  const site = siteOfApp(APPS[after.account?.app]);
+  const seen = after[site.stored];
+  const mine = site.by === 'username' ? after.account?.username : after.account?.email;
+  const there = site.by === 'username' ? seen?.username : seen?.email;
+  t.ok(`the profile is the ${site.label} account signed in`, !!mine && mine === there,
+    { profile: !!mine, [site.id]: !!there, same: mine === there }, `the same ${site.by}`);
+}
 
 // The tab went where the answer said (the background moves it; Orion sometimes doesn't, then the page does).
 async function tabWent(t, c, want, what = 'the tab’s address') {
@@ -43,16 +53,41 @@ export const CORE_ACTIONS = {
   },
 
   openApp: {
-    area: 'header', expect: 'An app tile: that app runs for the signed-in account, in the mode asked for, and its page opens',
+    area: 'header', expect: 'An app tile: that app runs for the account its site has signed in, in the mode asked for, and its page opens',
     code: ['core/background/profiles.js openApp', 'core/background/profiles.js useProfile', 'core/ui/header.js openApp'],
-    snap: ['shell', 'account', 'ytAccount', 'settings'],
+    snap: ['shell', 'account', 'ytAccount', 'igAccount', 'settings'],
     check(t, { msg, answer, after }) {
       if (!answer?.ok) return refused(t, answer);
       t.eq('shell.on (the apps header)', false, after.shell?.on);
       t.eq('account.app', msg.app, after.account?.app);
-      t.ok('the profile is the signed-in account', !!after.account?.email && after.account.email === after.ytAccount?.email,
-        { profile: !!after.account?.email, youtube: !!after.ytAccount?.email, same: after.account?.email === after.ytAccount?.email }, 'the same email');
+      sameAccount(t, after);
       t.eq('settings.mode', msg.create || msg.mode !== 'kid' ? 'parent' : 'kid', after.settings?.mode);
+    },
+    later: { ms: 4000, check: (t, c) => tabWent(t, c, c.answer?.navigated ? c.answer.url : null) },
+  },
+
+  connect: {
+    area: 'header', expect: 'Connect: the account signed in on this site runs in its app (loaded, or new and empty); the same one again changes nothing',
+    code: ['core/background/profiles.js connect', 'core/ui/header.js connectHere', 'apps/instagram/content/app.js connectHere'],
+    snap: ['shell', 'account', 'ytAccount', 'igAccount', 'settings'],
+    check(t, { answer, before, after }) {
+      if (!answer?.ok) return refused(t, answer);
+      t.has('answer.message (what happened)', answer.message);
+      if (answer.same) return t.eq('account.key (unchanged)', before.account?.key, after.account?.key);
+      t.eq('shell.on (the apps header)', false, after.shell?.on);
+      t.eq('account.app', answer.app, after.account?.app);
+      sameAccount(t, after);
+    },
+    later: { ms: 4000, check: (t, c) => tabWent(t, c, c.answer?.navigated ? c.answer.url : null) },
+  },
+
+  plainSite: {
+    area: 'header', expect: 'A site tile: no app runs and the tab shows the plain site (YouTube, Instagram)',
+    code: ['core/background/profiles.js plainSite'],
+    snap: ['shell'],
+    check(t, { answer, after }) {
+      if (!answer?.ok) return refused(t, answer);
+      t.eq('shell', { on: true, locked: false }, { on: after.shell?.on, locked: !!after.shell?.locked });
     },
     later: { ms: 4000, check: (t, c) => tabWent(t, c, c.answer?.navigated ? c.answer.url : null) },
   },

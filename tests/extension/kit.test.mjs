@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 
 class FakeEl {
   constructor(tag) {
-    this.tagName = String(tag).toUpperCase(); this.children = []; this.listeners = {}; this.style = {};
+    this.tagName = String(tag).toUpperCase(); this.children = []; this.listeners = {}; this.style = {}; this.dataset = {};
     this.className = ''; this.textContent = ''; this.hidden = false; this.disabled = false; this.value = ''; this.attrs = {};
     const cls = new Set();
     this.classList = { add: (c) => cls.add(c), remove: (c) => cls.delete(c), contains: (c) => cls.has(c), toggle: (c, on) => (on ?? !cls.has(c)) ? cls.add(c) : cls.delete(c) };
@@ -149,23 +149,54 @@ test('a key, but the browser won’t let KidTube record: its own recognition wri
   delete local.repoKeys;
 });
 
-test('the apps row starts closed on every page and reload; the round apps button opens it', async () => {
+test('the apps header: Connect on a site’s page, no Switch, Sign in or Add app; the apps row starts closed on every page and reload', async () => {
+  let reads = 0;
+  globalThis.KidTubeAccount = { read: async () => { reads++; } };   // the site's page reads its account again first
   answers.header = () => ({
-    ok: true, signedIn: true, seen: true, email: 'parent@example.com', running: 'kidtube',
-    github: { connected: true }, apps: [{ id: 'kidtube', label: 'KidTube', has: true, active: true, color: '#c00', glyph: 'k' }],
+    ok: true, open: true, mode: 'parent', running: 'kidtube', site: 'youtube',
+    here: { site: 'youtube', label: 'YouTube', seen: true, signedIn: true, name: 'parent@example.com', checkedAt: Date.now() },
+    connected: { app: 'kidtube', label: 'KidTube', who: 'parent@example.com', site: 'YouTube' },
+    github: { connected: true, repo: 'me/data' },
+    sites: [{ id: 'youtube', label: 'YouTube', color: '#f03', glyph: 'youtube', here: true }, { id: 'instagram', label: 'Instagram', color: '#c13584', glyph: 'camera', here: false }],
+    apps: [{ id: 'kidtube', label: 'KidTube', has: true, active: true, color: '#c00', glyph: 'play', who: 'parent@example.com', site: 'YouTube' },
+      { id: 'instagram', label: 'Instagram', has: false, active: false, color: '#d62976', glyph: 'camera', who: null, site: 'Instagram' }],
   });
+  answers.connect = () => ({ ok: true, same: true, app: 'kidtube', who: 'parent@example.com', message: 'Already connected: parent@example.com (KidTube). Nothing changed.' });
   const appsRow = (host) => find(host.shadowRoot, (n) => n.className === 'apps');
+  const all = (n, pred, out = []) => { if (typeof n !== 'object') return out; if (pred(n)) out.push(n); for (const c of n.children ?? []) all(c, pred, out); return out; };
+  const labels = (host) => all(host.shadowRoot, (n) => n.tagName === 'BUTTON').map((b) => text(b).trim());
   const host = new FakeEl('div');
   globalThis.KidTubeHeader.mount(host, { dark: false });
   await tick();
   assert.equal(appsRow(host), undefined, 'closed when the page opens');
+  const shown = labels(host);
+  assert.ok(shown.some((l) => l.includes('Connect')), 'Connect on YouTube’s page');
+  for (const gone of ['Switch', 'Sign in', 'Add app']) assert.ok(!shown.some((l) => l.includes(gone)), `no ${gone}`);
+  assert.ok(text(host.shadowRoot).includes('parent@example.com'), 'the connected profile');
+
+  sent.length = 0;
+  all(host.shadowRoot, (n) => n.tagName === 'BUTTON' && text(n).includes('Connect'))[0].click();
+  await tick(); await tick();
+  assert.equal(reads, 1, 'YouTube’s account is read again before Connect');
+  assert.ok(sent.some((m) => m.type === 'connect'));
+  assert.ok(text(host.shadowRoot).includes('Already connected: parent@example.com'), 'the same account: it says so');
+
   const grid = find(host.shadowRoot, (n) => n.tagName === 'BUTTON' && n.className === 'round');
   assert.equal(grid.title, 'Show the apps');
   grid.click();
   assert.ok(appsRow(host), 'the apps button opens it');
+  assert.deepEqual(all(appsRow(host), (n) => n.className === 'name').map((n) => n.textContent), ['YouTube', 'Instagram', 'KidTube'], 'the plain sites, then the apps with a profile');
+  assert.ok(text(host.shadowRoot).includes('Instagram: sign in on Instagram, then press Connect there.'));
   const again = new FakeEl('div');   // a reload: a new header
   globalThis.KidTubeHeader.mount(again, { dark: false });
   await tick();
   assert.equal(appsRow(again), undefined, 'closed again after a reload');
-  delete answers.header;
+
+  answers.header = () => ({ ok: true, open: true, mode: 'parent', running: 'kidtube', site: null, here: null,
+    connected: { app: 'kidtube', label: 'KidTube', who: 'parent@example.com', site: 'YouTube' }, github: { connected: true }, sites: [], apps: [] });
+  const page = new FakeEl('div');   // an extension page (the parent screens): no site, so no Connect
+  globalThis.KidTubeHeader.mount(page, { dark: false });
+  await tick();
+  assert.ok(!labels(page).some((l) => l.includes('Connect')));
+  delete answers.header; delete answers.connect; delete globalThis.KidTubeAccount;
 });

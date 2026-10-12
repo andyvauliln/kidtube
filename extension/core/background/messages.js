@@ -8,7 +8,7 @@ import { PIN_PAGE } from './constants.js';
 import { withState, parentMode, shellOf, headerOpen, fromExtensionPage, live } from './store.js';
 import { applySiteRules } from './sites.js';
 import { guard } from './guard.js';
-import { youtubeAccount, headerView, openApp, plainYouTube, switchAccount, connectGitHub, exportSettings, importSettings, leaveApp, pinPageView } from './profiles.js';
+import { youtubeAccount, siteAccount, headerView, openApp, connect, plainSite, connectGitHub, exportSettings, importSettings, leaveApp, pinPageView } from './profiles.js';
 import { sync, syncIfStale, settingsBackup } from './sync.js';
 import { checkUpdate, appVersion, updateApp } from './updates.js';
 import { partOf, allParts } from './apps.js';
@@ -34,14 +34,16 @@ const HANDLERS = {
   },
 
 
-  // From the YouTube page: who is signed in.
+  // From the YouTube page: who is signed in. siteAccount: the same from another site's page (Instagram's).
   account: (msg) => youtubeAccount(msg),
+  siteAccount: (msg, { host }) => siteAccount(msg, host),
 
-  // The apps header (core/ui/header.js) on YouTube and on an app's pages.
-  header: (msg) => headerView(!!msg.refresh),
+  // The apps header (core/ui/header.js) on YouTube, on an app's pages, and Instagram's Connect bar.
+  header: (msg, { host }) => headerView(!!msg.refresh, host),
   openApp: (msg, { tabId, host }) => openApp(msg, tabId, host),
-  plainYouTube: (msg, { tabId, host }) => plainYouTube(tabId, host),
-  switchAccount: (msg, { tabId }) => switchAccount(tabId),
+  connect: (msg, { tabId, host }) => connect(tabId, host),
+  plainSite: (msg, { tabId, host }) => plainSite(msg.site, tabId, host),
+  plainYouTube: (msg, { tabId, host }) => plainSite('youtube', tabId, host),
   connectGitHub: (msg) => connectGitHub(msg),
   exportSettings: () => exportSettings(),
   importSettings: (msg) => importSettings(msg.file),

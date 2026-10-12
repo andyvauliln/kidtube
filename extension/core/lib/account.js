@@ -32,25 +32,19 @@ export function accountKey({ email, datasyncId }) {
 }
 
 // The profile's folder in the data repo (<app>/<folder>/): the email's name part, e.g.
-// johnnypitt.ind@gmail.com → johnnypitt.ind. Given once and kept, so the folder never moves.
-// taken: folders other profiles already use; a clash adds the first part of the domain.
-export function profileFolder({ email, datasyncId }, taken = []) {
+// johnnypitt.ind@gmail.com → johnnypitt.ind, or the Instagram username. Given once and kept, so the folder never moves.
+// taken: folders other profiles of the app already use; a clash adds the first part of the domain (or a number).
+export function profileFolder({ email, datasyncId, username }, taken = []) {
   const clean = (s) => String(s).toLowerCase().replace(/[^a-z0-9._-]+/g, '-').replace(/^[-.]+|[-.]+$/g, '');
-  const key = accountKey({ email, datasyncId });
-  if (!key) return null;
-  let base = key.startsWith('yt:') ? `yt-${clean(key.slice(3))}` : clean(key.split('@')[0]) || 'profile';
-  if (taken.includes(base) && !key.startsWith('yt:')) base = `${base}-${clean(key.split('@')[1].split('.')[0])}`;
+  let base;
+  if (username) base = clean(username) || 'profile';
+  else {
+    const key = accountKey({ email, datasyncId });
+    if (!key) return null;
+    base = key.startsWith('yt:') ? `yt-${clean(key.slice(3))}` : clean(key.split('@')[0]) || 'profile';
+    if (taken.includes(base) && !key.startsWith('yt:')) base = `${base}-${clean(key.split('@')[1].split('.')[0])}`;
+  }
   let folder = base;
   for (let i = 2; taken.includes(folder); i++) folder = `${base}-${i}`;
   return folder;
-}
-
-// Google's account chooser (the header's Switch account; with an email, that one is picked), coming back through
-// YouTube's own sign-in handler, as YouTube's Sign in button does: without it YouTube can keep the account it
-// had. noapp=1 keeps Android from opening the YouTube app instead.
-export function chooserUrl(email, host = 'm.youtube.com') {
-  const site = host === 'www.youtube.com' ? host : 'm.youtube.com';
-  const home = `https://${site}/`;
-  const back = `https://${site}/signin?action_handle_signin=true&app=${site === 'm.youtube.com' ? 'm' : 'desktop'}&hl=en&next=${encodeURIComponent(home)}&feature=mobile&noapp=1`;
-  return `https://accounts.google.com/AccountChooser?service=youtube${email ? `&Email=${encodeURIComponent(email)}` : ''}&continue=${encodeURIComponent(back)}`;
 }
