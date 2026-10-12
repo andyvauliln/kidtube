@@ -8,7 +8,7 @@ import { PIN_PAGE } from './constants.js';
 import { withState, parentMode, shellOf, headerOpen, fromExtensionPage, live } from './store.js';
 import { applySiteRules } from './sites.js';
 import { guard } from './guard.js';
-import { youtubeAccount, siteAccount, headerView, openApp, connect, plainSite, connectGitHub, exportSettings, importSettings, leaveApp, pinPageView } from './profiles.js';
+import { youtubeAccount, siteAccount, headerView, openAiPage, openApp, connect, plainSite, connectGitHub, exportSettings, importSettings, leaveApp, pinPageView } from './profiles.js';
 import { sync, syncIfStale, settingsBackup } from './sync.js';
 import { checkUpdate, appVersion, updateApp } from './updates.js';
 import { partOf, allParts } from './apps.js';
@@ -40,6 +40,7 @@ const HANDLERS = {
 
   // The apps header (core/ui/header.js) on YouTube, on an app's pages, and Instagram's Connect bar.
   header: (msg, { host }) => headerView(!!msg.refresh, host),
+  openAiPage: (msg, { tabId }) => openAiPage(msg, tabId),
   openApp: (msg, { tabId, host }) => openApp(msg, tabId, host),
   connect: (msg, { tabId, host }) => connect(tabId, host),
   plainSite: (msg, { tabId, host }) => plainSite(msg.site, tabId, host),

@@ -14,6 +14,7 @@ import { stateKeys, serial, withState, shellOf, headerOpen, parentMode, live } f
 import { applySiteRules } from './sites.js';
 import { sync } from './sync.js';
 import { partOf, allParts } from './apps.js';
+import { checksView } from '../checks/runner.js';
 
 // Everything kept per profile: the state keys and the apps' other keys.
 const accountKeys = () => [...stateKeys(), ...allParts().flatMap((p) => p.profileKeys ?? [])];
@@ -204,7 +205,8 @@ export async function headerView(force, host) {
   const out = { ok: true, shell: sh, open: await headerOpen(g), mode: parentMode(g) ? 'parent' : 'kid', running,
     site: site?.id ?? null, here: site ? seenOn(site, g) : null,
     connected: cur ? { app: appOf(cur).id, label: shortLabel(appOf(cur)), who: whoOf(cur) ?? 'a YouTube account without an email', site: siteOfApp(appOf(cur)).label } : null,
-    github, sites: [], apps: [], error: null };
+    github, sites: [], apps: [], error: null, ai: null };
+  if (out.open) out.ai = await aiNow(running ? cur : null);
   if (!github.connected) return out;
   out.sites = Object.values(SITES).map((x) => ({ id: x.id, label: x.label, color: x.color, glyph: x.glyph, here: x.id === site?.id }));
   const remote = await repoProfiles(force);
@@ -218,6 +220,25 @@ export async function headerView(force, host) {
       has: !!(mine || there), active: a.id === running, folder: mine?.folder ?? there?.folder ?? null, parentScreens: !!a.parentPage };
   });
   return out;
+}
+
+// What waits for the AI, under the header's bar where the parent is: the running app's own (its part's aiView) and
+// the checks' reports (core/checks/runner.js), which go to the server's fix agent.
+async function aiNow(cur) {
+  const app = cur ? await withState((s) => partOf(cur).aiView?.(s) ?? null) : null;
+  const { reports } = await checksView();
+  return { ...(app ?? {}), problems: reports.length, problemsSent: reports.every((r) => r.sentAt) };
+}
+
+// The header's AI line: the page where the parent acts on it (the app's parent screens, or Check this browser).
+export async function openAiPage(msg, tabId) {
+  const g = await chrome.storage.local.get(['shell', 'account', 'settings']);
+  if (!(await headerOpen(g))) return { ok: false, error: 'Unlock with the PIN first.' };
+  const page = msg.page === 'checks' ? 'core/pages/check.html' : appOf(g.account).parentPage;
+  if (!page) return { ok: false, error: 'This app has no page for that.' };
+  const url = chrome.runtime.getURL(page);
+  if (tabId != null) await chrome.tabs.update(tabId, { url }); else await chrome.tabs.create({ url });
+  return { ok: true, url };
 }
 
 // The header's app tiles (mode: 'parent' unless asked, so the parent sees the app first) and Connect (create).

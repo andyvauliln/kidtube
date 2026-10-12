@@ -371,6 +371,10 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
     assert.equal((await fromPage({ type: 'note', videoId: ids[1], liked: true })).ok, true);   // a 👍 is not a note: it goes at once
     assert.equal((await fromPage({ type: 'parentData' })).lists.settings.at(-1).text, 'Open parent mode on the Planned tab');
     assert.equal((await fromPage({ type: 'runStatus' })).held, 2);
+    // The header's AI line: the notes not sent yet, and where to send them.
+    let ai = (await fromPage({ type: 'header' })).ai;
+    assert.deepEqual([ai.held, ai.page, ai.send], [2, 'parent', '↻ Update']);
+    assert.match((await fromPage({ type: 'openAiPage', page: 'parent' })).url, /apps\/kidtube\/parent\/parent\.html$/);
     // The notes card lists them with where they were made; ✕ deletes one, Clear all the rest.
     const extra = await fromPage({ type: 'wish', list: 'today', text: 'scrap this' });
     assert.equal(extra.ok, true);
@@ -406,6 +410,12 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
     assert.equal(puts.at(-1), 'requests/run.json');    // the request goes after the notes
     assert.equal((await fromPage({ type: 'runStatus' })).held, 0);
     assert.equal((await fromPage({ type: 'runStatus' })).state, 'queued');
+    ai = (await fromPage({ type: 'header' })).ai;
+    assert.deepEqual([ai.held, ai.run], [0, 'queued'], 'sent: the line says the AI starts soon');
+    await fromPage({ type: 'setMode', mode: 'kid' });
+    assert.equal((await send({ type: 'header' })).ai, null, 'kid mode: no AI line');
+    assert.equal((await send({ type: 'openAiPage', page: 'parent' })).ok, false);
+    await fromPage({ type: 'setMode', mode: 'parent' });
     // Not started in 10 minutes (the server missed it): the tablet stops waiting and ↻ Update can ask again.
     const realNow = Date.now;
     Date.now = () => realNow() + 11 * 60000;

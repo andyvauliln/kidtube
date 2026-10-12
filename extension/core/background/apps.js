@@ -14,6 +14,8 @@
 //   siteRules(stored) { block, allowed, ads }: other websites closed, the domains still open, and ad servers blocked
 //   created(s)    a new profile of the app (the header's Add app): its starting state
 //   tabRemoved(s, tabId)
+//   aiView(s)     what waits for the AI, for the header's AI line: { held, run, message, at, page, send } (notes the
+//                 parent added that are not sent yet, the server's latest run, the page to act on) or { queued }
 //   checks        { start: [...], actions: { type: check } } what the app's start and messages must do
 //                 (core/checks/README.md)
 import { appOf } from '../../apps/registry.js';

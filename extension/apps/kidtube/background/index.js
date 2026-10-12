@@ -5,6 +5,7 @@ import { guard, viewState, leaveSession } from './rules.js';
 import { HANDLERS, PAGE_ONLY } from './handlers.js';
 import { syncKidTube, releaseNotes } from './sync.js';
 import { KIDTUBE_CHECKS } from './checks.js';
+import { runView } from './parent.js';
 
 export default {
   id: 'kidtube',
@@ -27,6 +28,11 @@ export default {
   handlers: HANDLERS,
   pageOnly: PAGE_ONLY,
   checks: KIDTUBE_CHECKS,
+  // The header's AI line: the notes ↻ Update has not sent yet, and the notes agent's latest run.
+  aiView(s) {
+    const r = runView(s);
+    return { held: r.held, run: r.state, message: r.message ?? '', at: r.at ?? null, page: 'parent', send: '↻ Update' };
+  },
   sync: syncKidTube,
   beforeSync: (msg) => (msg.notes ? releaseNotes() : undefined),
   async siteRules(stored) {

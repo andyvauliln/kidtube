@@ -88,6 +88,11 @@
     .sep { height: 1px; background: var(--line); margin: 8px 0; }
     .app.plain .icon { box-shadow: 0 0 0 2px var(--bg), 0 0 0 2px transparent; opacity: .9; }
     .here { font-size: 12px; color: var(--muted); padding: 0 16px 8px; margin-top: -4px; }
+    .ai { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 8px 16px; }
+    .ai > * { display: inline-block; max-width: 100%; height: 28px; line-height: 28px; padding: 0 12px; border-radius: 14px; text-align: left;
+      background: var(--blue-soft); color: var(--ink); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .ai > button:hover { background: var(--hover); }
+    .ai .warn { background: var(--soft); color: var(--bad); }
     @media (max-width: 600px) {
       .who .email { display: none; }
       .card { grid-template-columns: 1fr; }
@@ -339,6 +344,39 @@
       return card;
     }
 
+    // What waits for the AI (only where the parent is; core/background/profiles.js aiNow): the notes the parent
+    // added that are not sent yet, the server's run on them, posts in an app's list, and the checks' reports.
+    // A tap opens the page to act on (the app's parent screens with ↻ Update, or Check this browser).
+    function aiLine(a) {
+      if (!a) return null;
+      const n = (k, one, many = `${one}s`) => `${k} ${k === 1 ? one : many}`;
+      const recent = a.at && Date.now() - Date.parse(a.at) < 30 * 60000;
+      const items = [];
+      if (a.held) items.push({ text: `📝 ${n(a.held, 'note')} for the AI, not sent yet: tap ${a.send ?? 'Update'}`, page: a.page });
+      if (a.run === 'queued' || a.run === 'running') items.push({ text: `🤖 ${a.run === 'running' ? 'The AI is working on your notes' : 'Notes sent: the AI starts soon'}`, title: a.message, page: a.page });
+      else if (a.run === 'late') items.push({ text: `⚠ ${a.message}`, page: a.page, warn: true });
+      else if (recent && a.run === 'done') items.push({ text: `✓ AI: ${a.message}`, title: a.message, page: a.page });
+      else if (recent && a.run === 'failed') items.push({ text: `⚠ AI: ${a.message}`, title: a.message, page: a.page, warn: true });
+      if (a.queued) items.push({ text: `🤖 ${n(a.queued, 'post')} in the list ${a.queued === 1 ? 'waits' : 'wait'} for the AI` });
+      if (a.problems) items.push({ text: `⚠ ${n(a.problems, 'problem')} ${a.problemsSent ? 'sent: waiting for a fix' : 'found, not sent yet'}`, page: 'checks', warn: true });
+      if (!items.length) return null;
+      const line = el('div', 'ai');
+      line.setAttribute('role', 'status');
+      for (const it of items) {
+        const b = el(it.page ? 'button' : 'span', it.warn ? 'warn' : '', it.text);
+        b.title = it.title || it.text;
+        if (it.page) {
+          b.type = 'button';
+          b.addEventListener('click', async () => {
+            const r = await ask({ type: 'openAiPage', page: it.page });
+            if (!r?.ok) say(r?.error ?? 'That didn’t work. Try again.', 'err');
+          });
+        }
+        line.append(b);
+      }
+      return line;
+    }
+
     function draw() {
       if (!alive) return;
       const h = data;
@@ -415,6 +453,8 @@
         }
         const note = ui.note || h.error;
         if (note && h.github.connected && !ui.github) kids.push(el('p', `note ${ui.note ? ui.noteKind : 'err'}`, note));
+        const ai = aiLine(h.ai);
+        if (ai) kids.push(ai);
         if (ui.menu) kids.push(accountMenu());
       }
       if (ui.menu) {
@@ -425,8 +465,11 @@
       box.replaceChildren(...kids);
     }
 
+    // The AI line's sources change often (the checks after every message): at most one refresh a second for them.
+    let aiTimer = null;
     const onStorage = (ch) => {
       if (ch.ytAccount || ch.igAccount || ch.settings || ch.accounts || ch.repoProfiles || ch.account || ch.shell) refresh();
+      else if (ch.outbox || ch.data || ch.ig || ch.checks) { clearTimeout(aiTimer); aiTimer = setTimeout(() => refresh(), 1000); }
     };
     chrome.storage.onChanged.addListener(onStorage);
     const onKey = (e) => { if (e.key === 'Escape' && ui.menu) { ui.menu = false; draw(); } };
@@ -436,7 +479,7 @@
     return {
       refresh,
       setDark(on) { host.classList.toggle('dark', on); },
-      destroy() { alive = false; chrome.storage.onChanged.removeListener(onStorage); },
+      destroy() { alive = false; clearTimeout(aiTimer); chrome.storage.onChanged.removeListener(onStorage); },
     };
   }
 
