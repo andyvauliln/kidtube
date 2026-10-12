@@ -1,0 +1,33 @@
+{
+  "note": "Instagram's own Saved page, one collection open (report ig.parentSent|quetta, 0.12.0): the answer of the GraphQL query PolarisSavedCollectionPageWWWQuery (variables after, collection_id, first), built from the report's structure with made-up values.",
+  "meta": { "path": "/api/graphql", "query": "PolarisSavedCollectionPageWWWQuery", "collectionId": "1394955322015039" },
+  "answer": {
+    "data": {
+      "fetch__MediaCollection": {
+        "name": "Cooking",
+        "media": {
+          "edges": [
+            {
+              "node": {
+                "pk": "3700000000000000001", "accessibility_caption": null, "caption": { "pk": "1800000000000000001", "text": "Pancakes" },
+                "audience": null, "carousel_media_count": null, "display_uri": null, "media_type": 2, "carousel_media": null,
+                "image_versions2": { "candidates": [{ "url": "https://scontent.cdninstagram.com/v/p640.jpg", "width": 640, "height": 1137 }, { "url": "https://scontent.cdninstagram.com/v/p320.jpg", "width": 320, "height": 568 }] },
+                "code": "DPanCake01", "media_cropping_info": null, "profile_grid_thumbnail_fitting_style": "UNSET", "media_overlay_info": null,
+                "preview": null, "product_type": "clips", "thumbnails": null, "timeline_pinned_user_ids": ["1"], "upcoming_event": null,
+                "user": { "pk": "42", "username": "chef", "id": "42", "aigm_account_label_info": { "a": 1, "b": 2, "c": 3, "d": 4 }, "is_verified": false,
+                  "is_embeds_disabled": false, "is_private": false, "is_unpublished": false, "__typename": "XDTUserDict",
+                  "friendship_status": { "following": true, "blocking": false }, "profile_pic_url": "https://scontent.cdninstagram.com/v/u.jpg", "show_account_transparency_details": false },
+                "media_notes": { "items": [] }, "like_count": 10, "like_and_view_counts_disabled": false,
+                "boosted_status": null, "boost_unavailable_identifier": null, "boost_unavailable_reason": null
+              },
+              "cursor": "c1"
+            }
+          ],
+          "page_info": { "end_cursor": "END-1", "has_next_page": false }
+        },
+        "id": "1394955322015039"
+      }
+    },
+    "extensions": { "server_metadata": { "request_start_time_ms": 1, "time_at_flush_ms": 2 }, "is_final": true }
+  }
+}

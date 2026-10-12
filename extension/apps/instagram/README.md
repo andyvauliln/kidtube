@@ -27,13 +27,16 @@ post in Instagram's own player (the Instagram view); App in the Connect bar come
    the page world.
 3. **Else Instagram's web API** from the page (`content/api.js`), when the page gave nothing (`api` in the rules).
    Orion may not run page-world scripts: there only this one works.
+4. **A collection's posts:** Instagram's web API (`/api/v1/feed/collection/<id>/posts/`) when the app shows the
+   collection, and whatever collection the parent opens on Instagram's own page (its GraphQL answer, for example
+   `PolarisSavedCollectionPageWWWQuery`), at once: the web API may not give a collection at all.
 
 The rules (which requests mean "saved", where the position is) are data: `lib/rules.js` has the defaults, and
 `site/remote.json` `instagram.reader` can change them without a new version (`core/background/remote.js`).
 
 ## When reading fails: Send to AI
 
-A read that fails (not a sign-in) sends a problem report `ig.read` by itself; **Send to AI** on the status line
+A read that fails (not a sign-in), of the saved posts or of a collection, sends a problem report `ig.read` by itself; **Send to AI** on the status line
 sends `ig.parentSent` (no banner: the parent sent it). The report holds what the fix agent needs to adjust the
 reader, and no values:
 

@@ -304,6 +304,12 @@
       if (!m.tag && ui.data) ask({ type: 'igCollections', list: found.collections }).then(() => { ui.collectionsNote = ''; return refresh(); }).catch(() => {});
     }
     if (m.tag) return net.waits.get(m.tag)?.(m);
+    // Instagram's own page showed a collection's posts (the parent opened it there): they join that collection now.
+    // Its web API may not give a collection at all.
+    if (found.collection) {
+      ask({ type: 'igCollection', id: found.collection.id, media: found.collection.media.map(API().slim) })
+        .then(() => (ui.data ? refresh() : null)).catch(() => {});
+    }
     if (found.saved && !net.first) net.first = { id: m.meta.id, media: found.saved.map(API().slim), next: found.next };
   });
   // The rules go to the page world too: it sorts the answers by them (and keeps the early ones until then).
@@ -436,6 +442,11 @@
     } catch (e) {
       ui.loadedCollections.delete(id);
       readFailed(e);
+      // Not a sign-in: the posts Instagram's own page shows still come in; the fix agent gets the report by itself.
+      if (!(e instanceof API().LoginNeeded)) {
+        ui.readError = `${ui.readError} To see its posts, open it on Instagram (the Instagram side of the switch) once.`;
+        sendToAi(ui.readError, true);
+      }
     }
     ui.reading = '';
     await refresh();
