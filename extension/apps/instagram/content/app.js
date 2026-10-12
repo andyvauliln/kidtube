@@ -257,7 +257,7 @@
   // What the page knows: the background's view (igState) and what is shown.
   const ui = {
     tab: 'saved', collection: null, filter: 'all', open: null,
-    data: null, reading: '', readError: '', login: false, me: null, notHere: false, other: null, connectNote: '', connectErr: false,
+    data: null, reading: '', readError: '', collectionsError: '', login: false, me: null, notHere: false, other: null, connectNote: '', connectErr: false,
     loadedCollections: new Set(), results: {}, rec: null, writing: false, notice: '', noticeErr: false, expanded: false,
   };
   let root, main, tabsBar, sheet, headerBox;
@@ -290,11 +290,14 @@
     if (reading) return;
     reading = true;
     ui.readError = '';
+    ui.collectionsError = '';
     ui.login = false;
     try {
       ui.reading = 'Reading your collections…';
       draw();
-      await ask({ type: 'igCollections', list: await API().collections() });
+      // Without the collections the saved posts are still read: only the collections' names are missing.
+      try { await ask({ type: 'igCollections', list: await API().collections() }); }
+      catch (e) { if (e instanceof API().LoginNeeded) throw e; ui.collectionsError = `Collections: ${String(e.message ?? e)}`; }
       await refresh();
       const d = ui.data;
       let count = 0;
@@ -436,6 +439,7 @@
     if (ui.reading) bits.push(h('span', { text: ui.reading }));
     else bits.push(h('span', { text: `Read from Instagram ${ago(d.loadedAt)}${d.complete ? '' : ' · not all read yet'}` }));
     if (ui.readError && !ui.login) bits.push(h('span', { class: 'err', text: ui.readError }));
+    if (ui.collectionsError) bits.push(h('span', { class: 'err', text: ui.collectionsError }));
     if (!d.github) bits.push(h('span', { class: 'err', text: 'GitHub is not connected: the notes stay on this device (header → account menu).' }));
     else if (d.unsent) bits.push(h('span', { text: 'Changes wait to go to GitHub…' }));
     for (const e of d.sync?.errors ?? []) bits.push(h('span', { class: 'err', text: e }));

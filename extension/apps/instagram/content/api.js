@@ -24,7 +24,7 @@
       const said = `${path.split('?')[0]} → ${toLogin ? 'the sign-in page' : r.status}${j?.message ? `: ${j.message}` : j || toLogin ? '' : `, not data: ${text.replace(/\s+/g, ' ').slice(0, 80)}`}`;
       if (toLogin || j?.require_login || j?.message === 'login_required') throw new LoginNeeded('Sign in to Instagram first.', said);
       if ((r.status === 401 || r.status === 403) && !j) throw new LoginNeeded('Sign in to Instagram first.', said);
-      if (!j || !r.ok || j.status === 'fail') throw new Error(`Instagram refused ${said}`);
+      if (!j || !r.ok || j.status === 'fail') throw Object.assign(new Error(`Instagram refused ${said}`), { status: r.status });
       return j;
     }
   }
@@ -39,6 +39,20 @@
     user: { username: m.user?.username ?? m.owner?.username }, caption: { text: m.caption?.text ?? '' },
     saved_collection_ids: m.saved_collection_ids, carousel_media: m.carousel_media?.map(slimItem),
   });
+  async function collectionsBy(url) {
+    const out = [];
+    let maxId = null;
+    for (let i = 0; i < 20; i++) {
+      const j = await get(url(maxId));
+      for (const c of j.items ?? []) {
+        if (c.collection_type && c.collection_type !== 'MEDIA') continue;
+        out.push({ id: String(c.collection_id), name: c.collection_name ?? '', count: c.collection_media_count ?? 0 });
+      }
+      if (!j.more_available || !j.next_max_id) break;
+      maxId = j.next_max_id;
+    }
+    return out;
+  }
   const page = (j) => ({ media: (j.items ?? []).map((i) => slim(i.media ?? i)).filter(Boolean), next: j.more_available && j.next_max_id ? String(j.next_max_id) : null });
   const q = (maxId) => (maxId ? `?max_id=${encodeURIComponent(maxId)}` : '');
 
@@ -48,21 +62,17 @@
     saved: async (maxId) => page(await get(`/api/v1/feed/saved/posts/${q(maxId)}`)),
     // One collection's posts: { media, next }.
     collection: async (id, maxId) => page(await get(`/api/v1/feed/collection/${encodeURIComponent(id)}/posts/${q(maxId)}`)),
-    // The account's own collections: [{ id, name, count }] (not "All posts" or saved audio).
+    // The account's own collections: [{ id, name, count }] (not "All posts" or saved audio). Instagram's web app has
+    // asked for them in more than one way; a 404 (the way is gone) tries the next one.
     async collections() {
-      const out = [];
-      let maxId = null;
-      for (let i = 0; i < 20; i++) {
-        const types = encodeURIComponent(JSON.stringify(['ALL_MEDIA_AUTO_COLLECTION', 'MEDIA', 'PRODUCT_AUTO_COLLECTION']));
-        const j = await get(`/api/v1/collections/list/?collection_types=${types}&include_public_only=0&get_cover_media_lists=false${maxId ? `&max_id=${encodeURIComponent(maxId)}` : ''}`);
-        for (const c of j.items ?? []) {
-          if (c.collection_type && c.collection_type !== 'MEDIA') continue;
-          out.push({ id: String(c.collection_id), name: c.collection_name ?? '', count: c.collection_media_count ?? 0 });
-        }
-        if (!j.more_available || !j.next_max_id) break;
-        maxId = j.next_max_id;
+      const types = encodeURIComponent(JSON.stringify(['ALL_MEDIA_AUTO_COLLECTION', 'MEDIA', 'AUDIO_AUTO_COLLECTION']));
+      const ways = [
+        (maxId) => `/api/v1/collections/list/?collection_types=${types}&include_public_only=0&get_cover_media_lists=true&max_id=${encodeURIComponent(maxId ?? '')}`,
+        (maxId) => `/api/v1/collections/list/${maxId ? `?max_id=${encodeURIComponent(maxId)}` : ''}`,
+      ];
+      for (const [n, way] of ways.entries()) {
+        try { return await collectionsBy(way); } catch (e) { if (e.status !== 404 || n === ways.length - 1) throw e; }
       }
-      return out;
     },
     // The signed-in account: { username, id }; LoginNeeded when nobody is. Instagram's own Edit profile form names it;
     // without that, the account's info by the id in the ds_user_id cookie.
