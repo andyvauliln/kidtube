@@ -163,7 +163,7 @@ When a check fails, KidTube adds a `problem` event to the outbox and starts a sy
 
 - **Steps.** A ring of the last 30 steps (messages, taps, page changes, check results). It is kept in `chrome.storage.session`, so it is gone after a browser restart.
 - **No secrets.** A report never holds a token, a key, a PIN or PIN hash, the parent's notes or page text. A test checks this for every check in the list.
-- **One report per problem.** The same fingerprint is sent at most once in 6 hours from one tablet. The server merges the same fingerprint from all tablets.
+- **One report per problem.** A tablet sends a fingerprint (check, version, browser) once; a repeat only counts up on the tablet, until a new version comes (a new fingerprint). The server merges the same check from all tablets, handles a report once (a higher count later is not new), and tries a problem the agent gave no answer for again after 2 hours, at most 3 times.
 - **The parent can report too.** **Report a problem** in the notes button sends a `problem` with the parent's words and the same context.
 
 ### 5. What the parent sees
@@ -289,7 +289,7 @@ F1 and F2 are useful alone: they show at once which parts work on a new device.
 2. Put in the event: the check id, the fingerprint, the expected result, the actual result, the action, the app, the mode, the profile, the page, the tab, the browser and the last 30 steps.
 3. Do not put a token, a key, a PIN, a PIN hash, notes or page text in the event.
 4. Add a test that makes sure no secret is in any report.
-5. Send the same fingerprint only once in 6 hours.
+5. Send each fingerprint only once. Count a repeat on the tablet only. A new version makes a new fingerprint.
 6. Start a sync within 10 seconds after a `problem` event.
 7. Show a banner for 15 seconds on the parent page, the PIN page and the YouTube header.
 8. Do not show the banner in kid mode. Show it when the parent next opens parent mode.

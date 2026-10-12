@@ -25,9 +25,9 @@ export const actionChecks = () => ({ ...ACTIONS });
 
 // --- the results, kept in chrome.storage.local "checks" -----------------------------------------------------------
 // results: the newest result of each check. reports: the failures, newest last (one per fingerprint; a repeat
-// counts up; sent: the count GitHub has). start: the last run of the start checks. seen: when parent mode last showed
-// the reports. device: this tablet's id in the reports.
-const MAX_REPORTS = 30, REPEAT_MS = 6 * 3600000;
+// counts up here only; sentAt: when GitHub got it). start: the last run of the start checks. seen: when parent mode
+// last showed the reports. device: this tablet's id in the reports.
+const MAX_REPORTS = 30;
 let book = null, saving = null;
 async function load() {
   if (!book) {
@@ -122,11 +122,13 @@ const short = (v) => (typeof v === 'string' ? v : JSON.stringify(v))?.slice(0, 1
 async function addReport(b, r, res, { sender, pageSteps = [], page = null } = {}) {
   const m = chrome.runtime.getManifest();
   const fp = fingerprint(r.id, m.version, TARGET);
+  // The same problem on this version: counted on the tablet, never sent again. The server has it (and its fix agent
+  // may be working on it); a fix comes as a new version, and a new version is a new fingerprint.
   const old = b.reports.find((x) => x.fingerprint === fp);
-  if (old && Date.now() - Date.parse(old.lastAt) < REPEAT_MS) {
+  if (old) {
     old.count += 1;
     old.lastAt = res.at;
-    sendSoon();
+    if (!old.sentAt) sendSoon();
     return old;
   }
   await stepsLoaded;
@@ -139,7 +141,7 @@ async function addReport(b, r, res, { sender, pageSteps = [], page = null } = {}
     firstAt: res.at, lastAt: res.at, count: 1, context,
     steps: [...stepsNow(), ...redact(pageSteps).map((s) => ({ ...s, page: true }))].sort((a, x) => String(a.at).localeCompare(String(x.at))).slice(-MAX_STEPS),
   };
-  b.reports = [...b.reports.filter((x) => x !== old), report].slice(-MAX_REPORTS);
+  b.reports = [...b.reports, report].slice(-MAX_REPORTS);
   // The banner (core/ui/watch.js): a page where the parent is shows it for 15 s, once (never in kid mode).
   chrome.storage.local.set({ checkAlert: { reportId: report.reportId, at: report.firstAt, check: report.check, expect: report.expect, saw: report.saw, shown: false } }).catch(() => {});
   sendSoon();
@@ -153,7 +155,7 @@ export function sendSoon(ms = 10000) { clearTimeout(sendTimer); sendTimer = setT
 export function sendReports() {
   sendRun ??= (async () => {
     const b = await load();
-    const todo = b.reports.filter((r) => (r.sent ?? 0) < r.count);
+    const todo = b.reports.filter((r) => !r.sentAt);
     if (!todo.length) return { ok: true, sent: 0 };
     const { settings = {} } = await chrome.storage.local.get('settings');
     if (!settings.token) return { ok: false, error: 'No GitHub token: the reports stay on this tablet.' };
@@ -174,7 +176,7 @@ export function sendReports() {
         file.updatedAt = new Date().toISOString();
         if (await putRepoFile(loc, settings.token, path, file, cur?.sha, `problems ${day}: ${list.map((r) => r.check).join(', ')}`.slice(0, 200))) {
           const at = new Date().toISOString();
-          for (const r of list) { r.sent = r.count; r.sentAt = at; }
+          for (const r of list) r.sentAt = at;
           sent += list.length;
           break;
         }

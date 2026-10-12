@@ -84,8 +84,9 @@ $problems
       --permission-mode dontAsk --allowedTools "Bash" "Read" "Edit" "Write" "Glob" "Grep" "Skill" "Agent" "Task" \
       --add-dir "$SROOT" "$CLONE" --output-format json < /dev/null) > "$SROOT/fix-runs/$(date -u +%Y%m%dT%H%M%SZ).json" 2>> "$log"
   echo "=== claude exit $?" >> "$log"
-  # Handled either way: a problem the agent could not finish is not tried again every minute.
-  node agent/problems.mjs mark "$SROOT/problems-in.json" --state "$SROOT" >> "$log"
+  # Handled when the agent answered it. One with no answer (the agent stopped, a usage limit) is tried again in
+  # 2 hours, at most 3 times; never every minute.
+  node agent/problems.mjs mark "$SROOT/problems-in.json" --state "$SROOT" --result "$result" >> "$log"
   [ -f "$result" ] || printf '{"fixes":[]}' > "$result"
   node agent/problems.mjs record "$result" --data "$CLONE" >> "$log"
   git -C "$CLONE" add fixes.json

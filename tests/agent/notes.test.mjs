@@ -221,4 +221,45 @@ test('problems.mjs: what is new, merged per check and browser; a fix holds for o
   assert.equal(newProblems([problem('f', 'yt.player', '0.10.5', 3)], {}, left, now).length, 0, 'not reproduced: left alone for a day');
   assert.equal(newProblems([problem('f', 'yt.player', '0.10.5', 3)], {}, left, now + 25 * 3600000).length, 1);
   assert.equal(newProblems([problem('g', 'yt.player', '0.10.5')], { runs: { 'yt.player|orion': '2026-10-07T11:00:00Z' } }, [], now).length, 0, 'two hours between runs');
+  // The same report sent again with a higher count (tablets up to 0.11.1): handled already, the same problem.
+  assert.equal(newProblems([problem('a', 'action.kidHome', '0.10.4', 7)], handled, [], now).length, 0, 'a higher count is not new');
+  // The check was wrong and was fixed (not a bug): it holds for older versions like a fix.
+  const wrong = recordFixes({}, { fixes: [{ key: 'kid.list|orion', state: 'not-a-bug', version: '0.10.6', message: 'z' }] }, '2026-10-07T10:00:00Z').fixes;
+  assert.equal(newProblems([problem('h', 'kid.list', '0.10.5')], {}, wrong, now).length, 0, 'not a bug: holds for older versions');
+  assert.equal(newProblems([problem('h', 'kid.list', '0.10.6')], {}, wrong, now)[0].regressionOf, '0.10.6');
+  // Fixed with no new version (a test or agent change): holds for reports from before the fix.
+  const noVersion = recordFixes({}, { fixes: [{ key: 'gh.sync|orion', state: 'fixed', version: null, message: 'w' }] }, '2026-10-07T10:00:00Z').fixes;
+  assert.equal(newProblems([problem('i', 'gh.sync', '0.10.5', 4, '2026-10-07T09:00:00Z')], {}, noVersion, now).length, 0, 'from before the fix');
+  assert.equal(newProblems([problem('j', 'gh.sync', '0.10.5', 1, '2026-10-07T11:00:00Z')], {}, noVersion, now).length, 1, 'after the fix: new');
+});
+
+test('poll.sh: a problem the fix agent gave no answer for (a usage limit) is tried again after 2 hours, at most 3 times', () => {
+  const w = world();
+  w.poll();
+  writeFileSync(w.p('bin', 'claude'), '#!/usr/bin/env bash\nexit 1\n');
+  const file = w.p('state', 'problems-handled.json');
+  const handled = () => JSON.parse(readFileSync(file, 'utf8'));
+  const runs = () => readFileSync(w.p('state', 'fix-runs.log'), 'utf8').trim().split('\n').length;
+  const twoHoursLater = () => { const h = handled(); h.runs['start.kept|orion'] = '2000-01-01T00:00:00Z'; writeFileSync(file, JSON.stringify(h)); };
+  const anyPush = (n) => w.send([ev(`w-${n}`, '2026-10-06T19:00:00Z', 'watch', { videoId: 'abcdefghijk' })]);   // the data repo changes
+  w.report([problem('r-7', 'start.kept', '0.11.1')]);
+  w.poll();
+  assert.equal(runs(), 1);
+  assert.equal(handled().reports['r-7'], undefined, 'no answer: not handled');
+  assert.equal(handled().tries['start.kept|orion'], 1);
+  anyPush(1);
+  w.poll();
+  assert.equal(runs(), 1, 'not again within 2 hours');
+  twoHoursLater(); anyPush(2);
+  w.poll();
+  assert.equal(runs(), 2, 'tried again');
+  assert.equal(handled().tries['start.kept|orion'], 2);
+  twoHoursLater(); anyPush(3);
+  w.poll();
+  assert.equal(runs(), 3);
+  assert.equal(handled().reports['r-7'], 1, 'the third time with no answer: given up');
+  assert.equal(handled().tries['start.kept|orion'], undefined);
+  twoHoursLater(); anyPush(4);
+  w.poll();
+  assert.equal(runs(), 3);
 });

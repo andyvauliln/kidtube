@@ -205,16 +205,22 @@ test('the reports go to GitHub: problems/<day>.json at the top of the data repo,
     assert.equal(file.schemaVersion, 1);
     assert.ok(file.reports.every((x) => x.type === 'problem' && x.reportId && x.deviceId?.startsWith('tab-') && x.fingerprint && !('sent' in x)));
     for (const secret of [TOKEN, PIN_HASH, EMAIL]) assert.ok(!files[path].text.includes(secret), secret);
-    assert.ok((await view()).reports.every((x) => x.sent === x.count && x.sentAt));
+    assert.ok((await view()).reports.every((x) => x.sentAt));
     assert.equal((await fromPage({ type: 'sendChecks' })).sent, 0, 'nothing new: nothing sent');
-    // The same problem again: the same entry counts up, and goes again.
-    await fromPage({ type: 'checkResult', result: { id: 'parent.loads', status: 'fail', expect: 'x', mismatch: [{ what: 'answer to "parentData"', expected: 'the lists', actual: 'no answer in 8 s' }] } });
-    await fromPage({ type: 'checkResult', result: { id: 'parent.loads', status: 'fail', expect: 'x', mismatch: [{ what: 'answer to "parentData"', expected: 'the lists', actual: 'no answer in 8 s' }] } });
-    await fromPage({ type: 'sendChecks' });
-    const again = JSON.parse(files[`problems/${day}.json`].text).reports.filter((x) => x.check === 'parent.loads');
-    assert.equal(again.length, 1);
-    assert.equal(again[0].count, 2);
+    // A new problem: sent once.
+    const fail = { type: 'checkResult', result: { id: 'parent.loads', status: 'fail', expect: 'x', mismatch: [{ what: 'answer to "parentData"', expected: 'the lists', actual: 'no answer in 8 s' }] } };
+    await fromPage(fail);
+    assert.equal((await fromPage({ type: 'sendChecks' })).sent, 1);
     assert.ok(puts.at(-1).sha, 'the second write updates the file (its sha)');
+    // The same problem again on this version: counted on the tablet, not sent again (the server may be fixing it).
+    const writes = puts.length;
+    await fromPage(fail);
+    await fromPage(fail);
+    assert.equal((await fromPage({ type: 'sendChecks' })).sent, 0, 'a repeat is not sent');
+    assert.equal(puts.length, writes);
+    assert.equal((await view()).reports.filter((x) => x.check === 'parent.loads').map((x) => x.count).join(), '3', 'one report, counted');
+    const there = JSON.parse(files[`problems/${day}.json`].text).reports.filter((x) => x.check === 'parent.loads');
+    assert.deepEqual(there.map((x) => x.count), [1]);
   } finally { globalThis.fetch = realFetch; }
 });
 

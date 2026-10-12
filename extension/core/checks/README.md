@@ -62,12 +62,14 @@ Name the value in `what` (`settings.mode`, `answer.error`), not a feeling. Put w
   "steps": [{ "at": "…", "kind": "message", "type": "setMode", "ok": true }, { "kind": "tap", "label": "Connect", "page": true }] }
 ```
 
-The same fingerprint within 6 hours counts up (`count`) instead of a new report.
+The same fingerprint (check, version, browser) counts up (`count`) on the tablet and is **not sent again**: the
+server has it, and its fix agent may be working on it. The fix comes as a new version, which is a new fingerprint.
+If the problem is still there in the new version, that is a new report (the server marks it as a regression).
 
 ## Where a report goes
 
 1. **The data repo**, 10 s after it is made and with every sync: `problems/<YYYY-MM-DD>.json` at the top of the repo
-   (not in a profile's folder: the apps header has no profile). One entry per `reportId`; a repeat updates its entry.
+   (not in a profile's folder: the apps header has no profile). One entry per `reportId`, sent once.
    No GitHub token: it waits on the tablet. The server reads these files (`docs/plans/FAST-FIX.md`, F4).
 2. **A banner for 15 seconds** (`core/ui/watch.js`), on the first page where the parent is: parent mode, or the
    unlocked apps header. Never in kid mode: he does not see it, the parent sees it the next time.

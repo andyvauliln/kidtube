@@ -106,7 +106,7 @@
     const box = document.getElementById('reports');
     box.replaceChildren(...[...reports].reverse().map((r) => {
       const d = mk('div', null, 'report');
-      d.append(mk('h3', `❌ ${r.check}${r.count > 1 ? ` (×${r.count})` : ''}`), mk('div', `${r.expect}`, 'muted'), mk('div', `Last: ${new Date(r.lastAt).toLocaleString()} · ${r.context?.profile?.mode ?? '?'} mode · ${r.context?.page?.url ?? 'background'} · ${(r.sent ?? 0) >= r.count ? `sent to the server ${r.sentAt ? new Date(r.sentAt).toLocaleTimeString() : ''}` : 'not sent yet'}`, 'muted'));
+      d.append(mk('h3', `❌ ${r.check}${r.count > 1 ? ` (×${r.count})` : ''}`), mk('div', `${r.expect}`, 'muted'), mk('div', `Last: ${new Date(r.lastAt).toLocaleString()} · ${r.context?.profile?.mode ?? '?'} mode · ${r.context?.page?.url ?? 'background'} · ${r.sentAt ? `sent to the server ${new Date(r.sentAt).toLocaleTimeString()}` : 'not sent yet'}`, 'muted'));
       const t = mk('table');
       for (const m of r.mismatch ?? []) {
         const tr = mk('tr');

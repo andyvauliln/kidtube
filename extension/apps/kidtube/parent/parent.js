@@ -72,7 +72,7 @@ async function showProblems() {
   const list = c?.reports ?? [];
   const box = $('probs');
   if (!list.length) return box.replaceChildren();
-  const sent = list.every((r) => (r.sent ?? 0) >= r.count);
+  const sent = list.every((r) => r.sentAt);
   const b = btn(`⚠ ${list.length} problem${list.length === 1 ? '' : 's'} · ${sent ? 'sent, waiting for a fix' : 'not sent yet'}`,
     () => { window.open(chrome.runtime.getURL('core/pages/check.html'), '_blank'); }, 'small');
   b.title = list.map((r) => `${r.expect}: ${r.saw}`).join('\n').slice(0, 600);
