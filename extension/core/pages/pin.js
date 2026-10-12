@@ -70,11 +70,11 @@ async function done() {
   if (purpose === 'unlock') {
     const r = await ask({ type: 'leaveApp' });
     if (r?.ok) location.href = r.open;
-    else err.textContent = 'KidTube’s background did not answer. Close this page and open it again.';
+    else err.textContent = 'The extension’s background did not answer. Close this page and open it again.';
     return;
   }
   const r = await ask({ type: 'setMode', mode: 'parent' });
-  if (!r?.ok) { err.textContent = `It could not turn on parent mode: ${r?.error ?? 'KidTube’s background did not answer'}`; return; }
+  if (!r?.ok) { err.textContent = `It could not turn on parent mode: ${r?.error ?? 'The extension’s background did not answer'}`; return; }
   const a = await ask({ type: 'apps' });
   // Settings live in the app's parent screens (an app without them: its home).
   if (purpose === 'settings' && a?.settings) { location.href = a.settings; return; }

@@ -192,7 +192,7 @@ const inRepo = (list, app, name) => list.find((p) => p.app === app.id
   && (siteOfApp(app).by === 'username' ? !!p.username && `@${p.username}` === name : p.email === name));
 
 // What the header shows: the connected profile, the account signed in on this page's site (for Connect), the GitHub
-// connection, the plain sites, and each app with its site's account and whether that account has a profile in it.
+// connection, the App | site switch, and each app with its site's account and whether that account has a profile in it.
 // host: the page's host (an extension page has no site, so no Connect there).
 export async function headerView(force, host) {
   const g = await chrome.storage.local.get(['shell', 'account', 'accounts', 'settings', ...seenKeys()]);
@@ -207,10 +207,9 @@ export async function headerView(force, host) {
   const out = { ok: true, shell: sh, open: await headerOpen(g), mode: parentMode(g) ? 'parent' : 'kid', running,
     site: site?.id ?? null, here: site ? seenOn(site, g) : null,
     connected: cur ? { app: appOf(cur).id, label: shortLabel(appOf(cur)), who: whoOf(cur) ?? 'a YouTube account without an email', site: siteOfApp(appOf(cur)).label } : null,
-    github, sites: [], apps: [], error: null, ai: null };
+    github, switch: switchOf(running, site), apps: [], error: null, ai: null };
   if (out.open) out.ai = await aiNow(running ? cur : null);
   if (!github.connected) return out;
-  out.sites = Object.values(SITES).map((x) => ({ id: x.id, label: x.label, color: x.color, glyph: x.glyph, here: x.id === site?.id }));
   const remote = await repoProfiles(force);
   out.error = remote.error;
   const accounts = g.accounts ?? {};
@@ -222,6 +221,20 @@ export async function headerView(force, host) {
       has: !!(mine || there), active: a.id === running, folder: mine?.folder ?? there?.folder ?? null, parentScreens: !!a.parentPage };
   });
   return out;
+}
+
+// The header's App | site switch, the same for every app: the running app (with none, the app of this page's site)
+// and its site without the app. on: 'app' where the app's own screen shows (its home or page, its parent screens),
+// 'site' on the plain site (no app runs) and on the site itself while an app without its own screen runs there
+// (KidTube in parent mode on YouTube). App opens the app (openApp); the site opens the plain site (plainSite), or,
+// on a page that has both views (Instagram's Saved page), switches the view there.
+function switchOf(running, site) {
+  const app = running ? APPS[running] : Object.values(APPS).find((a) => siteOfApp(a).id === site?.id);
+  if (!app) return null;
+  const its = siteOfApp(app);
+  const ownScreen = !!(app.home || app.page);
+  return { app: app.id, label: shortLabel(app), site: its.id, siteLabel: its.label,
+    on: running && (ownScreen || site?.id !== its.id) ? 'app' : 'site' };
 }
 
 // What waits for the AI, under the header's bar where the parent is: the running app's own (its part's aiView) and
@@ -342,7 +355,7 @@ export async function exportSettings() {
 
 export async function importSettings(file) {
   if (!(await headerOpen())) return { ok: false, error: 'Unlock with the PIN first.' };
-  if (file?.kidtubeSettings !== 1) return { ok: false, error: 'That file is not a KidTube settings file.' };
+  if (file?.kidtubeSettings !== 1) return { ok: false, error: 'That file is not a Custom Apps settings file.' };
   const { settings = {} } = await chrome.storage.local.get('settings');
   const strings = (names) => Object.fromEntries(names.filter((k) => typeof file[k] === 'string' && file[k]).map((k) => [k, file[k]]));
   await chrome.storage.local.set({ settings: { ...settings, ...strings(BACKUP_KEYS) }, ...strings(fileKeys()) });
@@ -374,8 +387,9 @@ export async function leaveApp() {
 export async function pinPageView(s) {
   const { account } = await chrome.storage.local.get('account');
   const sh = await shellOf();
-  const app = appOf(account);
+  // No profile yet: no app (none is the default one).
+  const app = account?.key ? appOf(account) : null;
   return { ok: true, shell: sh, parentMode: parentMode(s), home: homeUrl(live.host),
-    settings: app.parentPage ? chrome.runtime.getURL(`${app.parentPage}#settings`) : null,
-    running: sh.on ? null : { email: account?.email ?? null, who: whoOf(account), app: shortLabel(app) } };
+    settings: app?.parentPage ? chrome.runtime.getURL(`${app.parentPage}#settings`) : null,
+    running: sh.on || !app ? null : { email: account?.email ?? null, who: whoOf(account), app: shortLabel(app) } };
 }

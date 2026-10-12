@@ -1,6 +1,9 @@
-# KidTube
+# Custom Apps (KidTube and more)
 
-A safe YouTube for a child's tablet. A browser extension shows only the videos on the child's list, with time
+The browser extension is called **Custom Apps**: a header over YouTube and Instagram with your own apps. KidTube is
+one of them, Instagram's saved posts another.
+
+**KidTube:** a safe YouTube for a child's tablet. A browser extension shows only the videos on the child's list, with time
 limits, a talking friend and questions after a video. A daily helper on a server plans the list. The parent
 steers everything from parent mode on the tablet.
 

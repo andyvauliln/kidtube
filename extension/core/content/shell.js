@@ -80,7 +80,7 @@
     unlock.type = 'button';
     unlock.addEventListener('click', () => ask({ type: 'openApps' }));
     const card = el('div', 'lockcard');
-    card.append(el('div', 'big', '🔒'), el('h1', '', 'Ask a grown-up'), el('p', '', why || 'KidTube is locked.'), unlock);
+    card.append(el('div', 'big', '🔒'), el('h1', '', 'Ask a grown-up'), el('p', '', why || 'The apps are locked.'), unlock);
     lockBox.replaceChildren(card);
     for (const v of document.querySelectorAll('video')) { v.muted = true; if (!v.paused) v.pause(); }
   }

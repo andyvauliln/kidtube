@@ -149,7 +149,7 @@ test('a key, but the browser won’t let KidTube record: its own recognition wri
   delete local.repoKeys;
 });
 
-test('the apps header: Connect on a site’s page, no Switch, Sign in or Add app; the apps row starts closed on every page and reload', async () => {
+test('the apps header: Custom Apps, Connect on a site’s page, App | site switch, no Switch, Sign in or Add app; the apps row (only the apps) starts closed on every page and reload', async () => {
   let reads = 0;
   globalThis.KidTubeAccount = { read: async () => { reads++; } };   // the site's page reads its account again first
   answers.header = () => ({
@@ -157,7 +157,7 @@ test('the apps header: Connect on a site’s page, no Switch, Sign in or Add app
     here: { site: 'youtube', label: 'YouTube', seen: true, signedIn: true, name: 'parent@example.com', checkedAt: Date.now() },
     connected: { app: 'kidtube', label: 'KidTube', who: 'parent@example.com', site: 'YouTube' },
     github: { connected: true, repo: 'me/data' },
-    sites: [{ id: 'youtube', label: 'YouTube', color: '#f03', glyph: 'youtube', here: true }, { id: 'instagram', label: 'Instagram', color: '#c13584', glyph: 'camera', here: false }],
+    switch: { app: 'kidtube', label: 'KidTube', site: 'youtube', siteLabel: 'YouTube', on: 'app' },
     apps: [{ id: 'kidtube', label: 'KidTube', has: true, active: true, color: '#c00', glyph: 'play', who: 'parent@example.com', site: 'YouTube' },
       { id: 'instagram', label: 'Instagram', has: false, active: false, color: '#d62976', glyph: 'camera', who: null, site: 'Instagram' }],
   });
@@ -173,6 +173,16 @@ test('the apps header: Connect on a site’s page, no Switch, Sign in or Add app
   assert.ok(shown.some((l) => l.includes('Connect')), 'Connect on YouTube’s page');
   for (const gone of ['Switch', 'Sign in', 'Add app']) assert.ok(!shown.some((l) => l.includes(gone)), `no ${gone}`);
   assert.ok(text(host.shadowRoot).includes('parent@example.com'), 'the connected profile');
+  assert.ok(text(host.shadowRoot).includes('Custom Apps'), 'the name of the extension, not of one app');
+  const seg = find(host.shadowRoot, (n) => n.className === 'seg');
+  assert.deepEqual((seg?.children ?? []).map((b) => [text(b).trim(), b.className]), [['App', 'on'], ['YouTube', '']], 'App | YouTube, the app on');
+  sent.length = 0;
+  seg.children[1].click();
+  await tick();
+  assert.deepEqual(sent.filter((m) => m.type === 'plainSite').map((m) => m.site), ['youtube'], 'YouTube: the plain site');
+  seg.children[0].click();
+  await tick();
+  assert.ok(!sent.some((m) => m.type === 'openApp'), 'App is on already: nothing');
 
   sent.length = 0;
   all(host.shadowRoot, (n) => n.tagName === 'BUTTON' && text(n).includes('Connect'))[0].click();
@@ -185,7 +195,8 @@ test('the apps header: Connect on a site’s page, no Switch, Sign in or Add app
   assert.equal(grid.title, 'Show the apps');
   grid.click();
   assert.ok(appsRow(host), 'the apps button opens it');
-  assert.deepEqual(all(appsRow(host), (n) => n.className === 'name').map((n) => n.textContent), ['YouTube', 'Instagram', 'KidTube'], 'the plain sites, then the apps with a profile');
+  assert.deepEqual(all(appsRow(host), (n) => n.className === 'name').map((n) => n.textContent), ['KidTube', 'Instagram'], 'only the apps (no site tiles), with a profile or not');
+  assert.ok(find(appsRow(host), (n) => n.tagName === 'BUTTON' && n.className.includes('none') && text(n).includes('Instagram')), 'Instagram without a profile: dimmed');
   assert.ok(text(host.shadowRoot).includes('Instagram: sign in on Instagram, then press Connect there.'));
   const again = new FakeEl('div');   // a reload: a new header
   globalThis.KidTubeHeader.mount(again, { dark: false });
@@ -193,10 +204,41 @@ test('the apps header: Connect on a site’s page, no Switch, Sign in or Add app
   assert.equal(appsRow(again), undefined, 'closed again after a reload');
 
   answers.header = () => ({ ok: true, open: true, mode: 'parent', running: 'kidtube', site: null, here: null,
-    connected: { app: 'kidtube', label: 'KidTube', who: 'parent@example.com', site: 'YouTube' }, github: { connected: true }, sites: [], apps: [] });
+    connected: { app: 'kidtube', label: 'KidTube', who: 'parent@example.com', site: 'YouTube' }, github: { connected: true }, apps: [] });
   const page = new FakeEl('div');   // an extension page (the parent screens): no site, so no Connect
   globalThis.KidTubeHeader.mount(page, { dark: false });
   await tick();
   assert.ok(!labels(page).some((l) => l.includes('Connect')));
   delete answers.header; delete answers.connect; delete globalThis.KidTubeAccount;
+});
+
+test('the apps header: a newer version above the version, in blue, gets it; the site side of the switch can be the page’s own view', async () => {
+  answers.header = () => ({ ok: true, open: true, mode: 'parent', running: 'instagram', site: 'instagram', here: { site: 'instagram', label: 'Instagram', seen: true, signedIn: true, name: '@me' },
+    connected: { app: 'instagram', label: 'Instagram', who: '@me', site: 'Instagram' }, github: { connected: true }, apps: [],
+    switch: { app: 'instagram', label: 'Instagram', site: 'instagram', siteLabel: 'Instagram', on: 'app' } });
+  answers.version = () => ({ ok: true, installed: '0.11.4', latest: '0.12.0', newer: true, kind: 'dev' });
+  answers.openUpdate = () => ({ ok: true, kind: 'dev', url: 'chrome://extensions/?id=x' });
+  let views = 0;
+  const host = new FakeEl('div');
+  globalThis.KidTubeHeader.mount(host, { dark: false, siteView: () => { views++; } });
+  await tick(); await tick();
+  const vers = find(host.shadowRoot, (n) => n.className === 'vers');
+  assert.deepEqual((vers?.children ?? []).map((n) => [n.className, text(n).trim()]), [['newver', '↑ 0.12.0'], ['ver', '0.11.4']], 'the new one on top of the current one');
+  sent.length = 0;
+  vers.children[0].click();
+  await tick(); await tick();
+  assert.ok(sent.some((m) => m.type === 'openUpdate'));
+  assert.ok(text(host.shadowRoot).includes('git pull'), 'a copy from git: what to do in the page that opened');
+  const seg = find(host.shadowRoot, (n) => n.className === 'seg');
+  seg.children[1].click();
+  await tick();
+  assert.equal(views, 1, 'Instagram: the same page’s own view, not a new page');
+  assert.ok(!sent.some((m) => m.type === 'plainSite'));
+
+  answers.version = () => ({ ok: true, installed: '0.12.0', latest: '0.12.0', newer: false, kind: 'quetta' });
+  const now = new FakeEl('div');   // after the update: only the current version
+  globalThis.KidTubeHeader.mount(now, { dark: false });
+  await tick(); await tick();
+  assert.deepEqual((find(now.shadowRoot, (n) => n.className === 'vers')?.children ?? []).map((n) => n.className), ['ver']);
+  delete answers.header; delete answers.version; delete answers.openUpdate;
 });

@@ -41,7 +41,7 @@
     try { const m = chrome.runtime.getManifest(); row(true, 'Extension', `${m.name} ${m.version} · id ${chrome.runtime.id} · page ${location.protocol}//${location.host}`); }
     catch (e) { row(false, 'Extension', e.message); }
     await wait(300);
-    row(!!window.kidtubeModuleOk, 'Module scripts on extension pages', window.kidtubeModuleOk ? 'run' : 'did not run: every KidTube screen needs them');
+    row(!!window.kidtubeModuleOk, 'Module scripts on extension pages', window.kidtubeModuleOk ? 'run' : 'did not run: every screen of the apps needs them');
     row(window.top === window ? null : true, 'Opened', window.top === window ? 'as its own page' : 'inside a frame on a web page');
 
     await bothWays('Background answers (runtime.sendMessage ping)', chrome.runtime.sendMessage.bind(chrome.runtime), [{ type: 'ping' }]);
@@ -79,7 +79,7 @@
   }
 
   document.getElementById('copy').addEventListener('click', async () => {
-    const text = `KidTube browser check, ${new Date().toISOString()}\n${lines.join('\n')}`;
+    const text = `Custom Apps browser check, ${new Date().toISOString()}\n${lines.join('\n')}`;
     try { await navigator.clipboard.writeText(text); document.getElementById('out').textContent = 'Copied.'; }
     catch {
       const ta = Object.assign(document.createElement('textarea'), { value: text });
@@ -107,8 +107,8 @@
     // The problems: one per check (the same problem again is its counter), with where it is (core/checks/runner.js
     // problemsOf: the server's fix agent answers in fixes.json), and its reports under it.
     const dev = await new Promise((res) => { try { chrome.management.getSelf((m) => { void chrome.runtime.lastError; res(m?.installType === 'development'); }); } catch { res(false); } });
-    const HOW = dev ? 'Run git pull in the KidTube folder, then press ⟳ Reload on KidTube in chrome://extensions.'
-      : v.target === 'orion' ? 'Download the new .zip on the install page and install it in Orion.' : 'Parent screens → Update KidTube.';
+    const HOW = dev ? 'Run git pull in the extension’s folder, then press ⟳ Reload on Custom Apps in chrome://extensions (the new version in the header opens it).'
+      : v.target === 'orion' ? 'Download the new .zip on the install page (tap the new version in the header) and install it in Orion.' : 'Tap the new version above the version in the header: it installs itself.';
     const server = v.fixesAt ? `The server’s answers were read ${new Date(v.fixesAt).toLocaleTimeString()}${v.fixesError ? ` (failed: ${v.fixesError})` : ''}.` : 'The server’s answers were not read yet.';
     document.getElementById('probHead').textContent = (v.problems ?? []).length ? `${v.problems.length} problem(s). ${server}` : 'No problems.';
     const box = document.getElementById('reports');

@@ -48,11 +48,37 @@ export async function checkUpdate() {
   return { installed: installed(), check, latest: latest?.version ?? null, installPage: newer ? INSTALL_PAGE : null, download: newer ? latest.zipUrl ?? null : null, sync: await sync() };
 }
 
-// The installed version and the newest release (the parent page's bottom bar). Quetta asks for the update itself
-// (updating: the browser's answer); Orion gets a download link.
+// The installed version and the newest one (the header, next to the logo). Which newest one depends on how this copy
+// was installed (kind): 'quetta' (latest.json; the browser installs it itself, asked here), 'orion' (orion/latest.json;
+// a .zip from the install page, by hand), 'dev' (an unpacked copy from git, desktop Chrome: the version on GitHub's
+// main; git pull, then Reload in chrome://extensions). Kept 5 minutes: every header asks.
+const VERSION_MS = 5 * 60 * 1000;
+const DEV_MANIFEST = 'https://raw.githubusercontent.com/andyvauliln/kidtube/main/extension/manifest.json';
+let versionKept = null, versionAt = 0;
+const isDev = () => new Promise((resolve) => {
+  try { chrome.management.getSelf((m) => { void chrome.runtime.lastError; resolve(m?.installType === 'development'); }); } catch { resolve(false); }
+});
+async function devLatest() {
+  try { return { version: (await (await fetch(`${DEV_MANIFEST}?t=${Date.now()}`, { cache: 'no-store' })).json()).version }; } catch { return null; }
+}
 export async function appVersion() {
-  const latest = await latestRelease();
-  const newer = !!latest && cmpVersion(latest.version, installed()) > 0;
-  return { ok: true, installed: installed(), target: TARGET, latest: latest?.version ?? null, newer,
-    updating: newer ? await autoUpdate(latest) : null, download: latest?.zipUrl ?? null, installPage: INSTALL_PAGE };
+  if (versionKept && Date.now() - versionAt < VERSION_MS && versionKept.installed === installed()) return versionKept;
+  const kind = TARGET === 'orion' ? 'orion' : (await isDev()) ? 'dev' : 'quetta';
+  const latest = kind === 'dev' ? await devLatest() : await latestRelease();
+  const newer = !!latest?.version && cmpVersion(latest.version, installed()) > 0;
+  versionKept = { ok: true, installed: installed(), target: TARGET, kind, latest: latest?.version ?? null, newer,
+    updating: newer && kind === 'quetta' ? await autoUpdate(latest) : null, download: latest?.zipUrl ?? null, installPage: INSTALL_PAGE };
+  versionAt = Date.now();
+  return versionKept;
+}
+
+// The header's new version (a tap on it). Quetta: the browser installs it now and the app restarts. Orion: the install
+// page in a new tab (its .zip; opening it also refreshes the copy of the connection, content/backup.js). An unpacked
+// copy: Chrome's page of this extension, where Reload loads it after git pull.
+export async function openUpdate() {
+  const v = await appVersion();
+  if (v.kind === 'quetta') return { ok: true, kind: v.kind, status: (await updateApp()).status };
+  const url = v.kind === 'dev' ? `chrome://extensions/?id=${chrome.runtime.id}` : v.installPage;
+  await chrome.tabs.create({ url });
+  return { ok: true, kind: v.kind, url };
 }

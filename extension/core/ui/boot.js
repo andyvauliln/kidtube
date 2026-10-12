@@ -15,7 +15,7 @@
   addEventListener('unhandledrejection', (e) => show(`Error (async): ${e.reason?.message ?? e.reason} ${e.reason?.stack?.split('\n')[0] ?? ''}`));
   setTimeout(() => {
     if (window.kidtubeParentReady) return;
-    show(`The parent screens did not start (KidTube ${chrome?.runtime?.getManifest?.().version ?? '?'}, ${navigator.userAgent}).\nPlease send a screenshot of this box.`);
+    show(`The parent screens did not start (Custom Apps ${chrome?.runtime?.getManifest?.().version ?? '?'}, ${navigator.userAgent}).\nPlease send a screenshot of this box.`);
     const W = globalThis.KidTubeWatch;
     if (W) {
       const t = new W.Expect();

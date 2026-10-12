@@ -407,11 +407,11 @@ function stateOf(g, fix, installed, now) {
   if (g.unsent) return { state: 'unsent', label: 'Found here, not sent yet', done: false };
   if (fix?.state === 'working' && fixAt && now - fixAt < 3 * 3600000) return { state: 'working', label: 'The AI is working on it now', done: false };
   if (fix?.state === 'fixed' && (fix.version ? fixedIn(fix.version) : after)) {
-    if (fix.version && cmpVersion(installed, fix.version) < 0) return { state: 'reload', label: `Fixed in ${fix.version}: update KidTube to get it`, done: false };
+    if (fix.version && cmpVersion(installed, fix.version) < 0) return { state: 'reload', label: `Fixed in ${fix.version}: update Custom Apps to get it`, done: false };
     return { state: 'fixed', label: fix.version ? `Fixed in ${fix.version}` : 'Fixed (no new version needed)', done: true };
   }
   if (fix?.state === 'not-a-bug' && (fix.version ? fixedIn(fix.version) : after)) {
-    if (fix.version && cmpVersion(installed, fix.version) < 0) return { state: 'reload', label: `The check was wrong; ${fix.version} has the right one: update KidTube`, done: false };
+    if (fix.version && cmpVersion(installed, fix.version) < 0) return { state: 'reload', label: `The check was wrong; ${fix.version} has the right one: update Custom Apps`, done: false };
     return { state: 'checked', label: 'Not a bug (the check was wrong and is fixed)', done: true };
   }
   if (after && fix?.state === 'not-reproduced') return { state: 'checked', label: 'The AI could not make it happen: nothing changed', done: true };

@@ -1,4 +1,5 @@
-// The apps a profile can use: plain data, read by the background and by the pages. Every profile has one
+// The apps of Custom Apps (this extension): plain data, read by the background and by the pages. No app is the
+// center: the core (extension/core) runs each one the same way, and the header lists them all. Every profile has one
 // (account.app); its data lives in <app>/<folder>/ of the data repo, and the helper on the server picks its
 // prompts by the same id (agent/config.json apps). An app's background part is listed in backgrounds.js.
 //   page        the app's own page: YouTube shows it instead of YouTube (kid and parent mode)
@@ -7,12 +8,12 @@
 //   modes       false: no parent and kid mode; opening the app always opens the header too (parent mode)
 //   account     the site whose signed-in account names the profile (SITES): the header's Connect on that site
 //               connects it. One profile per account and app: KidTube per YouTube email, Instagram per username.
-// None of page, parentPage, home: the app runs on YouTube itself in kid mode (KidTube).
+// None of page, home: the app runs on its site itself (KidTube on YouTube, in kid mode); its parent screens are its own page.
 export const APPS = {
   kidtube: {
     id: 'kidtube',
     label: 'KidTube (YouTube)',
-    // The apps header: the tile's color and glyph (play, square), and one line in "Add an app".
+    // The apps header: the tile's color and glyph (core/ui/header.js PATH), and one line about it.
     color: '#ff3b30', glyph: 'play', about: 'His own video list on YouTube, with time limits and a talking friend.',
     sites: ['youtube.com'],
     account: 'youtube',
@@ -35,6 +36,8 @@ export const APPS = {
     contextDocs: [],
   },
 };
+// The app of a profile saved without one: the profiles from before there were apps were all KidTube's (their keys
+// are the bare email, their data repo folders kidtube/<name>/). Not a default for anything new.
 export const DEFAULT_APP = 'kidtube';
 export const appOf = (account) => APPS[account?.app] ?? APPS[DEFAULT_APP];
 // Where the app's own screen is: its home address, or its extension page. null: YouTube itself (KidTube).
@@ -43,10 +46,10 @@ export const appHome = (app) => app.home ?? (app.page ? chrome.runtime.getURL(ap
 // The sites whose signed-in account names a profile (an app's `account`). Its page reports the account
 // (stored: YouTube's core/content/shell.js, Instagram's apps/instagram/content/app.js) and has the header's Connect.
 //   by     what names the account: 'email' (YouTube: its email, or YouTube's id without one), 'username' (@name)
-//   home   the plain site, with no app (the header's site tiles); null: the YouTube in use
+//   home   the plain site, with no app (the site side of the header's App | site switch); null: the YouTube in use
 export const SITES = {
-  youtube: { id: 'youtube', label: 'YouTube', hosts: ['youtube.com'], stored: 'ytAccount', by: 'email', home: null, color: '#ff0033', glyph: 'youtube' },
-  instagram: { id: 'instagram', label: 'Instagram', hosts: ['instagram.com'], stored: 'igAccount', by: 'username', home: 'https://www.instagram.com/', color: '#c13584', glyph: 'camera' },
+  youtube: { id: 'youtube', label: 'YouTube', hosts: ['youtube.com'], stored: 'ytAccount', by: 'email', home: null },
+  instagram: { id: 'instagram', label: 'Instagram', hosts: ['instagram.com'], stored: 'igAccount', by: 'username', home: 'https://www.instagram.com/' },
 };
 export const siteOfHost = (host) => Object.values(SITES).find((x) => x.hosts.some((d) => host === d || String(host).endsWith(`.${d}`))) ?? null;
 export const siteOfApp = (app) => SITES[app?.account] ?? SITES.youtube;

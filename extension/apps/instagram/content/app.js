@@ -1,8 +1,8 @@
 // The Instagram app's screen. The app is Instagram's own Saved page of the profile's account with two views: App
 // (this script draws the app over the page: the apps header, the tabs, the post sheet with the voice notes) and
-// Instagram (the page itself, with the Connect bar: App | Instagram and Connect). The saved posts come from what the
-// page itself receives (content/net.js in the page world, lib/reader.js finds them), else from Instagram's web API
-// (content/api.js). YouTube sends the tab to a launch address (registry.js home, ?kidtube=app), which goes on to
+// Instagram (the page itself, with the Connect bar: App | Instagram and Connect; in the app's view the header has the
+// same switch). The saved posts come from what the page itself receives (content/net.js in the page world,
+// lib/reader.js finds them), else from Instagram's web API (content/api.js). YouTube sends the tab to a launch address (registry.js home, ?kidtube=app), which goes on to
 // the Saved page. On every page it tells the background which Instagram account is signed in (the profile is that
 // account's). The background keeps everything (apps/instagram/background/); this page only reads Instagram and
 // shows. No innerHTML anywhere (the header's rule too).
@@ -101,22 +101,14 @@
   if (window.top === window) globalThis.KidTubeAccount = { read: reportMe };   // the header's Connect asks it first
 
   // --- the switch: the app's view, or Instagram's own page under it (the same page) -----------------------------------
+  // In the app's view it is the header's App | Instagram (core/ui/header.js, siteView below); on Instagram's own
+  // pages it is in the Connect bar.
   const SWITCH_CSS = `:host { all: initial; display: inline-block; }
     .seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 18px; background: #efefef; font: 600 13px system-ui, -apple-system, sans-serif; }
     a, button { display: inline-flex; align-items: center; height: 30px; padding: 0 12px; border-radius: 15px; color: #737373; text-decoration: none;
       font: inherit; border: 0; background: none; cursor: pointer; }
     .on { background: #fff; color: #262626; box-shadow: 0 1px 3px rgba(0,0,0,.15); pointer-events: none; }
     @media (prefers-color-scheme: dark) { .seg { background: #262626; } a, button { color: #a8a8a8; } .on { background: #000; color: #f5f5f5; } }`;
-  // The app's screen: App (here) | Instagram (the Saved page itself, under the app).
-  function siteSwitch() {
-    const host = h('span');
-    const root = host.attachShadow({ mode: 'closed' });
-    root.append(h('style', { text: SWITCH_CSS }), h('span', { class: 'seg', role: 'group', 'aria-label': 'App or Instagram' },
-      h('a', { class: 'on', 'aria-current': 'page', title: 'Your saved posts, notes and the list' }, 'App'),
-      h('button', { type: 'button', title: 'Instagram’s own Saved page, without the app', onclick: () => { view.set('instagram'); update(); } }, 'Instagram')));
-    return host;
-  }
-
   // --- Instagram's own pages: the Connect bar, bottom left -----------------------------------------------------------
   // App: the app for the account signed in here (its profile must exist: Connect makes it). Connect: as the header's.
   const BAR_CSS = `
@@ -503,7 +495,7 @@
         .map(([k, label]) => h('button', { class: `chip${ui.filter === k ? ' on' : ''}`, type: 'button', 'aria-pressed': String(ui.filter === k),
           text: `${label} ${counts[k]}`, onclick: () => { ui.filter = k; draw(); } })));
     const shown = ui.filter === 'all' ? list : list.filter((p) => p.status === ui.filter);
-    const top = h('div', { class: 'top' }, h('div', { class: 'bar' }, h('h1', { text: 'Saved' }), h('div', { class: 'grow' }), syncBtn, siteSwitch()),
+    const top = h('div', { class: 'top' }, h('div', { class: 'bar' }, h('h1', { text: 'Saved' }), h('div', { class: 'grow' }), syncBtn),
       h('div', { class: 'bar pick' }, sel, star), chips, statusLine());
     let body;
     if (ui.login) body = loginCard();
@@ -634,7 +626,7 @@
       h('span', { class: 'txt' }, h('b', { text: `@${p.author}` }), h('span', { text: p.error ?? (p.caption.split('\n')[0] || ' ') }),
         h('span', { text: `${p.notes.length ? `${p.notes.length} note${p.notes.length === 1 ? '' : 's'} · ` : ''}${p.status === 'handled' ? `handled ${ago(p.handledAt)}` : p.handle ? `asked ${ago(p.handle.at)}` : ''}` })),
       h('span', { class: `pill ${p.status}`, text: STATUS[p.status] })));
-    const top = h('div', { class: 'top' }, h('div', { class: 'bar' }, h('h1', { text: 'To handle' }), h('div', { class: 'grow' }), siteSwitch()),
+    const top = h('div', { class: 'top' }, h('div', { class: 'bar' }, h('h1', { text: 'To handle' }), h('div', { class: 'grow' })),
       h('div', { class: 'line' }, h('span', { text: 'The agent writes down what each video says. A note puts the post here by itself.' })), statusLine());
     if (!waiting.length && !failed.length && !done.length) return [top, h('div', { class: 'empty', text: 'The list is empty. Open a saved post and tap “Add to the list”, or record a note about it.' })];
     return [top,
@@ -841,7 +833,8 @@
 
   // The first time the app's view shows: what the background has, then Instagram.
   async function start() {
-    globalThis.KidTubeHeader?.mount(headerBox);
+    // The header's App | Instagram: Instagram is this same page without the app's layer.
+    globalThis.KidTubeHeader?.mount(headerBox, { siteView: () => { view.set('instagram'); update(); } });
     draw();
     await refresh();
     const me = ui.me = await reportMe();

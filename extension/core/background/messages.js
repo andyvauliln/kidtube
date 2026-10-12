@@ -10,7 +10,7 @@ import { applySiteRules } from './sites.js';
 import { guard } from './guard.js';
 import { youtubeAccount, siteAccount, headerView, openAiPage, openApp, connect, plainSite, connectGitHub, exportSettings, importSettings, leaveApp, pinPageView } from './profiles.js';
 import { sync, syncIfStale, settingsBackup } from './sync.js';
-import { checkUpdate, appVersion, updateApp } from './updates.js';
+import { checkUpdate, appVersion, updateApp, openUpdate } from './updates.js';
 import { partOf, allParts } from './apps.js';
 import { observe, pageResult, checksView, runStartChecks, clearReports, takeAlert, sendReports, readFixes } from '../checks/runner.js';
 
@@ -122,6 +122,7 @@ const HANDLERS = {
   checkAlert: async () => ({ ok: true, alert: (await headerOpen()) ? await takeAlert() : null }),
   version: () => appVersion(),
   updateApp: () => updateApp(),
+  openUpdate: () => openUpdate(),
 };
 
 // Messages that change the mode or the profile come only from the extension's own pages.
@@ -133,7 +134,7 @@ export async function handle(msg, sender) {
   const fn = HANDLERS[type] ?? owner?.handlers[type];
   if (!fn) return undefined;
   if ((PAGE_ONLY.has(type) || owner?.pageOnly?.has(type)) && !fromExtensionPage(sender)) {
-    return { ok: false, error: `Refused: the request did not come from a KidTube page (${sender.url ?? sender.tab?.url ?? 'no address'}).` };
+    return { ok: false, error: `Refused: the request did not come from one of the extension’s pages (${sender.url ?? sender.tab?.url ?? 'no address'}).` };
   }
   const tabId = sender.tab?.id;
   const host = sender.tab?.url ? new URL(sender.tab.url).hostname : 'm.youtube.com';

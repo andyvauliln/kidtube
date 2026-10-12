@@ -43,7 +43,7 @@ async function navigate(url) {
 test('plan changes from a YouTube page are refused', async () => {
   const refused = await send({ type: 'setMode', mode: 'parent' });
   assert.equal(refused.ok, false);
-  assert.match(refused.error, /did not come from a KidTube page/);
+  assert.match(refused.error, /did not come from one of the extension’s pages/);
   assert.equal((await send({ type: 'plan', action: 'drop', videoId: ids[0] })).ok, false);
 });
 
@@ -224,7 +224,7 @@ test('the apps header: connect GitHub, Connect the account YouTube has, open its
   await withRepo([{ app: 'kidtube', folder: 'first', email: 'first@example.com' }, { app: 'kidtube', folder: 'zed', email: 'zed@example.com' }], async () => {
     h = await send({ type: 'header' });
     assert.deepEqual(h.apps.map((a) => [a.id, a.has, a.folder, a.who]), [['kidtube', true, 'first', 'first@example.com'], ['instagram', false, null, null]], 'the repo knows its KidTube');
-    assert.deepEqual(h.sites.map((x) => [x.id, x.here]), [['youtube', true], ['instagram', false]], 'the plain sites');
+    assert.deepEqual(h.switch, { app: 'kidtube', label: 'KidTube', site: 'youtube', siteLabel: 'YouTube', on: 'site' }, 'plain YouTube: App | YouTube, YouTube on');
     assert.match((await send({ type: 'openApp', app: 'instagram' })).error, /Sign in on Instagram itself/, 'no Instagram account seen yet');
     const r = await send({ type: 'openApp', app: 'kidtube', mode: 'kid' });
     assert.equal(r.ok, true);

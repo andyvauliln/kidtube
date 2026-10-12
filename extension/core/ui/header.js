@@ -1,9 +1,12 @@
-// The apps header: KidTube's bar above YouTube (core/content/shell.js), above an app's own pages (parent screens) and
-// above Instagram's screen on instagram.com (apps/instagram/content/app.js).
-// One bar: the connected profile (its menu: GitHub, the settings file), and Connect on a site's own page (YouTube,
-// Instagram): the account signed in there becomes the profile (core/background/profiles.js connect). Signing in and
-// switching accounts happen with the site's own buttons. Below: the GitHub connection (first time), or the apps row:
-// the plain sites and each app that has a profile for its site's account. Hidden in kid mode (shell.js and the pages decide).
+// The apps header of Custom Apps (the extension: KidTube and Instagram are its apps, none is the center): the bar above
+// YouTube (core/content/shell.js), above an app's own pages (parent screens) and above Instagram's screen on
+// instagram.com (apps/instagram/content/app.js). The same for every app.
+// One bar: the logo with the version (a newer one above it, in blue: a tap gets it), the App | site switch (the app,
+// or its site without the app: YouTube, Instagram), the connected profile (its menu: GitHub, the settings file), and
+// Connect on a site's own page (YouTube, Instagram): the account signed in there becomes the profile
+// (core/background/profiles.js connect). Signing in and switching accounts happen with the site's own buttons. Below:
+// the GitHub connection (first time), or the apps row: each app (KidTube, Instagram), dimmed while its site's account
+// has no profile in it. Hidden in kid mode (shell.js and the pages decide).
 // A plain script, not a module, so the YouTube content script can use it too: it sets globalThis.KidTubeHeader.
 // No innerHTML anywhere: YouTube's Trusted Types policy refuses it.
 (() => {
@@ -32,7 +35,13 @@
     svg { display: block; flex: none; }
     .bar { height: 56px; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 16px; }
     .brand { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 18px; letter-spacing: -.4px; user-select: none; -webkit-user-select: none; }
-    .ver { font-size: 11px; font-weight: 500; letter-spacing: 0; color: var(--muted); align-self: flex-end; margin-bottom: 1px; }
+    .vers { display: flex; flex-direction: column; justify-content: center; gap: 1px; white-space: nowrap; font-size: 11px; font-weight: 500; letter-spacing: 0; line-height: 1.15; }
+    .ver { color: var(--muted); }
+    .newver { color: var(--blue); font-weight: 700; font-size: 11px; text-decoration: underline; text-underline-offset: 2px; text-align: left; }
+    .seg { display: inline-flex; padding: 3px; gap: 2px; border-radius: 18px; background: var(--soft); flex: none; }
+    .seg button { height: 30px; padding: 0 12px; border-radius: 15px; color: var(--muted); font-weight: 500; white-space: nowrap; }
+    .seg button:not(.on):hover { color: var(--ink); }
+    .seg .on { background: var(--bg); color: var(--ink); box-shadow: 0 1px 3px rgba(0,0,0,.15); cursor: default; }
     .grow { flex: 1 1 auto; min-width: 0; }
     .muted { color: var(--muted); }
     .btn { height: 36px; padding: 0 16px; border-radius: 18px; background: var(--soft); font-weight: 500; white-space: nowrap;
@@ -87,7 +96,7 @@
     .item > span:first-of-type { white-space: nowrap; }
     .item .sub { margin-left: auto; color: var(--muted); font-size: 12px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sep { height: 1px; background: var(--line); margin: 8px 0; }
-    .app.plain .icon { box-shadow: 0 0 0 2px var(--bg), 0 0 0 2px transparent; opacity: .9; }
+    .app.none .icon { opacity: .45; }
     .here { font-size: 12px; color: var(--muted); padding: 0 16px 8px; margin-top: -4px; }
     .ai { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 8px 16px; }
     .ai > * { display: inline-block; max-width: 100%; height: 28px; line-height: 28px; padding: 0 12px; border-radius: 14px; text-align: left;
@@ -95,7 +104,10 @@
     .ai > button:hover { background: var(--hover); }
     .ai .warn { background: var(--soft); color: var(--bad); }
     @media (max-width: 600px) {
-      .who .email { display: none; }
+      .who .email, .brand .name, .who > svg, .bar > .btn.primary span { display: none; }
+      .bar { gap: 6px; padding: 0 8px 0 12px; }
+      .bar > .btn.primary { padding: 0 10px; }
+      .seg button { padding: 0 10px; }
       .card { grid-template-columns: 1fr; }
       .side { flex-direction: row; flex-wrap: wrap; min-width: 0; }
       .side .btn { flex: 1 1 auto; }
@@ -132,22 +144,17 @@
     upload: 'M5 20h14v-2H5v2zm4-4h6v-6h4l-7-7-7 7h4v6z',
     caret: 'M7 10l5 5 5-5z',
     grid: 'M4 4h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 10h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 16h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4z',
-    youtube: 'M21.6 7.2a2.5 2.5 0 0 0-1.8-1.8C18.2 5 12 5 12 5s-6.2 0-7.8.4a2.5 2.5 0 0 0-1.8 1.8C2 8.8 2 12 2 12s0 3.2.4 4.8a2.5 2.5 0 0 0 1.8 1.8C5.8 19 12 19 12 19s6.2 0 7.8-.4a2.5 2.5 0 0 0 1.8-1.8c.4-1.6.4-4.8.4-4.8s0-3.2-.4-4.8zM10 15V9l5.2 3z',
   };
+  // The logo: four tiles, one per app and more to come.
   function logo() {
     const s = document.createElementNS(NS, 'svg');
-    s.setAttribute('viewBox', '0 0 30 21'); s.setAttribute('width', '30'); s.setAttribute('height', '21'); s.setAttribute('aria-hidden', 'true');
-    const r = document.createElementNS(NS, 'rect');
-    for (const [k, v] of Object.entries({ width: 30, height: 21, rx: 6, fill: '#ff3b30' })) r.setAttribute(k, v);
-    const p = document.createElementNS(NS, 'path');
-    p.setAttribute('d', 'M12 6.2v8.6c0 .5.6.8 1 .5l6.9-4.3c.4-.3.4-.8 0-1.1L13 5.7c-.4-.3-1 0-1 .5z');
-    p.setAttribute('fill', '#fff');
-    s.append(r, p);
-    const b = el('div', 'brand');
-    // The version on every page: which build this browser runs (an unpacked copy from git too).
-    const v = el('span', 'ver', chrome.runtime.getManifest?.().version ?? '');
-    b.append(s, el('span', '', 'KidTube'), v);
-    return b;
+    s.setAttribute('viewBox', '0 0 22 22'); s.setAttribute('width', '24'); s.setAttribute('height', '24'); s.setAttribute('aria-hidden', 'true');
+    for (const [x, y, fill] of [[0, 0, '#ff3b30'], [12, 0, '#d62976'], [0, 12, '#065fd4'], [12, 12, '#1e8e3e']]) {
+      const r = document.createElementNS(NS, 'rect');
+      for (const [k, v] of Object.entries({ x, y, width: 10, height: 10, rx: 3, fill })) r.setAttribute(k, v);
+      s.append(r);
+    }
+    return s;
   }
   function avatar(email, big = false) {
     let h = 0;
@@ -174,15 +181,30 @@
   // The settings file (Save / Load): the GitHub connection and the PIN (background/profiles.js exportSettings).
   function saveFile(root, file) {
     const blob = new Blob([JSON.stringify(file, null, 2)], { type: 'application/json' });
-    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'kidtube-settings.json' });
+    const a = Object.assign(document.createElement('a'), { href: URL.createObjectURL(blob), download: 'custom-apps-settings.json' });
     root.append(a); a.click(); a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 10000);
   }
 
+  // The new version's tap (core/background/updates.js openUpdate): what happens next, by how this copy was installed.
+  const UPDATING = {
+    update_available: 'Installing the new version… Custom Apps restarts in a moment.',
+    throttled: 'The browser asks to wait: it installs the new version within a few minutes.',
+    no_update: 'The browser does not see the new version yet: try again in a minute.',
+    error: 'The browser could not check for the new version: try again in a minute.',
+  };
+  const NEWER = {
+    quetta: (v) => `Version ${v} is ready: tap to install it now`,
+    orion: (v) => `Version ${v} is ready: tap to download it from the install page`,
+    dev: (v) => `Version ${v} is on GitHub: tap, then git pull and Reload`,
+  };
+
   // --- the header -------------------------------------------------------------------------------------------
-  // host: an element to draw into (its shadow root). dark: YouTube's own theme (shell.js); on KidTube's pages, the system's.
+  // host: an element to draw into (its shadow root). dark: YouTube's own theme (shell.js); on the extension's pages, the system's.
+  // siteView: the switch's site button on a page that is both (Instagram's Saved page: the app's view and Instagram's
+  // own); without it, the site button opens the plain site (no app runs).
   // Returns { refresh(force), setDark(on), destroy() }.
-  function mount(host, { dark = !!globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches } = {}) {
+  function mount(host, { dark = !!globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches, siteView = null } = {}) {
     const root = host.shadowRoot ?? host.attachShadow({ mode: 'closed' });
     host.classList.toggle('dark', dark);
     // The account menu drops down over the page below, its sticky toolbar too (the parent tabs):
@@ -196,7 +218,7 @@
     const W = globalThis.KidTubeWatch;   // the checks (core/ui/watch.js)
     W?.watchTaps(root, 'header');
 
-    let data = null, alive = true, busy = '', loading = false, again = null;
+    let data = null, alive = true, busy = '', loading = false, again = null, ver = null;
     const ui = { menu: false, github: false, repo: null, token: '', note: '', noteKind: '', apps: false };
     // The round apps button shows or hides the apps row. It starts closed on every page and every reload.
     const say = (text, kind = '') => { ui.note = text; ui.noteKind = kind; draw(); };
@@ -214,8 +236,9 @@
           W?.check({ id: 'header.loads', area: 'header', expect: 'The apps header gets what to show from the background',
             code: ['core/ui/header.js refresh', 'core/background/profiles.js headerView'] }, (t) => { t.ok('answer to "header"', !!h?.ok, h ?? 'no answer in 15 s', '{ ok: true, … }'); });
         }
+        readVersion();
         if (!alive || !h?.ok) return;
-        data = { github: {}, sites: [], apps: [], ...h };
+        data = { github: {}, apps: [], ...h };
         // Typing in the GitHub form: don't redraw under the cursor.
         if (!root.activeElement || root.activeElement.tagName !== 'INPUT') draw();
       } finally {
@@ -238,6 +261,58 @@
       if (r?.ok && r.url && !r.navigated) location.href = r.url;
     });
 
+    // The version next to the logo, and a newer one above it: read with the header's refreshes, at most every
+    // 10 minutes (the background keeps its answer 5 minutes).
+    let verAt = 0;
+    async function readVersion() {
+      if (Date.now() - verAt < 10 * 60000) return;
+      verAt = Date.now();
+      const v = await ask({ type: 'version' });
+      if (!alive || !v?.ok) return;
+      const changed = !ver || ver.installed !== v.installed || ver.latest !== v.latest || ver.newer !== v.newer;
+      ver = v;
+      if (changed) draw();
+    }
+    async function getUpdate() {
+      const r = await act('Updating…', { type: 'openUpdate' });
+      if (!r?.ok) return;
+      if (r.kind === 'quetta') say(UPDATING[r.status] ?? UPDATING.error, r.status === 'update_available' ? 'ok' : '');
+      else if (r.kind === 'dev') say('Run git pull in the extension’s folder, then press ⟳ Reload on Custom Apps in the tab that opened.', 'ok');
+      else say('Download the new .zip on the install page that opened, then install it in Orion the same way as the first time.', 'ok');
+    }
+    function brand() {
+      const b = el('div', 'brand');
+      const vers = el('span', 'vers');
+      if (ver?.newer) {
+        const n = button('newver', `↑ ${ver.latest}`, getUpdate);
+        n.title = NEWER[ver.kind]?.(ver.latest) ?? `Version ${ver.latest} is ready`;
+        n.disabled = !!busy;
+        vers.append(n);
+      }
+      // The version on every page: which build this browser runs (an unpacked copy from git too).
+      vers.append(el('span', 'ver', ver?.installed ?? chrome.runtime.getManifest?.().version ?? ''));
+      b.append(logo(), el('span', 'name', 'Custom Apps'), vers);
+      return b;
+    }
+
+    // The App | site switch, the same for every app (core/background/profiles.js switchOf).
+    function siteSwitch(sw) {
+      const seg = el('div', 'seg');
+      seg.setAttribute('role', 'group');
+      seg.setAttribute('aria-label', `App or ${sw.siteLabel}`);
+      const toSite = () => (siteView ? siteView() : plainSite(sw.site));
+      for (const [side, label, title, go] of [
+        ['app', 'App', sw.on === 'app' ? `${sw.label}: you are here` : `Open ${sw.label}`, () => openApp(sw.app)],
+        ['site', sw.siteLabel, `${sw.siteLabel} itself, without the app`, toSite]]) {
+        const b = button(sw.on === side ? 'on' : '', label, () => { if (sw.on !== side) go(); });
+        b.title = title;
+        b.setAttribute('aria-pressed', String(sw.on === side));
+        b.disabled = !!busy && sw.on !== side;
+        seg.append(b);
+      }
+      return seg;
+    }
+
     // Connect: the site's page reads its account again (shell.js on YouTube, apps/instagram/content/app.js on
     // Instagram), then that account's profile runs: loaded, or made new. The same profile: only the message.
     async function connectHere() {
@@ -250,7 +325,7 @@
       if (r.url && !r.navigated) location.href = r.url;
     }
 
-    // The site tiles: the plain site, no app running (YouTube with this header above it, Instagram with its Connect bar).
+    // The switch's site side: the plain site, no app running (YouTube with this header above it, Instagram with its Connect bar).
     const plainSite = (site) => act('Opening…', { type: 'plainSite', site }).then((r) => { if (r?.ok && r.url && !r.navigated) location.href = r.url; });
 
     async function connect() {
@@ -269,14 +344,14 @@
       const r = await ask({ type: 'exportSettings' });
       if (!r?.ok) return say(r?.error ?? 'Could not make the file.', 'err');
       saveFile(root, r.file);
-      say('Saved as kidtube-settings.json (Downloads / Files). It holds your GitHub token: keep it on this device.', 'ok');
+      say('Saved as custom-apps-settings.json (Downloads / Files). It holds your GitHub token: keep it on this device.', 'ok');
     }
     picker.addEventListener('change', async () => {
       const f = picker.files?.[0];
       picker.value = '';
       if (!f) return;
       let file;
-      try { file = JSON.parse(await f.text()); } catch { return say('That file is not a KidTube settings file.', 'err'); }
+      try { file = JSON.parse(await f.text()); } catch { return say('That file is not a Custom Apps settings file.', 'err'); }
       const r = await act('Loading…', { type: 'importSettings', file });
       if (r?.ok) { ui.github = false; say(`Settings loaded ✓ The token, the repo and the PIN are the ones from the file.${r.errors?.length ? '' : ' The data is loaded from GitHub.'}`, 'ok'); refresh(true); }
     });
@@ -393,7 +468,7 @@
       const h = data;
       const kids = [];
       const bar = el('div', 'bar');
-      bar.append(logo(), el('div', 'grow'));
+      bar.append(brand(), el('div', 'grow'));
       kids.push(bar);
       if (!h) {
         bar.append(el('span', 'muted', 'Loading…'));
@@ -419,6 +494,7 @@
         grid.title = ui.apps ? 'Hide the apps' : 'Show the apps';
         grid.setAttribute('aria-label', grid.title);
         grid.setAttribute('aria-pressed', String(ui.apps));
+        if (h.switch) bar.append(siteSwitch(h.switch));
         if (h.github.connected) bar.append(grid);
         bar.append(who);
         // Connect only on a site's own page (an extension page has no signed-in account to take).
@@ -433,21 +509,12 @@
         else if (ui.apps) {
           const row = el('div', 'apps');
           const tiles = el('div', 'tiles');
-          // First the plain sites, with no app (ringed: the one this page is on, while no app runs).
-          for (const x of h.sites) {
-            const t = el('button', `app plain${!h.running && x.here ? ' on' : ''}`);
+          // Each app (ringed: the one that runs; dimmed: no profile yet for the account its site has signed in).
+          for (const a of h.apps) {
+            const t = el('button', `app${a.active ? ' on' : ''}${a.has ? '' : ' none'}`);
             t.type = 'button';
-            t.title = `${x.label} without any app`;
-            t.append(appIcon(x), el('span', 'name', x.label));
-            t.disabled = !!busy;
-            t.addEventListener('click', () => plainSite(x.id));
-            tiles.append(t);
-          }
-          // Then each app with a profile for the account its site has signed in.
-          for (const a of h.apps.filter((x) => x.has)) {
-            const t = el('button', `app${a.active ? ' on' : ''}`);
-            t.type = 'button';
-            t.title = a.active ? `${a.label}: its home` : `Open ${a.label} for ${a.who}`;
+            t.title = a.active ? `${a.label}: its home` : a.has ? `Open ${a.label} for ${a.who}`
+              : a.who ? `${a.label}: no profile for ${a.who} yet. Press Connect on ${a.site}.` : `${a.label}: sign in on ${a.site}, then press Connect there.`;
             t.append(appIcon(a), el('span', 'name', a.label));
             t.disabled = !!busy;
             t.addEventListener('click', () => openApp(a.id));

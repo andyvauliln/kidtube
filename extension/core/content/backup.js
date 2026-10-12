@@ -10,7 +10,7 @@
   if (r?.backup) try { localStorage.setItem(KEY, JSON.stringify(r.backup)); } catch {}
   if (r?.restored) {
     const b = document.createElement('div');
-    b.textContent = '✓ KidTube: your GitHub connection and parent PIN are back. You can close this page.';
+    b.textContent = '✓ Custom Apps: your GitHub connection and parent PIN are back. You can close this page.';
     b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99;padding:12px 16px;background:#2e7d32;color:#fff;font:600 16px system-ui;text-align:center';
     document.documentElement.append(b);
   }

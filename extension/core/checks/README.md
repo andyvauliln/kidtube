@@ -89,7 +89,7 @@ A **problem** is one check on this browser: its reports on several versions toge
 | `waiting` | ⏳ Sent: the AI starts in a few minutes | The server has it; no run on it yet. |
 | `late` | ⚠ Sent, no answer from the server yet | 30 minutes and no answer (the server's daily limit, or it is off). |
 | `working` | 🔧 The AI is working on it now | A run on it started (at most 3 hours ago). |
-| `reload` | ⟳ Fixed in X: update KidTube to get it | The fix is in a newer version than this one. |
+| `reload` | ⟳ Fixed in X: update Custom Apps to get it | The fix is in a newer version than this one. |
 | `fixed` | ✓ Fixed in X | This version has the fix. |
 | `checked` | ✓ The AI could not make it happen / Not a bug | Nothing to do. |
 | `needs-you` | ✋ The AI needs you | The AI's message says what to do. |

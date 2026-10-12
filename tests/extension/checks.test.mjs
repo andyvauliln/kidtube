@@ -272,7 +272,7 @@ test('the problems: one per check with its counter, and where each is from the s
   assert.deepEqual(st, { a: 'fixed', b: 'reload', c: 'working', d: 'unsent', e: 'waiting', f: 'needs-you', g: 'waiting', h: 'retry' });
   const a = ps.find((p) => p.check === 'a');
   assert.deepEqual([a.count, a.versions, a.done, a.label, a.fix.message], [3, ['0.10.4', '0.11.1'], true, 'Fixed in 0.11.2', 'Fixed it.'], 'two versions, one problem, counted');
-  assert.match(ps.find((p) => p.check === 'b').label, /Fixed in 0\.11\.4: update KidTube/);
+  assert.match(ps.find((p) => p.check === 'b').label, /Fixed in 0\.11\.4: update Custom Apps/);
   assert.match(ps.find((p) => p.check === 'g').label, /back after the fix in 0\.11\.3/, 'it failed again on the fixed version');
   assert.deepEqual(ps.slice(0, 3).map((p) => p.state), ['working', 'needs-you', 'reload'], 'what needs a look first');
   assert.equal(problemsOf([rep('e', '0.11.3', 1)], [], '0.11.3', Date.parse(at(40)))[0].state, 'late', 'no answer in 30 minutes');

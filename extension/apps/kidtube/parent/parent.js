@@ -20,41 +20,26 @@ const dayLabel = (date) => {
   return diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
 };
 
-// --- the bar at the bottom: the version and Update (left), Parent | Kid (middle), the 🎤 (right) ----------------
-// Update does everything at once: it sends the notes, asks the helper for new data (the AI run), and gets a newer
-// app when there is one. Quetta: the browser downloads it and KidTube restarts. Orion: the install page opens,
-// where the new .zip is installed by hand.
-const UPDATING = {
-  update_available: 'Installing the new version… KidTube restarts in a moment',
-  throttled: 'The browser asks to wait: it installs the new version within a few minutes',
-  no_update: 'The browser does not see the new version yet: try again in a minute',
-  error: 'The browser could not check for the new version: try again in a minute',
-};
-let runTimer = null, versionAt = 0, version = null;
+// --- the bar at the bottom: Update and the problems (left), Parent | Kid (middle), the 🎤 (right) ----------------
+// Update sends the notes and asks the helper for new data (the AI run). The app's own new version is in the header,
+// above the version next to the logo (core/ui/header.js).
+let runTimer = null;
 async function showDock(fresh = false) {
   if (fresh) await ask({ type: 'sync' });
-  if (!version || Date.now() - versionAt > 60_000) { version = await ask({ type: 'version' }); versionAt = Date.now(); }
   const r = await ask({ type: 'runStatus' });
-  const v = version?.ok ? version : null;
-  const ver = $('ver');
-  ver.textContent = v ? `v${v.installed}` : '';
   showProblems();
-  ver.title = v?.latest ? `Newest: ${v.latest}` : 'Could not check for a newer version';
   if (!r?.ok) return;
   const working = r.state === 'queued' || r.state === 'running';
-  const newer = v?.newer ? v.latest : null;
-  const label = working ? (r.state === 'queued' ? 'Waiting for the server…' : 'AI is working…')
-    : `↻ Update${r.held ? ` (${r.held})` : ''}${newer ? ` · app ${newer}` : ''}`;
+  const label = working ? (r.state === 'queued' ? 'Waiting for the server…' : 'AI is working…') : `↻ Update${r.held ? ` (${r.held})` : ''}`;
   const b = btn(label, async () => {
     b.disabled = true;
     const ok = await runNow();
-    if (newer) await updateApp(v);
-    if (!ok && !newer) b.disabled = false;
-  }, `small${newer ? ' primary' : ''}`);
+    if (!ok) b.disabled = false;
+  }, 'small');
   b.disabled = working;
   b.classList.toggle('working', working);
   b.title = [r.held ? `Sends your ${r.held} note${r.held === 1 ? '' : 's'} to the AI` : 'Asks the AI for new data with what he watched',
-    newer ? `and installs version ${newer}` : '', r.message ? `\nLast run: ${r.message}` : ''].filter(Boolean).join(' ');
+    r.message ? `\nLast run: ${r.message}` : ''].filter(Boolean).join(' ');
   $('run').replaceChildren(b);
   clearTimeout(runTimer);
   if (working) runTimer = setTimeout(async () => {
@@ -85,17 +70,6 @@ chrome.storage.onChanged.addListener((ch) => {
   clearTimeout(problemsTimer);
   problemsTimer = setTimeout(showProblems, 2000);
 });
-
-async function updateApp(v) {
-  if (v.target === 'orion') {
-    // The install page, not the .zip itself: opening it refreshes the copy of your connection (content/backup.js).
-    if (v.installPage || v.download) window.open(v.installPage || v.download, '_blank');
-    toast('Download the new .zip on the install page, then install it in Orion the same way as the first time.');
-    return;
-  }
-  const u = await ask({ type: 'updateApp' });
-  toast(UPDATING[u?.status] ?? UPDATING.error);
-}
 
 hooks.afterUndo = () => refresh();
 hooks.afterRun = () => showDock();
@@ -159,17 +133,16 @@ function render() {
 }
 addEventListener('hashchange', render);
 
-// The bottom bar as the parent asked (2026-10-09): left the version and ↻ Update, middle Parent | Kid, right the 🎤,
-// fixed to the bottom, and no time of the last update.
+// The bottom bar as the parent asked (2026-10-09): left ↻ Update, middle Parent | Kid, right the 🎤, fixed to the
+// bottom, and no time of the last update. The version moved to the header (2026-10-12).
 function checkDock() {
-  W?.check({ id: 'parent.dock', area: 'parent', expect: 'The bottom bar: the version and ↻ Update on the left, Parent | Kid in the middle, 🎤 on the right, no update time',
+  W?.check({ id: 'parent.dock', area: 'parent', expect: 'The bottom bar: ↻ Update on the left, Parent | Kid in the middle, 🎤 on the right, no update time',
     code: ['apps/kidtube/parent/parent.html footer.dock', 'apps/kidtube/parent/parent.js showDock'] }, (t) => {
     const dock = document.querySelector('footer.dock');
     if (!t.has('footer.dock', dock)) return;
     const box = dock.getBoundingClientRect();
     t.eq('the bar is fixed', 'fixed', getComputedStyle(dock).position);
     t.ok('the bar sits at the bottom', Math.abs(box.bottom - innerHeight) < 2, Math.round(box.bottom), `${innerHeight}`);
-    t.ok('the version', /^v\d+\.\d+\.\d+/.test($('ver').textContent), $('ver').textContent, 'v<version>');
     t.ok('↻ Update', /Update|working|Waiting/.test($('run').textContent), $('run').textContent, 'the Update button');
     t.ok('Parent | Kid', $('mode').childElementCount > 0, 'empty', 'the switch');
     t.ok('🎤', $('mic').childElementCount > 0, 'empty', 'the notes button');
