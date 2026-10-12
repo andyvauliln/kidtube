@@ -2,6 +2,14 @@
 
 Newest first. Each version is built from `extension/` with `build/build-orion.mjs` (see [ORION.md](https://github.com/andyvauliln/kidtube/blob/main/docs/ORION.md)).
 
+## 0.10.5 (2026-10-12)
+
+- **KidTube checks itself.** After a start, after each tap that asks the background, and on its screens, it checks that the right thing happened. A problem goes to the data repo, shows for 15 seconds where the parent is (never in kid mode) and appears in the bottom bar of the parent page. The server's AI looks at it and fixes it.
+- **Ads are hidden and skipped** (on by default). Ad boxes are hidden; a video ad is muted, then skipped.
+- **Pikachu can be the moving friend.** It comes from the private data repo and is offered in Settings → Moving avatar.
+- **Plain YouTube works without an error.** Opening the YouTube tile no longer causes an error in his list screen in the background.
+- The parent-mode timer and the recent list in Settings are gone.
+
 ## 0.10.3 (2026-10-09)
 
 - **The apps row starts closed.** Each time a page opens or reloads, the apps row in the header is hidden. Tap the round apps button to show it.
