@@ -224,6 +224,55 @@ test('the reports go to GitHub: problems/<day>.json at the top of the data repo,
   } finally { globalThis.fetch = realFetch; }
 });
 
+test('the problems: one per check with its counter, and where each is from the server’s fixes.json', async () => {
+  const { problemsOf } = await import('../../extension/core/checks/runner.js');
+  const at = (min) => new Date(Date.parse('2026-10-12T12:00:00Z') + min * 60000).toISOString();
+  const rep = (check, v, n, sent = at(1)) => ({ reportId: `${check}-${v}`, check, fingerprint: `${check}|${v}|quetta`, expect: `${check} works`, saw: 'no', count: n,
+    firstAt: at(0), lastAt: at(0), sentAt: sent });
+  const now = Date.parse(at(10));
+  const ps = problemsOf([rep('a', '0.10.4', 2), rep('a', '0.11.1', 1), rep('b', '0.10.4', 1), rep('c', '0.11.1', 1), rep('d', '0.11.3', 1, null),
+    rep('e', '0.11.3', 1), rep('f', '0.11.1', 1), rep('g', '0.11.3', 1), rep('h', '0.11.1', 1)], [
+    { key: 'a|quetta', state: 'fixed', version: '0.11.2', message: 'Fixed it.', at: at(5) },
+    { key: 'b|quetta', state: 'fixed', version: '0.11.4', message: 'Fixed it.', at: at(5) },
+    { key: 'c|quetta', state: 'working', at: at(5) },
+    { key: 'f|quetta', state: 'needs-you', message: 'Sign in again.', at: at(5) },
+    { key: 'g|quetta', state: 'fixed', version: '0.11.3', at: at(5) },
+    { key: 'h|quetta', state: 'no-answer', at: at(5) },
+  ], '0.11.3', now);
+  const st = Object.fromEntries(ps.map((p) => [p.check, p.state]));
+  assert.deepEqual(st, { a: 'fixed', b: 'reload', c: 'working', d: 'unsent', e: 'waiting', f: 'needs-you', g: 'waiting', h: 'retry' });
+  const a = ps.find((p) => p.check === 'a');
+  assert.deepEqual([a.count, a.versions, a.done, a.label, a.fix.message], [3, ['0.10.4', '0.11.1'], true, 'Fixed in 0.11.2', 'Fixed it.'], 'two versions, one problem, counted');
+  assert.match(ps.find((p) => p.check === 'b').label, /Fixed in 0\.11\.4: update KidTube/);
+  assert.match(ps.find((p) => p.check === 'g').label, /back after the fix in 0\.11\.3/, 'it failed again on the fixed version');
+  assert.deepEqual(ps.slice(0, 3).map((p) => p.state), ['working', 'needs-you', 'reload'], 'what needs a look first');
+  assert.equal(problemsOf([rep('e', '0.11.3', 1)], [], '0.11.3', Date.parse(at(40)))[0].state, 'late', 'no answer in 30 minutes');
+
+  // The tablet reads fixes.json (only when a report was sent), and the header shows each problem once.
+  const realFetch = globalThis.fetch;
+  let reads = 0;
+  globalThis.fetch = async (url, init = {}) => {
+    if (!String(url).endsWith('/contents/fixes.json')) return realFetch(url, init);
+    reads++;
+    const v = (await view()).reports.find((r) => r.check === 'parent.loads');
+    const json = { schemaVersion: 1, fixes: [{ key: 'parent.loads|quetta', state: 'working', message: '', at: new Date().toISOString() }] };
+    assert.ok(v?.sentAt);
+    return { ok: true, status: 200, json: async () => ({ sha: 'x', content: Buffer.from(JSON.stringify(json)).toString('base64') }) };
+  };
+  try {
+    assert.deepEqual(await fromPage({ type: 'readFixes' }), { ok: true, error: null });
+    const p = (await view()).problems.find((x) => x.check === 'parent.loads');
+    assert.deepEqual([p.state, p.count], ['working', 3]);
+    const ai = (await fromPage({ type: 'header' })).ai;
+    assert.ok(ai.problems.some((x) => x.check === 'parent.loads' && x.state === 'working' && x.label === 'The AI is working on it now'));
+    const n = reads;
+    await view();
+    await wait(20);
+    assert.equal(reads, n, 'not again within 2 minutes');
+    assert.match((await fromPage({ type: 'openAiPage', page: 'checks' })).url, /check\.html#problems$/);
+  } finally { globalThis.fetch = realFetch; }
+});
+
 test('the banner: a new report is shown once where the parent is, never in kid mode', async () => {
   await fromPage({ type: 'setMode', mode: 'kid' });
   await fromPage({ type: 'checkResult', result: { id: 'kid.list', status: 'fail', expect: 'His list comes from the background', mismatch: [{ what: 'answer to "state"', expected: 'his list', actual: 'no answer in 8 s' }] } });

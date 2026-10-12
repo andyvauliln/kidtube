@@ -56,7 +56,7 @@ When you changed `extension/`, release it exactly as `agent/NOTES.md` says under
 
 - **Secrets stay out:** the GitHub token, API keys and `~/kidtube-key.pem` never go into a commit, a log or your result.
 - **Git:** never force-push or rewrite history. Commit messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
-- **Data repo:** read only. Do not edit `problems/`; `agent/poll.sh` writes `fixes.json` from your result.
+- **Data repo:** read only. Do not edit `problems/`; `agent/poll.sh` writes `fixes.json` from your result (and "working" while you run, "no-answer" when you give none). The tablet shows each problem's state from it.
 - If something fails and you cannot fix it, push nothing broken. Say what happened in the message of that problem.
 
 ## When you are done

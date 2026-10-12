@@ -226,15 +226,19 @@ export async function headerView(force, host) {
 // the checks' reports (core/checks/runner.js), which go to the server's fix agent.
 async function aiNow(cur) {
   const app = cur ? await withState((s) => partOf(cur).aiView?.(s) ?? null) : null;
-  const { reports } = await checksView();
-  return { ...(app ?? {}), problems: reports.length, problemsSent: reports.every((r) => r.sentAt) };
+  const { problems } = await checksView();
+  // Each problem that waits for something, and the ones fixed or checked in the last 30 minutes.
+  const recent = (p) => p.fix?.at && Date.now() - Date.parse(p.fix.at) < 30 * 60000;
+  const shown = problems.filter((p) => !p.done || recent(p))
+    .map(({ key, check, expect, count, versions, state, label, done, fix }) => ({ key, check, expect, count, versions, state, label, done, message: fix?.message ?? '' }));
+  return { ...(app ?? {}), problems: shown };
 }
 
 // The header's AI line: the page where the parent acts on it (the app's parent screens, or Check this browser).
 export async function openAiPage(msg, tabId) {
   const g = await chrome.storage.local.get(['shell', 'account', 'settings']);
   if (!(await headerOpen(g))) return { ok: false, error: 'Unlock with the PIN first.' };
-  const page = msg.page === 'checks' ? 'core/pages/check.html' : appOf(g.account).parentPage;
+  const page = msg.page === 'checks' ? 'core/pages/check.html#problems' : appOf(g.account).parentPage;
   if (!page) return { ok: false, error: 'This app has no page for that.' };
   const url = chrome.runtime.getURL(page);
   if (tabId != null) await chrome.tabs.update(tabId, { url }); else await chrome.tabs.create({ url });

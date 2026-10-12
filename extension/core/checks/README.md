@@ -73,5 +73,27 @@ If the problem is still there in the new version, that is a new report (the serv
    No GitHub token: it waits on the tablet. The server reads these files (`docs/plans/FAST-FIX.md`, F4).
 2. **A banner for 15 seconds** (`core/ui/watch.js`), on the first page where the parent is: parent mode, or the
    unlocked apps header. Never in kid mode: he does not see it, the parent sees it the next time.
-3. **The parent page's bottom bar**: "⚠ N problems · sent, waiting for a fix" (or "not sent yet"); a tap opens
-   **Check this browser** with every report, **Send the reports now**, **Copy** and **Clear**.
+3. **The header's AI line** (`core/ui/header.js`, every page where the parent is) and **the parent page's bottom
+   bar**: each problem once, with its counter and its state; a tap opens **Check this browser → Problems** with each
+   problem, the AI's message, its reports, **Ask the server now**, **Send the reports now**, **Copy** and **Clear**.
+
+## A problem's state
+
+A **problem** is one check on this browser: its reports on several versions together, their counts added
+(`runner.js problemsOf`). Its state comes from `fixes.json` at the top of the data repo, which the server writes
+(`agent/problems.mjs`, `agent/poll.sh`). The tablet reads it every 2 minutes while a sent report is there.
+
+| State | Shown | What it means |
+|---|---|---|
+| `unsent` | ⚠ Found here, not sent yet | No GitHub token, or no network yet. |
+| `waiting` | ⏳ Sent: the AI starts in a few minutes | The server has it; no run on it yet. |
+| `late` | ⚠ Sent, no answer from the server yet | 30 minutes and no answer (the server's daily limit, or it is off). |
+| `working` | 🔧 The AI is working on it now | A run on it started (at most 3 hours ago). |
+| `reload` | ⟳ Fixed in X: update KidTube to get it | The fix is in a newer version than this one. |
+| `fixed` | ✓ Fixed in X | This version has the fix. |
+| `checked` | ✓ The AI could not make it happen / Not a bug | Nothing to do. |
+| `needs-you` | ✋ The AI needs you | The AI's message says what to do. |
+| `retry` | ⚠ The AI stopped before it answered | Tried again after 2 hours, at most 3 times. |
+| `gave-up` | ⚠ The AI stopped 3 times | Tried again when a new version reports it. |
+
+A report on the fixed version (or a newer one) is the problem back: `waiting` again, "back after the fix in X".

@@ -95,6 +95,7 @@
   const ask = (msg, ms = 20000) => within(new Promise((resolve) => chrome.runtime.sendMessage(msg, (v) => { void chrome.runtime.lastError; resolve(v); })), ms);
   const mk = (tag, text, cls) => { const n = document.createElement(tag); if (text != null) n.textContent = String(text); if (cls) n.className = cls; return n; };
   const ICON = { pass: '✅', fail: '❌', warn: '⚠️', skip: '➖', cleared: '◻️' };
+  const PICON = { unsent: '⚠️', waiting: '⏳', late: '⚠️', working: '🔧', reload: '⟳', fixed: '✅', checked: '✅', 'needs-you': '✋', retry: '⚠️', 'gave-up': '⚠️' };
   let reports = [];
   async function showChecks() {
     let v;
@@ -103,17 +104,33 @@
     reports = v.reports ?? [];
     const s = v.start;
     document.getElementById('chkStart').textContent = s ? `Start checks (${s.reason}, ${new Date(s.at).toLocaleString()}, version ${s.version}): ${s.pass} passed, ${s.fail} failed, ${s.skip} skipped.` : 'The start checks have not run yet.';
+    // The problems: one per check (the same problem again is its counter), with where it is (core/checks/runner.js
+    // problemsOf: the server's fix agent answers in fixes.json), and its reports under it.
+    const dev = await new Promise((res) => { try { chrome.management.getSelf((m) => { void chrome.runtime.lastError; res(m?.installType === 'development'); }); } catch { res(false); } });
+    const HOW = dev ? 'Run git pull in the KidTube folder, then press ⟳ Reload on KidTube in chrome://extensions.'
+      : v.target === 'orion' ? 'Download the new .zip on the install page and install it in Orion.' : 'Parent screens → Update KidTube.';
+    const server = v.fixesAt ? `The server’s answers were read ${new Date(v.fixesAt).toLocaleTimeString()}${v.fixesError ? ` (failed: ${v.fixesError})` : ''}.` : 'The server’s answers were not read yet.';
+    document.getElementById('probHead').textContent = (v.problems ?? []).length ? `${v.problems.length} problem(s). ${server}` : 'No problems.';
     const box = document.getElementById('reports');
-    box.replaceChildren(...[...reports].reverse().map((r) => {
-      const d = mk('div', null, 'report');
-      d.append(mk('h3', `❌ ${r.check}${r.count > 1 ? ` (×${r.count})` : ''}`), mk('div', `${r.expect}`, 'muted'), mk('div', `Last: ${new Date(r.lastAt).toLocaleString()} · ${r.context?.profile?.mode ?? '?'} mode · ${r.context?.page?.url ?? 'background'} · ${r.sentAt ? `sent to the server ${new Date(r.sentAt).toLocaleTimeString()}` : 'not sent yet'}`, 'muted'));
-      const t = mk('table');
-      for (const m of r.mismatch ?? []) {
-        const tr = mk('tr');
-        tr.append(mk('td', m.what), mk('td', `expected ${typeof m.expected === 'string' ? m.expected : JSON.stringify(m.expected)} · saw ${typeof m.actual === 'string' ? m.actual : JSON.stringify(m.actual)}`));
-        t.append(tr);
+    box.replaceChildren(...(v.problems ?? []).map((p) => {
+      const d = mk('div', null, `report ${p.done ? 'done' : p.state}`);
+      d.append(mk('h3', `${PICON[p.state] ?? '⚠'} ${p.check}${p.count > 1 ? ` (×${p.count})` : ''}`), mk('div', p.label, 'state'), mk('div', p.expect, 'muted'));
+      if (p.saw) d.append(mk('div', `Saw: ${p.saw}`, 'muted'));
+      if (p.fix?.message) d.append(mk('div', `AI: ${p.fix.message}`, 'ai'));
+      if (p.state === 'reload') d.append(mk('div', HOW, 'ai'));
+      d.append(mk('div', `Versions: ${p.versions.join(', ')} · first ${new Date(p.firstAt).toLocaleString()} · last ${new Date(p.lastAt).toLocaleString()} · ${p.sentAt ? `sent ${new Date(p.sentAt).toLocaleString()}` : 'not sent yet'}`, 'muted'));
+      const det = mk('details');
+      det.append(mk('summary', `The report${p.reportIds.length > 1 ? `s (${p.reportIds.length})` : ''}`));
+      for (const r of reports.filter((x) => p.reportIds.includes(x.reportId))) {
+        const t = mk('table');
+        for (const m of r.mismatch ?? []) {
+          const tr = mk('tr');
+          tr.append(mk('td', m.what), mk('td', `expected ${typeof m.expected === 'string' ? m.expected : JSON.stringify(m.expected)} · saw ${typeof m.actual === 'string' ? m.actual : JSON.stringify(m.actual)}`));
+          t.append(tr);
+        }
+        det.append(mk('div', `${r.fingerprint} · ×${r.count} · ${r.context?.profile?.mode ?? '?'} mode · ${r.context?.page?.url ?? 'background'}`, 'muted'), t, mk('pre', JSON.stringify(r, null, 2)));
       }
-      d.append(t, mk('pre', JSON.stringify(r, null, 2)));
+      d.append(det);
       return d;
     }));
     const rowsBox = document.getElementById('checkRows');
@@ -139,6 +156,15 @@
     const out = document.getElementById('chkOut');
     out.textContent = 'Sending…';
     try { const r = await ask({ type: 'sendChecks' }, 30000); out.textContent = r?.ok ? `Sent ${r.sent} report(s).` : (r?.error ?? 'No answer.'); } catch (e) { out.textContent = e.message; }
+    showChecks();
+  });
+  // A new report, a report sent, the server's answers: shown again (at most once every 2 s).
+  let showTimer = null;
+  chrome.storage.onChanged.addListener((ch) => { if (ch.checks) { clearTimeout(showTimer); showTimer = setTimeout(showChecks, 2000); } });
+  document.getElementById('askServer').addEventListener('click', async () => {
+    const out = document.getElementById('chkOut');
+    out.textContent = 'Reading the server’s answers…';
+    try { const r = await ask({ type: 'readFixes' }, 30000); out.textContent = r?.ok ? (r.error ? `Failed: ${r.error}` : 'Read.') : (r?.error ?? 'No answer.'); } catch (e) { out.textContent = e.message; }
     showChecks();
   });
   document.getElementById('clearReports').addEventListener('click', async () => { await ask({ type: 'clearChecks' }, 6000).catch(() => {}); showChecks(); });

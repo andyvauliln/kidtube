@@ -265,7 +265,7 @@
   // What the page knows: the background's view (igState) and what is shown.
   const ui = {
     tab: 'saved', collection: null, filter: 'all', open: null,
-    data: null, reading: '', readError: '', collectionsError: '', login: false, me: null, notHere: false, other: null, connectNote: '', connectErr: false,
+    data: null, reading: '', readError: '', collectionsNote: '', collectionsWhy: '', login: false, me: null, notHere: false, other: null, connectNote: '', connectErr: false,
     loadedCollections: new Set(), results: {}, rec: null, writing: false, notice: '', noticeErr: false, expanded: false,
   };
   let root, main, tabsBar, sheet, headerBox;
@@ -306,7 +306,11 @@
     if (m.type !== 'answer' || !m.found) return;
     // found: what the page world's reader found in one answer (lib/reader.js classify).
     const found = m.found;
-    if (found.collections) net.collections = found.collections;
+    if (found.collections) {
+      net.collections = found.collections;
+      // Instagram's own page showed the collections (its Saved page): kept now, not only at the next read.
+      if (!m.tag && ui.data) ask({ type: 'igCollections', list: found.collections }).then(() => { ui.collectionsNote = ''; return refresh(); }).catch(() => {});
+    }
     if (m.tag) return net.waits.get(m.tag)?.(m);
     if (found.saved && !net.first) net.first = { id: m.meta.id, media: found.saved.map(API().slim), next: found.next };
   });
@@ -360,7 +364,7 @@
     if (reading) return;
     reading = true;
     ui.readError = '';
-    ui.collectionsError = '';
+    ui.collectionsNote = '';
     ui.login = false;
     const fresh = reads++ > 0;
     try {
@@ -370,7 +374,14 @@
       try {
         const list = net.collections ?? (apiAllowed() ? await API().collections() : null);
         if (list) await ask({ type: 'igCollections', list });
-      } catch (e) { if (e instanceof API().LoginNeeded) throw e; ui.collectionsError = `Collections: ${String(e.message ?? e)}`; }
+      } catch (e) {
+        if (e instanceof API().LoginNeeded) throw e;
+        // Not an error of the read: the saved posts come without them. Instagram's answer is in the note's title.
+        if (!ui.data?.collections?.length) {
+          ui.collectionsNote = 'Collections: not found yet (the saved posts do not need them). To see them here, open Instagram → your Saved page once.';
+          ui.collectionsWhy = String(e.message ?? e);
+        }
+      }
       await refresh();
       ui.reading = 'Reading your saved posts…';
       draw();
@@ -507,12 +518,13 @@
     if (ui.reading) bits.push(h('span', { text: ui.reading }));
     else bits.push(h('span', { text: `Read from Instagram ${ago(d.loadedAt)}${d.complete ? '' : ' · not all read yet'}` }));
     if (ui.readError && !ui.login) bits.push(h('span', { class: 'err', text: ui.readError }));
-    if (ui.collectionsError) bits.push(h('span', { class: 'err', text: ui.collectionsError }));
+    if (ui.collectionsNote) bits.push(h('span', { text: ui.collectionsNote, title: `Instagram: ${ui.collectionsWhy}` }));
     if (!d.github) bits.push(h('span', { class: 'err', text: 'GitHub is not connected: the notes stay on this device (header → account menu).' }));
     else if (d.unsent) bits.push(h('span', { text: 'Changes wait to go to GitHub…' }));
     for (const e of d.sync?.errors ?? []) bits.push(h('span', { class: 'err', text: e }));
-    bits.push(h('button', { class: 'linkbtn', type: 'button', title: 'Send what Instagram’s page asked and received, and its outline (no texts, no names), to the fix agent',
-      onclick: async () => toast((await sendToAi('The parent sent it from the app.')) ?? 'Could not send it.') }, 'Send to AI'));
+    // Only for something wrong that the app did not see itself (a failed read sends it by itself).
+    bits.push(h('button', { class: 'linkbtn', type: 'button', title: 'Something looks wrong? Send what Instagram’s page asked and received, and its outline (no texts, no names), to the fix agent. A failed read sends it by itself.',
+      onclick: async () => toast((await sendToAi('The parent sent it from the app.')) ?? 'Could not send it.') }, 'Report a problem to the AI'));
     return h('div', { class: 'line' }, bits);
   }
 
@@ -581,7 +593,7 @@
       page: { path: clean(location.pathname), tab: ui.tab }, quiet: !auto,
     } });
     if (!r?.ok) return null;
-    return r.again ? 'Already sent for this version: the AI has it.' : 'Sent to the AI. A fix comes as a new version.';
+    return r.again ? 'Already sent for this version: the AI has it. Its state is under the header (ig.parentSent).' : 'Sent to the AI. Its state is under the header (ig.parentSent).';
   }
 
   function tile(p) {

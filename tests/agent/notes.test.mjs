@@ -194,6 +194,8 @@ test('poll.sh: a problem the tablets reported wakes the fix agent once; its answ
   assert.match(calls[0].prompt, /"count": 2/, 'two reports of one check: one problem');
   const fixes = w.fixes();
   assert.deepEqual(fixes.map((f) => [f.key, f.state, f.version]), [['action.kidHome|orion', 'fixed', '0.10.5']]);
+  const log = sh('git log --format=%s -3', w.p('tablet'));
+  assert.match(log, /helper: fixes \(1 problem\(s\)\)\nhelper: working on 1 problem\(s\)/, 'the tablets saw "working" while it ran');
   assert.equal(fixes[0].message, 'Kid waits for Orion to move the tab.');
   w.poll();
   assert.equal(w.calls().length, 1, 'nothing new: no second run');
@@ -247,6 +249,7 @@ test('poll.sh: a problem the fix agent gave no answer for (a usage limit) is tri
   assert.equal(runs(), 1);
   assert.equal(handled().reports['r-7'], undefined, 'no answer: not handled');
   assert.equal(handled().tries['start.kept|orion'], 1);
+  assert.deepEqual(w.fixes().map((f) => [f.state, f.message]), [['no-answer', 'The AI stopped before it answered. It tries again after 2 hours (try 2 of 3).']], 'the tablet sees it');
   anyPush(1);
   w.poll();
   assert.equal(runs(), 1, 'not again within 2 hours');
@@ -259,6 +262,7 @@ test('poll.sh: a problem the fix agent gave no answer for (a usage limit) is tri
   assert.equal(runs(), 3);
   assert.equal(handled().reports['r-7'], 1, 'the third time with no answer: given up');
   assert.equal(handled().tries['start.kept|orion'], undefined);
+  assert.equal(w.fixes()[0].state, 'gave-up');
   twoHoursLater(); anyPush(4);
   w.poll();
   assert.equal(runs(), 3);

@@ -9,6 +9,7 @@ import { TARGET } from '../lib/target.js';
 import { Expect, redact, safeUrl, fingerprint, clip } from './kit.js';
 import { getRepoFile, putRepoFile } from '../lib/github.js';
 import { DEFAULT_REPO } from '../background/constants.js';
+import { cmpVersion } from '../lib/version.js';
 
 // --- what is registered ---------------------------------------------------------------------------------------
 const START = [];        // { id, area, expect, code, net, run(t, ctx) }
@@ -339,13 +340,100 @@ export async function pageResult(msg, sender) {
   return { ok: true, status: out.status, again: (out.report?.count ?? 1) > 1 };
 }
 
-// --- what the pages show: the results and the reports ----------------------------------------------------------
+// --- the fix agent's answers: fixes.json at the data repo's top (agent/problems.mjs writes it) ----------------------
+// { fixes: [{ key: "<check>|<target>", state, version, message, at, tries }] }. state: working (the AI works on it
+// now), fixed, not-a-bug, not-reproduced, needs-you, no-answer (the AI stopped; it tries again), gave-up.
+// Read when a report was sent, at most every 2 minutes; kept in the book (b.fixes = { at, list, error }).
+const FIXES_EVERY = 2 * 60000;
+let fixesRun = null;
+export function readFixes({ force = false } = {}) {
+  fixesRun ??= (async () => {
+    const b = await load();
+    if (!force && (!b.reports.some((r) => r.sentAt) || (b.fixes?.at && Date.now() - Date.parse(b.fixes.at) < FIXES_EVERY))) return b.fixes;
+    const { settings = {} } = await chrome.storage.local.get('settings');
+    if (!settings.token) return b.fixes;
+    const at = new Date().toISOString();
+    try {
+      const cur = await getRepoFile({ repo: settings.repo || DEFAULT_REPO, base: '' }, settings.token, 'fixes.json');
+      b.fixes = { at, list: Array.isArray(cur?.json?.fixes) ? cur.json.fixes : [], error: null };
+    } catch (e) {
+      b.fixes = { at, list: b.fixes?.list ?? [], error: String(e.message ?? e).slice(0, 200) };
+    }
+    save();
+    return b.fixes;
+  })().finally(() => { fixesRun = null; });
+  return fixesRun;
+}
+
+// The reports as problems: one per check (its reports on several versions together, their counts added), each with
+// where it is. state:
+//   unsent     found here, not sent yet            waiting   sent, the AI did not start yet
+//   late       sent 30+ minutes ago, no answer     working   the AI works on it now
+//   reload     fixed in a newer version than this one: update (or reload) KidTube
+//   fixed      fixed in this version (or without a new version)
+//   checked    the AI could not make it happen, or found it was not a bug: nothing to do
+//   needs-you  the AI left it for the parent (its message says what to do)
+//   retry      the AI stopped before it answered; it tries again      gave-up   it stopped 3 times
+// done: nothing waits (fixed, checked). A report on the fixed version or newer is the problem back: waiting again.
+export function problemsOf(reports, fixes, installed, now = Date.now()) {
+  const groups = new Map();
+  for (const r of reports) {
+    const key = `${r.check}|${TARGET}`;
+    const g = groups.get(key) ?? { key, check: r.check, area: r.area, expect: r.expect, saw: r.saw, count: 0, versions: [], firstAt: r.firstAt,
+      lastAt: r.lastAt, sentAt: null, unsent: 0, reportIds: [] };
+    const v = r.fingerprint?.split('|')[1] ?? r.context?.app?.version ?? null;
+    g.count += r.count ?? 1;
+    if (v && !g.versions.includes(v)) g.versions.push(v);
+    if (r.firstAt < g.firstAt) g.firstAt = r.firstAt;
+    if (r.lastAt >= g.lastAt) { g.lastAt = r.lastAt; g.saw = r.saw; g.expect = r.expect; }
+    if (!r.sentAt) g.unsent++;
+    else if (!g.sentAt || r.sentAt > g.sentAt) g.sentAt = r.sentAt;
+    g.reportIds.push(r.reportId);
+    groups.set(key, g);
+  }
+  const out = [...groups.values()].map((g) => {
+    g.versions.sort(cmpVersion);
+    const fix = (fixes ?? []).find((f) => f?.key === g.key) ?? null;
+    return { ...g, fix: fix && { state: fix.state, version: fix.version ?? null, message: fix.message ?? '', at: fix.at ?? null }, ...stateOf(g, fix, installed, now) };
+  });
+  const order = ['working', 'needs-you', 'reload', 'unsent', 'late', 'retry', 'gave-up', 'waiting', 'fixed', 'checked'];
+  return out.sort((a, x) => (order.indexOf(a.state) - order.indexOf(x.state)) || x.lastAt.localeCompare(a.lastAt));
+}
+function stateOf(g, fix, installed, now) {
+  const newest = g.versions.at(-1) ?? null;
+  const fixAt = fix?.at ? Date.parse(fix.at) : 0;
+  const after = fixAt > Date.parse(g.lastAt);                                  // the answer is newer than the last report
+  const fixedIn = (v) => !v || !newest || cmpVersion(newest, v) < 0;           // the reports are older than version v
+  if (g.unsent) return { state: 'unsent', label: 'Found here, not sent yet', done: false };
+  if (fix?.state === 'working' && fixAt && now - fixAt < 3 * 3600000) return { state: 'working', label: 'The AI is working on it now', done: false };
+  if (fix?.state === 'fixed' && (fix.version ? fixedIn(fix.version) : after)) {
+    if (fix.version && cmpVersion(installed, fix.version) < 0) return { state: 'reload', label: `Fixed in ${fix.version}: update KidTube to get it`, done: false };
+    return { state: 'fixed', label: fix.version ? `Fixed in ${fix.version}` : 'Fixed (no new version needed)', done: true };
+  }
+  if (fix?.state === 'not-a-bug' && (fix.version ? fixedIn(fix.version) : after)) {
+    if (fix.version && cmpVersion(installed, fix.version) < 0) return { state: 'reload', label: `The check was wrong; ${fix.version} has the right one: update KidTube`, done: false };
+    return { state: 'checked', label: 'Not a bug (the check was wrong and is fixed)', done: true };
+  }
+  if (after && fix?.state === 'not-reproduced') return { state: 'checked', label: 'The AI could not make it happen: nothing changed', done: true };
+  if (after && fix?.state === 'needs-you') return { state: 'needs-you', label: 'The AI needs you', done: false };
+  if (after && fix?.state === 'no-answer') return { state: 'retry', label: 'The AI stopped before it answered: it tries again later', done: false };
+  if (after && fix?.state === 'gave-up') return { state: 'gave-up', label: 'The AI stopped 3 times: it waits for a new report', done: false };
+  const back = ['fixed', 'not-a-bug'].includes(fix?.state) && fix.version ? ` (back after the fix in ${fix.version})` : '';
+  if (now - Date.parse(g.sentAt) > 30 * 60000) return { state: 'late', label: `Sent, no answer from the server yet${back}`, done: false };
+  return { state: 'waiting', label: `Sent: the AI starts in a few minutes${back}`, done: false };
+}
+
+// --- what the pages show: the results, the reports and the problems ----------------------------------------------
 export async function checksView({ seen = false } = {}) {
   const b = await load();
+  readFixes().catch(() => {});      // in the background: its answer changes "checks", and the pages ask again
   const results = Object.values(b.results).sort((a, x) => (rank(a.status) - rank(x.status)) || a.id.localeCompare(x.id));
   const unseen = b.reports.filter((r) => !b.seen || r.lastAt > b.seen).length;
   if (seen) { b.seen = new Date().toISOString(); save(); }
-  return { ok: true, version: chrome.runtime.getManifest().version, target: TARGET, start: b.start, results, reports: b.reports, unseen };
+  const version = chrome.runtime.getManifest().version;
+  const problems = problemsOf(b.reports, b.fixes?.list, version);
+  return { ok: true, version, target: TARGET, start: b.start, results, reports: b.reports, problems,
+    fixesAt: b.fixes?.at ?? null, fixesError: b.fixes?.error ?? null, unseen };
 }
 const rank = (s) => ({ fail: 0, warn: 1, skip: 2, pass: 3 }[s] ?? 4);
 

@@ -48,6 +48,12 @@ prepare_app() {
 # --- the fix lane: problems the tablets' checks reported (problems/<day>.json) → the fix agent (agent/FIX.md) ----
 # Before the parents' notes: a broken app first. agent/problems.mjs finds new ones (no AI) and writes fixes.json
 # from the agent's result; the tablets read it. fixAgent in config.json: enabled, perDay, model, effort.
+# fixes.json to the data repo. $1: the commit message.
+push_fixes() {
+  git -C "$CLONE" add fixes.json
+  git -C "$CLONE" -c user.name="KidTube helper" commit --quiet -m "$1" || return 1
+  for i in 1 2 3; do git -C "$CLONE" push --quiet origin HEAD && return 0; git -C "$CLONE" pull --quiet --rebase origin HEAD; done
+}
 fix_lane() {
   [ "$(cfg "c.fixAgent?.enabled===false?'off':'on'")" = on ] || return 0
   local problems count ran max log result
@@ -61,6 +67,8 @@ fix_lane() {
   echo "$(date -u +%F) $count" >> "$SROOT/fix-runs.log"
   printf '%s\n' "$problems" > "$SROOT/problems-in.json"
   echo "=== $(date -u +%FT%TZ) fix agent: $count problem(s)" >> "$log"
+  # The tablets see "the AI is working on it" while it runs.
+  node agent/problems.mjs working "$SROOT/problems-in.json" --data "$CLONE" >> "$log" && push_fixes "helper: working on $count problem(s)"
   prepare_app "$log"
   result="$SROOT/fix-result.json"
   rm -f "$result"
@@ -88,10 +96,8 @@ $problems
   # 2 hours, at most 3 times; never every minute.
   node agent/problems.mjs mark "$SROOT/problems-in.json" --state "$SROOT" --result "$result" >> "$log"
   [ -f "$result" ] || printf '{"fixes":[]}' > "$result"
-  node agent/problems.mjs record "$result" --data "$CLONE" >> "$log"
-  git -C "$CLONE" add fixes.json
-  git -C "$CLONE" -c user.name="KidTube helper" commit --quiet -m "helper: fixes ($count problem(s))" || return 0
-  for i in 1 2 3; do git -C "$CLONE" push --quiet origin HEAD && break; git -C "$CLONE" pull --quiet --rebase origin HEAD; done
+  node agent/problems.mjs record "$result" --data "$CLONE" --asked "$SROOT/problems-in.json" --state "$SROOT" >> "$log"
+  push_fixes "helper: fixes ($count problem(s))" || return 0
   if [ -z "$(git -C "$ROOT" status --porcelain)" ]; then git -C "$ROOT" pull --quiet --ff-only origin main >> "$log" 2>&1; fi
 }
 fix_lane

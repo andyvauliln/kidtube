@@ -350,6 +350,7 @@
     // What waits for the AI (only where the parent is; core/background/profiles.js aiNow): the notes the parent
     // added that are not sent yet, the server's run on them, posts in an app's list, and the checks' reports.
     // A tap opens the page to act on (the app's parent screens with ↻ Update, or Check this browser).
+    const PROBLEM_ICON = { unsent: '⚠', waiting: '⏳', late: '⚠', working: '🔧', reload: '⟳', fixed: '✓', checked: '✓', 'needs-you': '✋', retry: '⚠', 'gave-up': '⚠' };
     function aiLine(a) {
       if (!a) return null;
       const n = (k, one, many = `${one}s`) => `${k} ${k === 1 ? one : many}`;
@@ -361,7 +362,14 @@
       else if (recent && a.run === 'done') items.push({ text: `✓ AI: ${a.message}`, title: a.message, page: a.page });
       else if (recent && a.run === 'failed') items.push({ text: `⚠ AI: ${a.message}`, title: a.message, page: a.page, warn: true });
       if (a.queued) items.push({ text: `🤖 ${n(a.queued, 'post')} in the list ${a.queued === 1 ? 'waits' : 'wait'} for the AI` });
-      if (a.problems) items.push({ text: `⚠ ${n(a.problems, 'problem')} ${a.problemsSent ? 'sent: waiting for a fix' : 'found, not sent yet'}`, page: 'checks', warn: true });
+      // The checks' problems, one each (the same problem again is its counter): what it is and where it is.
+      const probs = a.problems ?? [];
+      for (const p of probs.slice(0, 4)) {
+        const what = p.check + (p.count > 1 ? ` ×${p.count}` : '');
+        items.push({ text: `${PROBLEM_ICON[p.state] ?? '⚠'} ${what}: ${p.label}`, page: 'checks', warn: !p.done && p.state !== 'working' && p.state !== 'waiting',
+          title: `${p.check}${p.count > 1 ? ` (${p.count} times)` : ''} on ${p.versions.join(', ')}\n${p.expect}\n${p.label}${p.message ? `\nAI: ${p.message}` : ''}` });
+      }
+      if (probs.length > 4) items.push({ text: `+ ${probs.length - 4} more`, page: 'checks' });
       if (!items.length) return null;
       const line = el('div', 'ai');
       line.setAttribute('role', 'status');

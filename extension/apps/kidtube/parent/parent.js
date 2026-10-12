@@ -66,16 +66,16 @@ async function showDock(fresh = false) {
     if (now?.state === 'late' && before !== 'late') toast(now.message);
   }, 30000);
 }
-// The checks' reports (core/checks/): how many, and whether the server has them. A tap opens the details.
+// The checks' problems (core/checks/): the ones that wait for something, each with where it is (sent, the AI works on
+// it, fixed in a newer version). A tap opens the details.
 async function showProblems() {
   const c = await ask({ type: 'checks' });
-  const list = c?.reports ?? [];
+  const open = (c?.problems ?? []).filter((p) => !p.done);
   const box = $('probs');
-  if (!list.length) return box.replaceChildren();
-  const sent = list.every((r) => r.sentAt);
-  const b = btn(`⚠ ${list.length} problem${list.length === 1 ? '' : 's'} · ${sent ? 'sent, waiting for a fix' : 'not sent yet'}`,
-    () => { window.open(chrome.runtime.getURL('core/pages/check.html'), '_blank'); }, 'small');
-  b.title = list.map((r) => `${r.expect}: ${r.saw}`).join('\n').slice(0, 600);
+  if (!open.length) return box.replaceChildren();
+  const b = btn(open.length === 1 ? `⚠ ${open[0].check}: ${open[0].label}` : `⚠ ${open.length} problems: ${[...new Set(open.map((p) => p.label))].slice(0, 2).join(' · ')}`,
+    () => { window.open(chrome.runtime.getURL('core/pages/check.html#problems'), '_blank'); }, 'small');
+  b.title = open.map((p) => `${p.check}${p.count > 1 ? ` ×${p.count}` : ''}: ${p.label}`).join('\n').slice(0, 600);
   box.replaceChildren(b);
 }
 // A new report, or one sent: at most once every 2 s (the results are written often).

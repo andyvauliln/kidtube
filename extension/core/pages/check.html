@@ -17,6 +17,10 @@
   .report table { margin: 6px 0; font-size: 13px; } .report td:first-child { width: 30%; }
   .report pre { white-space: pre-wrap; word-break: break-word; font-size: 12px; background: #f4f4f4; padding: 8px; border-radius: 8px; max-height: 18em; overflow: auto; }
   .muted { color: #666; font-size: 13px; }
+  .report .state { font-weight: 600; margin: 2px 0; } .report .ai { font-size: 14px; margin: 4px 0; padding: 6px 8px; background: #fff; border-radius: 8px; }
+  .report.done { border-color: #b4d8b4; background: #f5fbf5; } .report.working, .report.waiting { border-color: #b4c8e3; background: #f5f8fd; }
+  .report.reload, .report.needs-you { border-color: #e3cf9a; background: #fffbef; }
+  .report details { margin-top: 6px; } .report summary { cursor: pointer; font-size: 13px; color: #555; }
 </style>
 <h1>KidTube: check this browser</h1>
 <p>Tests what KidTube needs in this browser. Wait until it says "Done", then press <b>Copy the result</b> and send it.</p>
@@ -26,8 +30,11 @@
 <h2>KidTube’s checks</h2>
 <p class="muted">What KidTube checks by itself after a start and after each action. A failure becomes a report with what was expected, what happened, and the steps before it.</p>
 <p id="chkStart" class="muted"></p>
-<button id="runChecks">Run the start checks</button> <button id="sendReports">Send the reports now</button> <button id="copyReports">Copy the problem reports</button> <button id="clearReports">Clear the reports</button> <span id="chkOut"></span>
-<div id="reports"></div>
 <table id="checkRows"></table>
+<h2 id="problems">Problems</h2>
+<p class="muted">Each problem once (the same problem again counts up), with where it is: sent, the AI is working, fixed, or fixed in a newer version (update KidTube). The server’s fix agent answers in a few minutes.</p>
+<p id="probHead" class="muted"></p>
+<button id="runChecks">Run the start checks</button> <button id="askServer">Ask the server now</button> <button id="sendReports">Send the reports now</button> <button id="copyReports">Copy the problem reports</button> <button id="clearReports">Clear the reports</button> <span id="chkOut"></span>
+<div id="reports"></div>
 <script src="check-module.js" type="module"></script>
 <script src="check.js"></script>

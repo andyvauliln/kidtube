@@ -12,7 +12,7 @@ import { youtubeAccount, siteAccount, headerView, openAiPage, openApp, connect, 
 import { sync, syncIfStale, settingsBackup } from './sync.js';
 import { checkUpdate, appVersion, updateApp } from './updates.js';
 import { partOf, allParts } from './apps.js';
-import { observe, pageResult, checksView, runStartChecks, clearReports, takeAlert, sendReports } from '../checks/runner.js';
+import { observe, pageResult, checksView, runStartChecks, clearReports, takeAlert, sendReports, readFixes } from '../checks/runner.js';
 
 const pinPage = (purpose) => chrome.runtime.getURL(`${PIN_PAGE}?for=${purpose}`);
 
@@ -117,6 +117,7 @@ const HANDLERS = {
   runChecks: () => runStartChecks('asked'),
   clearChecks: () => clearReports(),
   sendChecks: () => sendReports(),
+  readFixes: () => readFixes({ force: true }).then((f) => ({ ok: true, error: f?.error ?? null })),
   // The 15-second banner of a new report (core/ui/watch.js): only where the parent is (not in kid mode, not at a locked header).
   checkAlert: async () => ({ ok: true, alert: (await headerOpen()) ? await takeAlert() : null }),
   version: () => appVersion(),
@@ -124,7 +125,7 @@ const HANDLERS = {
 };
 
 // Messages that change the mode or the profile come only from the extension's own pages.
-const PAGE_ONLY = new Set(['leaveApp', 'apps', 'setMode', 'kidHome', 'checks', 'runChecks', 'clearChecks', 'sendChecks']);
+const PAGE_ONLY = new Set(['leaveApp', 'apps', 'setMode', 'kidHome', 'checks', 'runChecks', 'clearChecks', 'sendChecks', 'readFixes']);
 
 export async function handle(msg, sender) {
   const type = msg?.type;
