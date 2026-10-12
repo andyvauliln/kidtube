@@ -78,16 +78,19 @@ export const CORE_START = [
     },
   },
   {
-    id: 'start.kept', area: 'core', expect: 'An update keeps the GitHub connection, the PIN and the profile',
-    code: ['core/background/main.js onInstalled', 'core/background/constants.js DEVICE_SETTINGS'],
+    id: 'start.kept', area: 'core', expect: 'An update keeps the GitHub connection, the PIN and the profile (unless it is one that cannot stay: an Instagram profile named by an email, an app that is gone)',
+    code: ['core/background/main.js onInstalled', 'core/background/constants.js DEVICE_SETTINGS', 'core/background/profiles.js migrateProfileKeys'],
     async run(t, { reason, previous }) {
       if (reason !== 'update' || !previous?.had) return t.skip('not an update');
-      const g = await chrome.storage.local.get(['settings', 'account']);
+      const g = await chrome.storage.local.get(['settings', 'account', 'profileDropped']);
       t.note('from', previous.version);
       if (previous.had.token) t.ok('GitHub token', !!g.settings?.token, 'missing', 'still saved');
       if (previous.had.pin) t.ok('PIN', !!g.settings?.pinHash, 'missing', 'still set');
       if (previous.had.repo) t.eq('data repo', previous.had.repo, g.settings?.repo || null);
-      if (previous.had.profile) t.ok('profile', !!g.account?.key, 'missing', 'still there');
+      // migrateProfileKeys drops a profile that cannot stay on purpose, after the last run saw it.
+      const dropped = g.profileDropped && g.profileDropped.at >= previous.at ? g.profileDropped : null;
+      if (dropped) t.note('profile dropped on purpose', dropped);
+      if (previous.had.profile && !dropped) t.ok('profile', !!g.account?.key, 'missing', 'still there');
     },
   },
   {

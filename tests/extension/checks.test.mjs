@@ -87,6 +87,35 @@ test('an update that lost the token is a failure of start.kept', async () => {
   assert.match(kept.saw, /GitHub token: expected still saved, saw missing/);
 });
 
+// The report start.kept|quetta from 0.11.0 → 0.11.1: the running profile was an Instagram profile of 0.11.0, named by
+// the YouTube email. 0.11.1 drops those on purpose (profiles.js unkept); the check must know that drop, and still
+// fail when a profile that could stay is gone.
+test('an update that drops a profile that cannot stay is no failure of start.kept; a lost profile still is', async () => {
+  const keep = { account: fake.store.account, accounts: fake.store.accounts, settings: fake.store.settings, shell: fake.store.shell };
+  const { runStartChecks } = await import('../../extension/core/checks/runner.js');
+  const { migrateProfileKeys } = await import('../../extension/core/background/profiles.js');
+  const { serial } = await import('../../extension/core/background/store.js');
+  const old = { email: EMAIL, app: 'instagram', folder: 'kid' };
+  fake.store.account = { key: `instagram:${EMAIL}`, ...old };
+  fake.store.accounts = { ...keep.accounts, [`instagram:${EMAIL}`]: old };
+  await runStartChecks('startup');                 // what 0.11.0 had: a profile
+  await serial(migrateProfileKeys);                // the update's start() drops it
+  assert.equal(fake.store.account, undefined);
+  let r = await runStartChecks('update');
+  let kept = r.results.find((x) => x.id === 'start.kept');
+  assert.equal(kept.status, 'pass', kept.saw);
+  assert.equal(fake.store.settings.token, keep.settings.token);
+  // A KidTube profile lost by an update is still a failure.
+  Object.assign(fake.store, keep);
+  await runStartChecks('startup');
+  delete fake.store.account;
+  r = await runStartChecks('update');
+  kept = r.results.find((x) => x.id === 'start.kept');
+  assert.equal(kept.status, 'fail');
+  assert.match(kept.saw, /profile: expected still there/);
+  Object.assign(fake.store, keep);
+});
+
 test('a message that does what it should passes its check; the steps record it', async () => {
   assert.equal((await fromPage({ type: 'setMode', mode: 'kid' })).ok, true);
   await wait(50);

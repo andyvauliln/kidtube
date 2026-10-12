@@ -56,6 +56,8 @@ export async function migrateProfileKeys() {
     const { settings = {} } = await chrome.storage.local.get('settings');
     set.settings = Object.fromEntries(DEVICE_SETTINGS.filter((k) => settings[k] != null).map((k) => [k, settings[k]]));
     set.shell = { on: true, locked: false };
+    // Said so the start check (start.kept) tells this drop from a profile lost by an update.
+    set.profileDropped = { app: g.account.app ?? DEFAULT_APP, at: new Date().toISOString(), why: APPS[g.account.app ?? DEFAULT_APP] ? 'no username' : 'app gone' };
     remove.push('account', ...accountKeys().filter((k) => k !== 'settings'));
     g.account = null;
   }
