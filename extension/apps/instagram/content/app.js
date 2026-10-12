@@ -74,10 +74,10 @@
   // Told to the background on every page: the header's Instagram tile opens that account's profile.
   async function reportMe() {
     const api = globalThis.KidTubeIgApi;
-    let me = null, loggedIn = true;
-    try { me = await api.me(); } catch (e) { loggedIn = !(e instanceof api.LoginNeeded); }
+    let me = null, loggedIn = true, detail = '';
+    try { me = await api.me(); } catch (e) { loggedIn = !(e instanceof api.LoginNeeded); detail = e.detail || String(e.message ?? e); }
     await ask({ type: 'siteAccount', loggedIn, username: me?.username ?? null, id: me?.id ?? null });
-    return { loggedIn, username: me?.username ?? null };
+    return { loggedIn, username: me?.username ?? null, detail };
   }
   // Connect: Instagram's account is read again now, then that account's Instagram profile runs: loaded, or made new
   // (core/background/profiles.js connect). say(text, err): where the page shows what happened.
@@ -257,7 +257,7 @@
   // What the page knows: the background's view (igState) and what is shown.
   const ui = {
     tab: 'saved', collection: null, filter: 'all', open: null,
-    data: null, reading: '', readError: '', login: false, notHere: false, other: null, connectNote: '', connectErr: false,
+    data: null, reading: '', readError: '', login: false, me: null, notHere: false, other: null, connectNote: '', connectErr: false,
     loadedCollections: new Set(), results: {}, rec: null, writing: false, notice: '', noticeErr: false, expanded: false,
   };
   let root, main, tabsBar, sheet, headerBox;
@@ -324,13 +324,22 @@
       await ask({ type: 'igSaved', media: [], at: 'none', finished: true });
       if (ui.collection && ui.collection !== 'all') await readCollection(ui.collection);
     } catch (e) {
-      if (e instanceof API().LoginNeeded) ui.login = true;
-      ui.readError = String(e.message ?? e);
+      readFailed(e);
     } finally {
       reading = false;
       ui.reading = '';
       await refresh();
     }
+  }
+
+  // A read that failed. "Signed out" only when nobody is signed in: Instagram also asks for a sign-in when it limits a
+  // signed-in account (too many requests), and then the screen shows its own words.
+  function readFailed(e) {
+    const login = e instanceof API().LoginNeeded;
+    ui.login = login && !ui.me?.username;
+    ui.readError = login && !ui.login
+      ? `Instagram did not give the saved posts of @${ui.me.username} (${e.detail || e.message}). Wait a few minutes, then tap ↻.`
+      : login ? e.detail ?? '' : String(e.message ?? e);
   }
 
   async function readCollection(id) {
@@ -352,8 +361,7 @@
       await ask({ type: 'igCollection', id, media: [], done: true, ids });
     } catch (e) {
       ui.loadedCollections.delete(id);
-      if (e instanceof API().LoginNeeded) ui.login = true;
-      ui.readError = String(e.message ?? e);
+      readFailed(e);
     }
     ui.reading = '';
     await refresh();
@@ -449,7 +457,8 @@
 
   function loginCard() {
     return h('div', { class: 'card' }, h('h2', { text: 'Instagram is signed out' }),
-      h('p', { text: 'The app reads the saved posts of the connected account. Sign in on Instagram itself (the Instagram side of the switch), then come back with App.' }));
+      h('p', { text: 'The app reads the saved posts of the connected account. Sign in on Instagram itself (the Instagram side of the switch), then come back with App.' }),
+      ui.readError ? h('p', { class: 'notice err', text: `Instagram answered: ${ui.readError}` }) : null);
   }
 
   // Connect from the screen's own cards (the header above has it too).
@@ -687,10 +696,10 @@
     globalThis.KidTubeHeader?.mount(headerBox);
     draw();
     await refresh();
-    const me = await reportMe();
+    const me = ui.me = await reportMe();
     if (ui.notHere) return;
     // Only the profile's own account is read: another one's saved posts must not join its list.
-    if (!me.loggedIn) { ui.login = true; draw(); return; }
+    if (!me.loggedIn) { ui.login = true; ui.readError = me.detail; draw(); return; }
     if (me.username && ui.data?.who && `@${me.username}` !== ui.data.who) { ui.other = me.username; draw(); return; }
     const id = location.hash.slice(1);
     if (/^\d+$/.test(id) && posts().some((p) => p.id === id)) { history.replaceState(null, '', HOME); openPost(id); }

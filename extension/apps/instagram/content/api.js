@@ -6,19 +6,25 @@
   const APP_ID = '936619743392459';   // Instagram's web app; its API refuses requests without it
   const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-  class LoginNeeded extends Error {}
+  // detail: what Instagram answered (the call, the status, its own words), shown on the screen.
+  class LoginNeeded extends Error { constructor(message, detail = '') { super(message); this.detail = detail; } }
   const csrf = () => document.cookie.match(/(?:^|;\s*)csrftoken=([^;]+)/)?.[1] ?? '';
 
   // GET a path of the API. Throws LoginNeeded when Instagram wants a sign-in; waits and tries again on "slow down".
+  // Instagram also says require_login (with "Please wait a few minutes") when it limits a signed-in account, so the
+  // caller decides what a LoginNeeded means: KidTubeIgApi.me() tells whether anybody is signed in.
   async function get(path) {
     for (let i = 0; ; i++) {
       const r = await fetch(path, { credentials: 'include', headers: { 'X-IG-App-ID': APP_ID, 'X-Requested-With': 'XMLHttpRequest', 'X-CSRFToken': csrf() } });
       if (r.status === 429 && i < 3) { await wait(20000 * (i + 1)); continue; }
-      if (r.status === 401 || r.status === 403 || /\/accounts\/login/.test(r.url)) throw new LoginNeeded('Sign in to Instagram first.');
-      const j = await r.json().catch(() => null);
-      if (!j) throw new LoginNeeded('Instagram did not answer with data: sign in to Instagram first.');
-      if (j.require_login || j.message === 'login_required') throw new LoginNeeded('Sign in to Instagram first.');
-      if (!r.ok || j.status === 'fail') throw new Error(`Instagram: ${j.message || `answered ${r.status}`}`);
+      const text = await r.text().catch(() => '');
+      let j = null;
+      try { j = JSON.parse(text); } catch {}
+      const toLogin = /\/accounts\/login/.test(r.url);
+      const said = `${path.split('?')[0]} → ${toLogin ? 'the sign-in page' : r.status}${j?.message ? `: ${j.message}` : j || toLogin ? '' : `, not data: ${text.replace(/\s+/g, ' ').slice(0, 80)}`}`;
+      if (toLogin || j?.require_login || j?.message === 'login_required') throw new LoginNeeded('Sign in to Instagram first.', said);
+      if ((r.status === 401 || r.status === 403) && !j) throw new LoginNeeded('Sign in to Instagram first.', said);
+      if (!j || !r.ok || j.status === 'fail') throw new Error(`Instagram refused ${said}`);
       return j;
     }
   }
@@ -64,7 +70,7 @@
       const id = document.cookie.match(/(?:^|;\s*)ds_user_id=(\d+)/)?.[1] ?? null;
       let username = null;
       try { username = (await get('/api/v1/accounts/edit/web_form_data/')).form_data?.username ?? null; }
-      catch (e) { if (e instanceof LoginNeeded || !id) throw e; }
+      catch (e) { if (!id) throw e; }
       if (!username && id) username = (await get(`/api/v1/users/${encodeURIComponent(id)}/info/`)).user?.username ?? null;
       return { username: username ? String(username).toLowerCase() : null, id };
     },
