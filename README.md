@@ -5,7 +5,7 @@ limits, a talking friend and questions after a video. A daily helper on a server
 steers everything from parent mode on the tablet.
 
 The extension is a small platform for apps: the **core** (accounts, the apps header, the PIN, sync, updates) runs
-every **app** (today: KidTube on YouTube, and a blank test app). See `extension/README.md`.
+every **app** (today: KidTube on YouTube, and Instagram's saved posts). See `extension/README.md`.
 
 ## How the parts talk
 

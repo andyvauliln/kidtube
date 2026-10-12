@@ -6,7 +6,7 @@ iPad, iPhone and Mac (the same source, built by `build/build-orion.mjs`).
 | Folder | What is inside |
 | --- | --- |
 | `core/` | What every app uses: the service worker's core, the apps header, the PIN page, accounts and profiles, GitHub sync, updates |
-| `apps/` | The apps. `registry.js` lists them; each app has its own folder (`kidtube/`, `blank/`) |
+| `apps/` | The apps. `registry.js` lists them; each app has its own folder (`kidtube/`, `instagram/`) |
 | `manifest.json` | Permissions, the service worker (`core/background/main.js`), the content scripts |
 
 ## The idea

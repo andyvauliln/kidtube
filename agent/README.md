@@ -14,8 +14,9 @@ It uses free AI models on OpenRouter and rotates between them. A paid model can 
 | `daily.sh` | The daily run (crontab): Claude Code with `DAILY.md` + `SYSTEM.md`; falls back to `run.mjs` |
 | `DAILY.md`, `SYSTEM.md`, `PROMPT.md` | The daily session's steps, its rules and tools, and the helper's prompt |
 | `kt.mjs` | The toolkit Claude calls (`node agent/kt.mjs <command>`, JSON out): data, YouTube search, Gemini, voices, checks, save |
-| `poll.sh` | Every minute (crontab): new problem reports → the fix agent (`FIX.md`); new parent notes → the notes agent (`NOTES.md`); a run request → the helper |
+| `poll.sh` | Every minute (crontab): new problem reports → the fix agent (`FIX.md`); Instagram posts in the list → the posts agent (`instagram.mjs`); new parent notes → the notes agent (`NOTES.md`); a run request → the helper |
 | `notes.mjs`, `NOTES.md` | Finds the parent's new notes (no AI); the notes agent's instructions |
+| `instagram.mjs` | The Instagram app's posts agent (`poll.sh`, no Claude): the posts the tablet put in its list → Groq's Whisper writes down each video and each recorded note; results in `handled.json` and `posts/<id>.json` |
 | `problems.mjs`, `FIX.md` | Finds the tablets' new problem reports (`problems/` in the data repo, from the app's checks; no AI); the fix agent's instructions. Its answers go to `fixes.json` |
 | `run.mjs` | The old fixed program, the fallback when Claude can't run |
 | `runlog.mjs` | Adds each run's time, turns and cost to `runs.json` |

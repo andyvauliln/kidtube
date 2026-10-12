@@ -6,6 +6,7 @@
 #   agent/NOTES.md in its own checkout of the code. It changes the app or the helper, releases a new version,
 #   and can ask for a helper run.
 # - a run asked for from parent mode (requests/run.json, a new id) with no new notes → the helper (agent/daily.sh).
+# - Instagram posts waiting in the app's list → the posts agent (agent/instagram.mjs), no AI but Whisper.
 # Each profile (config.json profiles: kidtube/<folder>, see agent/lib/profile.mjs) has its own requests, notes,
 # run-status.json and state folder; they are looked at one after another. No profiles: the old layout (repo root).
 # Progress goes to run-status.json, which parent mode shows. Cheap when idle: one `git ls-remote`, no pull,
@@ -93,6 +94,10 @@ $problems
   if [ -z "$(git -C "$ROOT" status --porcelain)" ]; then git -C "$ROOT" pull --quiet --ff-only origin main >> "$log" 2>&1; fi
 }
 fix_lane
+
+# --- the Instagram lane: posts the tablet put in its list → the posts agent (agent/instagram.mjs: Whisper, no Claude).
+# Cheap when nothing is due: it reads instagram/*/posts.json and stops. It logs to instagram.log itself.
+node agent/instagram.mjs run --data "$CLONE" --state "$SROOT" > /dev/null 2>> "$SROOT/instagram.log"
 
 # The profiles to look at; none in config.json: the old layout, one child at the root of the repo ("-").
 PROFILES=$(node agent/lib/profile.mjs list)

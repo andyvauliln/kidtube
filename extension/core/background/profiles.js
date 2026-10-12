@@ -3,7 +3,7 @@
 // The PIN, the mode, the device id and the GitHub connection belong to the tablet, so they move along with every switch.
 // Also the apps header: who YouTube has, the GitHub connection, this email's apps, and the settings file.
 import { accountFromSwitcher, profileFolder, chooserUrl } from '../lib/account.js';
-import { APPS, DEFAULT_APP, appOf } from '../../apps/registry.js';
+import { APPS, DEFAULT_APP, RENAMED, appOf, appHome } from '../../apps/registry.js';
 import { ghHeaders, getRepoFile, explainHttp } from '../lib/github.js';
 import { homeUrl } from '../lib/youtube.js';
 import { DEFAULT_REPO, DEVICE_SETTINGS, BACKUP_KEYS } from './constants.js';
@@ -20,29 +20,38 @@ const fileKeys = () => allParts().flatMap((p) => p.fileKeys ?? []);
 // A profile is an email with one app, so one email can have a profile in each app. KidTube's key is the email
 // itself (what YouTube reports, and what tablets before 0.9.6 have); another app's is "<app>:<email>".
 const keyFor = (app, base) => (!app || app === DEFAULT_APP ? base : `${app}:${base}`);
-const baseOf = (key) => key.replace(new RegExp(`^(${Object.keys(APPS).join('|')}):`), '');
+const baseOf = (key) => key.replace(new RegExp(`^(${[...Object.keys(APPS), ...Object.keys(RENAMED)].join('|')}):`), '');
 const shortLabel = (a) => a.label.replace(/ \(.*/, '');
 
 // Tablets from 0.9.2 to 0.9.5 keyed a Blank profile by its email alone: give it its "<app>:" key, so that the
-// same email can also have a KidTube profile. Call inside serial().
-async function migrateProfileKeys() {
+// same email can also have a KidTube profile. A renamed app's profiles (RENAMED: Blank became Instagram) move to
+// the new id, and write their profile.json again in the new folder (<new app>/<folder>/). Call inside serial().
+export async function migrateProfileKeys() {
   const g = await chrome.storage.local.get(['account', 'accounts']);
   const accounts = g.accounts ?? {};
-  const moves = Object.entries(accounts).map(([k, a]) => [k, keyFor(a.app, baseOf(k))]).filter(([k, want]) => k !== want && !accounts[want]);
-  if (!moves.length) return;
-  const saved = await chrome.storage.local.get(moves.map(([k]) => `acct:${k}`));
   const set = {};
+  const renamed = Object.keys(accounts).filter((k) => RENAMED[accounts[k].app]);
+  for (const k of renamed) accounts[k] = { ...accounts[k], app: RENAMED[accounts[k].app] };
+  if (RENAMED[g.account?.app]) {
+    set.account = g.account = { ...g.account, app: RENAMED[g.account.app] };
+    const { data } = await chrome.storage.local.get('data');
+    set.data = { ...(data ?? {}), profileFile: false };
+  }
+  const moves = Object.entries(accounts).map(([k, a]) => [k, keyFor(a.app, baseOf(k))]).filter(([k, want]) => k !== want && !accounts[want]);
+  if (!moves.length && !renamed.length && !set.account) return;
+  const saved = await chrome.storage.local.get([...new Set([...moves.map(([k]) => k), ...renamed])].map((k) => `acct:${k}`));
+  for (const k of renamed) if (saved[`acct:${k}`]?.data) saved[`acct:${k}`] = set[`acct:${k}`] = { ...saved[`acct:${k}`], data: { ...saved[`acct:${k}`].data, profileFile: false } };
   for (const [k, want] of moves) {
     accounts[want] = accounts[k];
     delete accounts[k];
-    if (saved[`acct:${k}`]) set[`acct:${want}`] = saved[`acct:${k}`];
+    if (saved[`acct:${k}`]) { set[`acct:${want}`] = saved[`acct:${k}`]; delete set[`acct:${k}`]; }
     if (g.account?.key === k) set.account = { ...g.account, key: want };
   }
   await chrome.storage.local.set({ ...set, accounts });
   await chrome.storage.local.remove(moves.map(([k]) => `acct:${k}`).filter((k) => saved[k]));
 }
 
-// The record of a profile, with its app and folder given once (unique within its app: blank/ann and kidtube/ann).
+// The record of a profile, with its app and folder given once (unique within its app: instagram/ann and kidtube/ann).
 // folder: the one the data repo already has for this email and app (found by the header).
 function profileRecord(accounts, key, info, app, folder) {
   const old = accounts[key] ?? {};
@@ -177,7 +186,7 @@ export async function openApp(msg, tabId, host) {
   const known = !!(g.accounts?.[key] || there);
   if (!msg.create && !known) return { ok: false, error: `No ${shortLabel(app)} for ${email} yet: add it.` };
   const r = await useProfile({ email, datasyncId: g.ytAccount.datasyncId }, { app: app.id, key, folder: there?.folder });
-  const parent = msg.create || msg.mode !== 'kid';
+  const parent = msg.create || msg.mode !== 'kid' || app.modes === false;   // an app without modes: the header stays open
   await withState((s) => {
     s.settings.mode = parent ? 'parent' : 'kid';
     if (msg.create && !known) partOf({ app: app.id }).created?.(s);   // the app's starting files
@@ -187,7 +196,8 @@ export async function openApp(msg, tabId, host) {
   // A switch syncs anyway. Else (the first profile on this tablet, or the same one again) sync now too: its lists and
   // rules come from GitHub at once, and a new profile writes profile.json, so the server's helper knows it.
   if (!r.switched) sync();
-  const url = app.page ? chrome.runtime.getURL(app.page) : parent ? chrome.runtime.getURL(app.parentPage) : homeUrl(host);
+  // From another app's screen on its own site (Instagram's): the YouTube in use.
+  const url = appHome(app) ?? (parent ? chrome.runtime.getURL(app.parentPage) : homeUrl(/(^|\.)youtube\.com$/.test(host) ? host : live.host));
   if (tabId != null) await chrome.tabs.update(tabId, { url });
   return { ok: true, url, navigated: tabId != null };
 }

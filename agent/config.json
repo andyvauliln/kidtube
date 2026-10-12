@@ -121,5 +121,13 @@
     "model": "claude-opus-5-5",
     "effort": "medium",
     "note": "agent/poll.sh: new problem reports from the tablets' checks (problems/<day>.json in the data repo) → Claude Code runs agent/FIX.md in the notes agent's checkout; it reproduces, fixes, tests and releases; its answers go to fixes.json. At most perDay runs a day; enabled: false stops it (the tablets still report)."
+  },
+  "instagram": {
+    "enabled": true,
+    "perRun": 10,
+    "maxVideos": 5,
+    "maxVideoMB": 200,
+    "models": ["whisper-large-v3", "whisper-large-v3-turbo"],
+    "note": "The Instagram app’s posts agent (agent/instagram.mjs, run by poll.sh): at most perRun posts a run, maxVideos videos of a carousel, Groq Whisper models in order (GROQ_API_KEY in envFile)."
   }
 }

@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "KidTube",
-  "version": "0.10.5",
+  "version": "0.11.0",
   "description": "Shows only the videos on your list, with time limits.",
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAqh30aXo0JkYMK6WTbyW2Z9oCc49ZWzkLa7sJO07F17J/QGPSAGAbDVCCzt5ereGy8N2uBAv4qCRWiSyRVwAcTOOj9sKiZMMuNKM/l9KatMJA+nBuM3S9fX2s8RMvHIBFbON/HBbS/nf8o04MvMH8+O9Cj+SwopIMEn0DerJeU7ta9vGl/7QfXnFnzFQn58X9AMqbg6yWWaLkmqkYx8bWmvD4PoQb6hgIpf121bzA3AGoMCl48cJIxhf6n8WOdnkdexFZ80EyiLsXs2p00DFGR73jmtCBuZhNPyGTXM/QRui6YZyVVm/yAFuaJKqutPSR/sRickpkBZ8jHXRDXmOaiQIDAQAB",
   "update_url": "https://andyvauliln.github.io/kidtube/updates.xml",
@@ -10,7 +10,8 @@
     "storage",
     "alarms",
     "tabs",
-    "declarativeNetRequest"
+    "declarativeNetRequest",
+    "unlimitedStorage"
   ],
   "host_permissions": [
     "*://*.youtube.com/*",
@@ -46,6 +47,18 @@
       ],
       "run_at": "document_start",
       "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://www.instagram.com/*"
+      ],
+      "js": [
+        "core/ui/watch.js",
+        "core/ui/header.js",
+        "apps/instagram/content/api.js",
+        "apps/instagram/content/app.js"
+      ],
+      "run_at": "document_start"
     },
     {
       "matches": [

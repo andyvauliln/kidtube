@@ -5,6 +5,7 @@ import { readFileSync } from 'node:fs';
 import { installFakeChrome } from '../helpers/fake-chrome.mjs';
 import { applyPlan, pendingPlan, applyPlanEvent } from '../../extension/apps/kidtube/lib/plan.js';
 import { accountFromSwitcher, accountKey, profileFolder, chooserUrl } from '../../extension/core/lib/account.js';
+import { APPS } from '../../extension/apps/registry.js';
 
 const fake = installFakeChrome();
 await import('../../extension/core/background/main.js');
@@ -28,6 +29,7 @@ fake.store.data = { queue, memoryMeta: { processedThrough: '2026-10-04T18:00:00Z
 fake.store.memory = memory;
 
 const YT = { id: 7, url: 'https://m.youtube.com/' };
+const IG_HOME = APPS.instagram.home;
 const PAGE = { url: 'ext://apps/kidtube/parent/parent.html', tab: { id: 8, url: 'ext://apps/kidtube/parent/parent.html' } };
 const send = (msg, sender = { tab: YT }) => new Promise((resolve) => fake.listeners.message[0](msg, sender, resolve));
 const fromPage = (msg) => send(msg, PAGE);
@@ -217,8 +219,8 @@ test('the apps header: sign in, connect GitHub, open or create this account’s 
   fake.store.settings.token = 't1';
   await withRepo([{ app: 'kidtube', folder: 'first', email: 'first@example.com' }, { app: 'kidtube', folder: 'zed', email: 'zed@example.com' }], async () => {
     h = await send({ type: 'header' });
-    assert.deepEqual(h.apps.map((a) => [a.id, a.has, a.folder]), [['kidtube', true, 'first'], ['blank', false, null]], 'the repo knows its KidTube');
-    assert.equal((await send({ type: 'openApp', app: 'blank' })).ok, false, 'not there yet: Create, not Open');
+    assert.deepEqual(h.apps.map((a) => [a.id, a.has, a.folder]), [['kidtube', true, 'first'], ['instagram', false, null]], 'the repo knows its KidTube');
+    assert.equal((await send({ type: 'openApp', app: 'instagram' })).ok, false, 'not there yet: Create, not Open');
     const r = await send({ type: 'openApp', app: 'kidtube', mode: 'kid' });
     assert.equal(r.ok, true);
     assert.equal(r.url, 'https://m.youtube.com/', 'kid mode: his list on YouTube');
@@ -483,8 +485,9 @@ test('the tablet keeps no history: notes the AI worked on (notes-done.json) and 
   assert.ok(fake.store.outbox.some((e) => e.eventId === darker.eventId)); // not sent yet: still waits for ↻ Update
 });
 
-test('a profile with the blank test app: created from the header, a white page in kid and parent mode, nothing syncs but profile.json', async () => {
+test('a profile in the Instagram app: created from the header, YouTube goes to its screen on instagram.com in either mode, only profile.json until it has posts', async () => {
   const first = fake.store.account.key;
+  const folder = first.split('@')[0];
   fake.store.settings = { ...fake.store.settings, token: 't1' };
   await fromPage({ type: 'leaveApp' });
   await youtubeHas(first, 'AAA||');
@@ -492,49 +495,147 @@ test('a profile with the blank test app: created from the header, a white page i
   await withRepo([], async () => {
     const real = globalThis.fetch;
     globalThis.fetch = async (url, init = {}) => { if (init.method === 'PUT') puts.push(String(url)); return real(url, init); };
-    const r = await send({ type: 'openApp', app: 'blank', create: true });
-    assert.equal(r.url, 'ext://apps/blank/blank.html');
+    const r = await send({ type: 'openApp', app: 'instagram', create: true });
+    assert.equal(r.url, IG_HOME);
     await new Promise((ok) => setTimeout(ok, 50));   // the sync Create started
     globalThis.fetch = real;
   });
-  assert.equal(fake.store.account.key, `blank:${first}`, 'another app’s profile: "<app>:<email>"');
-  assert.equal(fake.store.account.app, 'blank');
-  assert.equal(fake.store.account.folder, first.split('@')[0], 'folders are unique within an app: kidtube/x and blank/x');
-  assert.deepEqual(puts.map((u) => decodeURIComponent(u.split('/contents/')[1])), [`blank/${first.split('@')[0]}/profile.json`], 'only profile.json, once, so the header finds it');
+  assert.equal(fake.store.account.key, `instagram:${first}`, 'another app’s profile: "<app>:<email>"');
+  assert.equal(fake.store.account.app, 'instagram');
+  assert.equal(fake.store.account.folder, folder, 'folders are unique within an app: kidtube/x and instagram/x');
+  assert.deepEqual(puts.map((u) => decodeURIComponent(u.split('/contents/')[1])), [`instagram/${folder}/profile.json`], 'no posts yet: only profile.json, so the header finds it');
+  assert.equal(fake.store.settings.mode, 'parent', 'no modes: the header stays open');
+  assert.equal(await navigate('https://m.youtube.com/'), IG_HOME);
   await fromPage({ type: 'setMode', mode: 'kid' });
-  assert.equal(await navigate('https://m.youtube.com/'), 'ext://apps/blank/blank.html');
-  assert.equal(await navigate(`https://m.youtube.com/watch?v=${ids[0]}`), 'ext://apps/blank/blank.html');
-  // Google's sign-in steps on YouTube's hosts go through, even in kid mode on a Blank profile.
+  assert.equal(await navigate(`https://m.youtube.com/watch?v=${ids[0]}`), IG_HOME);
+  // Google's sign-in steps on YouTube's hosts go through.
   assert.equal(await navigate('https://accounts.youtube.com/accounts/SetSID?ssdc=1&sidt=x'), 'https://accounts.youtube.com/accounts/SetSID?ssdc=1&sidt=x');
   await fromPage({ type: 'setMode', mode: 'parent' });
-  assert.equal(await navigate('https://m.youtube.com/'), 'ext://apps/blank/blank.html', 'KidTube’s parent screens are not this app’s screens');
-  assert.equal((await fromPage({ type: 'parentData' })).app, 'blank', 'the parent page sends it to the apps page');
+  assert.equal(await navigate('https://m.youtube.com/'), IG_HOME, 'KidTube’s parent screens are not this app’s screens');
+  assert.ok(fake.rules[0].condition.excludedRequestDomains.includes('instagram.com'), 'instagram.com is open');
 
-  // Its account on YouTube changes: Blank stops too.
+  // Its account on YouTube changes: Instagram stops too.
   await youtubeHas('someone@example.com', 'ZZZ||');
   assert.equal(fake.store.shell.on, true);
   await youtubeHas(first, 'AAA||');
-  await withRepo([{ app: 'blank', folder: first.split('@')[0], email: first }], async () => {
+  await withRepo([{ app: 'instagram', folder, email: first }], async () => {
     const h = await send({ type: 'header' });
-    assert.deepEqual(h.apps.map((a) => [a.id, a.has]), [['kidtube', true], ['blank', true]]);
+    assert.deepEqual(h.apps.map((a) => [a.id, a.has]), [['kidtube', true], ['instagram', true]]);
     assert.equal((await send({ type: 'openApp', app: 'kidtube', mode: 'kid' })).ok, true);
   });
   assert.equal(fake.store.account.key, first);
   assert.equal(fake.store.account.app, 'kidtube');
+  assert.equal((await send({ type: 'igState' }, { tab: { id: 7, url: IG_HOME } })).notHere, true, 'its screen does nothing for another app');
   await fromPage({ type: 'setMode', mode: 'parent' });
 });
 
-test('a Blank profile from 0.9.2–0.9.5 (keyed by its email alone) gets its "blank:" key, so the email can be in KidTube too', async () => {
+test('the Instagram screen: saved posts come in not handled, new ones at the top, collections and the default, notes and requests put a post in the list; posts.json and the agent’s handled.json', async () => {
   const first = fake.store.account.key;
-  fake.store.accounts = { ...fake.store.accounts, 'old@example.com': { email: 'old@example.com', app: 'blank', folder: 'old', datasyncId: null, name: null, lastSeen: '2026-10-07T00:00:00Z' } };
-  fake.store['acct:old@example.com'] = { settings: { queueSize: 7 } };
+  const folder = first.split('@')[0];
+  await fromPage({ type: 'leaveApp' });
+  await youtubeHas(first, 'AAA||');
+  await withRepo([{ app: 'instagram', folder, email: first }], () => send({ type: 'openApp', app: 'instagram' }));
+  assert.equal(fake.store.account.app, 'instagram');
+  const ig = (msg) => send(msg, { tab: { id: 7, url: IG_HOME } });
+  const cdn = (name) => `https://scontent-ams2-1.cdninstagram.com/v/${name}`;
+  const media = (pk, extra = {}) => ({ pk, id: `${pk}_42`, code: `C${pk}x`, media_type: 2, product_type: 'clips', taken_at: 1790000000,
+    user: { username: 'chef' }, caption: { text: `Post ${pk}` }, image_versions2: { candidates: [{ url: cdn(`${pk}.jpg`), width: 640 }] },
+    video_versions: [{ url: cdn(`${pk}.mp4`), width: 720 }], ...extra });
+
+  assert.equal((await ig({ type: 'igSaved', media: [media('11'), media('12')], at: 'end', page: 0, cursor: 'c1' })).added, 2);
+  assert.equal((await ig({ type: 'igSaved', media: [media('13', { media_type: 1, product_type: 'feed', video_versions: [] })], at: 'end', page: 1, cursor: null })).added, 1);
+  await ig({ type: 'igSaved', media: [], at: 'none', finished: true });
+  let st = await ig({ type: 'igState' });
+  assert.deepEqual(st.posts.map((p) => [p.id, p.kind, p.status]), [['11', 'video', 'new'], ['12', 'video', 'new'], ['13', 'image', 'new']], 'all saved posts start not handled');
+  assert.equal(st.complete, true);
+  assert.ok(st.loadedAt);
+  const top = await ig({ type: 'igSaved', media: [media('14'), media('11')], at: 'top', page: 0 });
+  assert.deepEqual([top.added, top.known], [1, 1], 'a page with a known post: the newest are in');
+  st = await ig({ type: 'igState' });
+  assert.deepEqual(st.posts.map((p) => p.id), ['14', '11', '12', '13'], 'newly saved posts go on top, not handled');
+
+  await ig({ type: 'igCollections', list: [{ id: '500', name: 'Recipes', count: 1 }] });
+  await ig({ type: 'igCollection', id: '500', media: [media('12'), media('11')] });
+  await ig({ type: 'igCollection', id: '500', media: [], done: true, ids: ['12'] });
+  assert.equal((await ig({ type: 'igDefault', collection: '999' })).ok, false, 'only a collection it has');
+  assert.equal((await ig({ type: 'igDefault', collection: '500' })).ok, true);
+  st = await ig({ type: 'igState' });
+  assert.equal(st.defaultCollection, '500');
+  assert.deepEqual(st.posts.filter((p) => p.collections.includes('500')).map((p) => p.id), ['12'], 'the collection’s full list wins');
+
+  assert.equal((await ig({ type: 'igNote', id: '11', text: 'Try this at home' })).ok, true);
+  assert.equal((await ig({ type: 'igHandle', id: '13' })).status, 'queued');
+  assert.equal((await ig({ type: 'igHandle', id: '13', off: true })).status, 'new', 'out of the list again');
+  assert.equal((await ig({ type: 'igHandle', id: '12' })).status, 'queued');
+  st = await ig({ type: 'igState' });
+  assert.deepEqual(st.posts.map((p) => [p.id, p.status]), [['14', 'new'], ['11', 'queued'], ['12', 'queued'], ['13', 'new']], 'a note puts the post in the list by itself');
+  assert.equal(st.unsent, true);
+
+  // A sync: posts.json goes up (video addresses only for the posts in the list); handled.json comes down.
+  const wrote = {};
+  let handled = null;
+  await withRepo([{ app: 'instagram', folder, email: first }], async () => {
+    const real = globalThis.fetch;
+    globalThis.fetch = async (url, init = {}) => {
+      const path = decodeURIComponent(String(url).split('/contents/')[1] ?? '');
+      if (init.method === 'PUT') { wrote[path] = JSON.parse(Buffer.from(JSON.parse(init.body).content, 'base64').toString()); return { ok: true, status: 201, json: async () => ({ content: { sha: 'sha1' } }) }; }
+      if (handled && path === `instagram/${folder}/handled.json`) return { ok: true, status: 200, json: async () => handled, headers: { get: () => 'e1' } };
+      if (path === `instagram/${folder}/posts/11.json`) return { ok: true, status: 200, json: async () => ({ id: '11', transcript: { text: 'Hello cooks' } }), headers: { get: () => null } };
+      return real(url, init);
+    };
+    try {
+      await ig({ type: 'sync' });
+      const file = wrote[`instagram/${folder}/posts.json`];
+      assert.ok(file, 'posts.json written');
+      assert.deepEqual(file.posts.map((p) => [p.id, p.url, !!p.videos]), [['14', 'https://www.instagram.com/reel/C14x/', false], ['11', 'https://www.instagram.com/reel/C11x/', true],
+        ['12', 'https://www.instagram.com/reel/C12x/', true], ['13', 'https://www.instagram.com/p/C13x/', false]]);
+      assert.deepEqual(file.posts[1].videos, [cdn('11.mp4')]);
+      assert.equal(file.posts[1].notes[0].text, 'Try this at home');
+      assert.equal(file.defaultCollection, '500');
+      assert.equal((await ig({ type: 'igState' })).unsent, false);
+
+      // The agent handled 11 (with its note) and failed on 12.
+      const p11 = file.posts[1], p12 = file.posts[2];
+      handled = { schemaVersion: 1, posts: {
+        11: { at: '2026-10-12T12:00:00Z', request: p11.handle.at, notes: [p11.notes[0].id], transcript: 11, error: null },
+        12: { at: '2026-10-12T12:00:00Z', request: p12.handle.at, notes: [], transcript: 0, error: 'The video address expired. Open the post in the app and tap Try again.' } } };
+      await ig({ type: 'sync' });
+      st = await ig({ type: 'igState' });
+      assert.deepEqual(st.posts.map((p) => [p.id, p.status]), [['14', 'new'], ['11', 'handled'], ['12', 'failed'], ['13', 'new']]);
+      assert.match(st.posts[2].error, /expired/);
+      assert.equal((await ig({ type: 'igResult', id: '11' })).result.transcript.text, 'Hello cooks');
+      // A new note: in the list again, handled with it next time.
+      await ig({ type: 'igNote', id: '11', text: 'And the sauce' });
+      assert.equal((await ig({ type: 'igState' })).posts[1].status, 'queued');
+      assert.equal((await ig({ type: 'igDropNote', id: '11', noteId: st.posts[1].notes[0].id })).ok, true);
+      assert.deepEqual((await ig({ type: 'igState' })).posts[1].notes.map((n) => n.text), ['And the sauce']);
+    } finally { globalThis.fetch = real; }
+  });
+  await fromPage({ type: 'leaveApp' });
+  await youtubeHas(first, 'AAA||');
+  await withRepo([], () => send({ type: 'openApp', app: 'kidtube', mode: 'kid' }));
+  assert.equal(fake.store.account.key, first);
+  await fromPage({ type: 'setMode', mode: 'parent' });
+});
+
+test('profiles of the Blank test app (any key) become Instagram profiles, keyed "instagram:<email>", and write profile.json in instagram/', async () => {
+  const first = fake.store.account.key;
+  fake.store.accounts = { ...fake.store.accounts,
+    'old@example.com': { email: 'old@example.com', app: 'blank', folder: 'old', datasyncId: null, name: null, lastSeen: '2026-10-07T00:00:00Z' },
+    'blank:new@example.com': { email: 'new@example.com', app: 'blank', folder: 'new', datasyncId: null, name: null, lastSeen: '2026-10-08T00:00:00Z' } };
+  fake.store['acct:old@example.com'] = { settings: { queueSize: 7 }, data: { profileFile: true } };
+  fake.store['acct:blank:new@example.com'] = { data: { profileFile: true } };
   await fromPage({ type: 'leaveApp' });
   await youtubeHas('old@example.com', 'OLD||');
   await withRepo([], () => send({ type: 'openApp', app: 'kidtube', create: true }));
   assert.equal(fake.store.account.key, 'old@example.com', 'a new KidTube profile, not the old Blank one');
   assert.equal(fake.store.account.app, 'kidtube');
-  assert.ok(fake.store.accounts['blank:old@example.com']);
-  assert.deepEqual(fake.store['acct:blank:old@example.com'], { settings: { queueSize: 7 } }, 'its saved data moves with it');
+  assert.equal(fake.store.accounts['instagram:old@example.com']?.app, 'instagram');
+  assert.equal(fake.store.accounts['instagram:new@example.com']?.app, 'instagram');
+  assert.equal(fake.store.accounts['blank:new@example.com'], undefined);
+  assert.deepEqual(fake.store['acct:instagram:old@example.com'], { settings: { queueSize: 7 }, data: { profileFile: false } }, 'its saved data moves with it, and its profile.json is written again');
+  assert.deepEqual(fake.store['acct:instagram:new@example.com'], { data: { profileFile: false } });
+  assert.equal(fake.store['acct:blank:new@example.com'], undefined);
   await fromPage({ type: 'leaveApp' });
   await youtubeHas(first, 'AAA||');
   await withRepo([], () => send({ type: 'openApp', app: 'kidtube', mode: 'kid' }));

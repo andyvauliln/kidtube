@@ -2,7 +2,8 @@
 // This file registers the apps' background parts and wires the browser's events to the core modules
 // (README.md in this folder lists them); each app's own rules are in apps/<app>/background/.
 import { POLL_MINUTES, INSTALL_PAGE } from './constants.js';
-import { withState } from './store.js';
+import { withState, serial } from './store.js';
+import { migrateProfileKeys } from './profiles.js';
 import { registerApps, allParts } from './apps.js';
 import { guard } from './guard.js';
 import { applySiteRules } from './sites.js';
@@ -47,6 +48,7 @@ async function start() {
   chrome.alarms.create('poll', { periodInMinutes: POLL_MINUTES });
   chrome.alarms.clear?.('profileHold');               // 0.9.4–0.9.7's sign-in wait, replaced by the apps header
   await chrome.storage.local.remove('profileHold');
+  await serial(migrateProfileKeys);                      // a renamed app's profiles (Blank → Instagram) before anything reads them
   // Parent mode has no timer now. A tablet from before 0.8.9 can still hold one: an ended one means kid mode.
   await withState((s) => {
     if (!('parentUntil' in s.settings)) return;

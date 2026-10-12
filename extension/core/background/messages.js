@@ -3,7 +3,7 @@
 // handlers). Content scripts and screens only ask and show; the handlers decide.
 import { TARGET } from '../lib/target.js';
 import { homeUrl } from '../lib/youtube.js';
-import { appOf } from '../../apps/registry.js';
+import { appOf, appHome } from '../../apps/registry.js';
 import { PIN_PAGE } from './constants.js';
 import { withState, parentMode, shellOf, headerOpen, fromExtensionPage, live } from './store.js';
 import { applySiteRules } from './sites.js';
@@ -77,7 +77,7 @@ const HANDLERS = {
   openParent: (msg, { tabId }) => withState(async (s) => {
     if (!parentMode(s) || tabId == null || (await shellOf()).on) return { ok: false };
     const app = appOf((await chrome.storage.local.get('account')).account);
-    await chrome.tabs.update(tabId, { url: chrome.runtime.getURL(app.parentPage ?? app.page) });
+    await chrome.tabs.update(tabId, { url: app.parentPage ? chrome.runtime.getURL(app.parentPage) : appHome(app) });
     return { ok: true };
   }),
 
@@ -92,7 +92,7 @@ const HANDLERS = {
     await withState((s) => { s.settings.mode = 'kid'; });
     await applySiteRules();
     const app = appOf((await chrome.storage.local.get('account')).account);
-    const url = app.page ? chrome.runtime.getURL(app.page) : homeUrl(live.host);
+    const url = appHome(app) ?? homeUrl(live.host);
     if (tabId != null) await chrome.tabs.update(tabId, { url });
     return { ok: true, url };
   },

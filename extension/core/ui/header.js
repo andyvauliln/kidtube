@@ -1,4 +1,5 @@
-// The apps header: KidTube's bar above YouTube (core/content/shell.js) and above an app's own pages (parent screens, blank).
+// The apps header: KidTube's bar above YouTube (core/content/shell.js), above an app's own pages (parent screens) and
+// above Instagram's screen on instagram.com (apps/instagram/content/app.js).
 // One bar for every state: signed out → Sign in; signed in → the account, Switch, and either the GitHub connection
 // (first time) or this account's apps with + Add app. Hidden in kid mode (shell.js and the pages decide).
 // A plain script, not a module, so the YouTube content script can use it too: it sets globalThis.KidTubeHeader.
@@ -125,6 +126,7 @@
   const PATH = {
     play: 'M9 6.8v10.4c0 .6.7 1 1.2.7l8.2-5.2c.5-.3.5-1 0-1.3L10.2 6.1C9.7 5.8 9 6.2 9 6.8z',
     square: 'M7 6h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1z',
+    camera: 'M12 15.2a3.2 3.2 0 1 0 0-6.4 3.2 3.2 0 0 0 0 6.4zM9 2 7.17 4H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-3.17L15 2H9zm3 15a5 5 0 1 1 0-10 5 5 0 0 1 0 10z',
     person: 'M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-3.3 0-8 1.7-8 5v1h16v-1c0-3.3-4.7-5-8-5z',
     swap: 'M6.99 11 3 15l3.99 4v-3H14v-2H6.99v-3zM21 9l-3.99-4v3H10v2h7.01v3L21 9z',
     logout: 'M10.09 15.59 11.5 17l5-5-5-5-1.41 1.41L12.67 11H3v2h9.67l-2.58 2.59zM19 3H5a2 2 0 0 0-2 2v4h2V5h14v14H5v-4H3v4a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V5a2 2 0 0 0-2-2z',
@@ -447,7 +449,7 @@
     };
   }
 
-  // The Parent | Kid switch of an app's own page (the parent screens, the blank app). Kid mode needs a PIN first;
+  // The Parent | Kid switch of an app's own page (the parent screens). Kid mode needs a PIN first;
   // parent mode always goes through the PIN page.
   const SWITCH_CSS = `
     :host { all: initial; display: inline-block; font: 500 14px/1 Roboto, system-ui, -apple-system, "Segoe UI", sans-serif; }

@@ -1,6 +1,10 @@
 // One tab for YouTube and KidTube's pages: two tabs would show two screens of one state (two lists, two timers,
 // a parent page next to his list). A tab that opens one of them wins: the other such tabs are closed.
+// An app's screen on its own site (registry.js home, Instagram's) counts too.
 // Left alone: Google's sign-in, other websites, and the extension's tools (the browser check, the avatar lab).
+import { APPS } from '../../apps/registry.js';
+
+const HOMES = Object.values(APPS).map((a) => a.home).filter(Boolean);
 const TOOLS = ['core/pages/check.html', 'apps/kidtube/kid/avatar-lab.html'];
 
 export function isAppTab(url) {
@@ -8,6 +12,7 @@ export function isAppTab(url) {
   try { u = new URL(url); } catch { return false; }
   const base = chrome.runtime.getURL('');
   if (url.startsWith(base)) return !TOOLS.some((p) => url.startsWith(base + p));
+  if (HOMES.some((h) => url.startsWith(h))) return true;
   return /^https?:$/.test(u.protocol) && /(^|\.)youtube\.com$/.test(u.hostname)
     && !['accounts.youtube.com', 'consent.youtube.com'].includes(u.hostname);
 }
