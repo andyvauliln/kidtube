@@ -241,6 +241,12 @@
       if (r?.ok && r.url && !r.navigated) location.href = r.url;
     });
 
+    // Switch and Sign in: Google's account chooser, back on plain YouTube (no app runs until one is opened for the new account).
+    const switchAccount = () => act('Opening…', { type: 'switchAccount' }).then((r) => {
+      if (!r?.ok) { location.href = data.switchAccount; return; }
+      if (r.url && !r.navigated) location.href = r.url;
+    });
+
     // The YouTube tile: plain YouTube, no app running (the apps header stays above it).
     const plainYouTube = () => act('Opening…', { type: 'plainYouTube' }).then((r) => { if (r?.ok && r.url && !r.navigated) location.href = r.url; });
 
@@ -365,7 +371,7 @@
         bar.append(el('span', 'muted', 'Loading…'));
       } else if (!h.signedIn) {
         bar.append(h.seen
-          ? button('btn signin', 'Sign in', () => { location.href = h.switchAccount; }, PATH.person)
+          ? button('btn signin', 'Sign in', switchAccount, PATH.person)
           : el('span', 'muted', 'Checking the YouTube account…'));
       } else {
         const who = button('who', '', () => { ui.menu = !ui.menu; ui.add = false; draw(); });
@@ -387,7 +393,7 @@
         grid.setAttribute('aria-label', grid.title);
         grid.setAttribute('aria-pressed', String(ui.apps));
         if (h.github.connected && h.email) bar.append(grid);
-        bar.append(who, button('btn', 'Switch', () => { location.href = h.switchAccount; }, PATH.swap));
+        bar.append(who, button('btn', 'Switch', switchAccount, PATH.swap));
 
         if (!h.github.connected || ui.github) kids.push(githubCard(!h.github.connected));
         else if (h.email && ui.apps) {

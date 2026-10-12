@@ -514,6 +514,17 @@ test('a profile in the Instagram app: created from the header, YouTube goes to i
   assert.equal(await navigate('https://m.youtube.com/'), IG_HOME, 'KidTube’s parent screens are not this app’s screens');
   assert.ok(fake.rules[0].condition.excludedRequestDomains.includes('instagram.com'), 'instagram.com is open');
 
+  // The header's Switch while it runs: Google's chooser, then plain YouTube, so YouTube can say the new account
+  // (before, the guard sent YouTube straight back to the app's page and the header kept the old account).
+  fake.nav.updates.length = 0;
+  const sw = await send({ type: 'switchAccount' }, { tab: { id: 7, url: IG_HOME } });
+  assert.equal(sw.ok, true);
+  assert.match(fake.nav.updates.at(-1), /^https:\/\/accounts\.google\.com\/AccountChooser\?service=youtube/);
+  assert.deepEqual(fake.store.shell, { on: true, locked: false });
+  assert.equal(await navigate('https://m.youtube.com/'), 'https://m.youtube.com/', 'YouTube loads and reports the account');
+  await withRepo([{ app: 'instagram', folder, email: first }], () => send({ type: 'openApp', app: 'instagram' }));
+  assert.equal(await navigate('https://m.youtube.com/'), IG_HOME, 'the app again after Open');
+
   // Its account on YouTube changes: Instagram stops too.
   await youtubeHas('someone@example.com', 'ZZZ||');
   assert.equal(fake.store.shell.on, true);

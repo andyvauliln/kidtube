@@ -247,6 +247,18 @@ export async function importSettings(file) {
   return { ok: true, errors: r?.errors ?? [] };
 }
 
+// The header's Switch and Sign in: Google's account chooser, then plain YouTube with the header, so YouTube itself
+// loads and says which account it has now. Before, a running app's guard sent YouTube on to the app's page at once,
+// YouTube never reported the new account, and the header kept the old one until the parent opened plain YouTube.
+export async function switchAccount(tabId) {
+  if (!(await headerOpen())) return { ok: false, error: 'Unlock with the PIN first.' };
+  await chrome.storage.local.set({ shell: { on: true, locked: false } });
+  await applySiteRules();
+  const url = chooserUrl(null, live.host);
+  if (tabId != null) await chrome.tabs.update(tabId, { url });
+  return { ok: true, url, navigated: tabId != null };
+}
+
 // The header's YouTube tile: no app runs, plain YouTube with the apps header above it.
 export async function plainYouTube(tabId, host) {
   if (!(await headerOpen())) return { ok: false, error: 'Unlock with the PIN first.' };
