@@ -113,7 +113,9 @@
       setTimeout(() => {
         obs.disconnect();
         removeEventListener('beforeunload', mark);
-        if (changed || gone || location.href !== href) return;
+        // The button gone from the screen is a change too: the tap hid the layer around the watched root (2026-10-12:
+        // the Instagram app's App | Instagram hides the app's whole layer, the header in it unchanged).
+        if (changed || gone || location.href !== href || !b.isConnected || !b.getClientRects().length) return;
         const t = new Expect();
         t.mismatch.push({ what: `the tap on “${label}”`, expected: 'something on the screen changes within 5 s (a new screen, a busy state, a message)', actual: 'nothing changed' });
         t.note('button', { label, tag: b.tagName.toLowerCase(), classes: String(b.className).slice(0, 80) });
