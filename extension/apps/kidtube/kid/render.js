@@ -158,15 +158,19 @@
     async function refresh() {
       const st = await ask({ type: 'state' });
       if (!alive) return;
+      // Another app or plain YouTube runs: content/youtube.js covers YouTube until the state says so, then drops this.
+      const other = !!st?.app && st.app !== 'kidtube';
       if (!checked && !locked) {
         checked = true;
         globalThis.KidTubeWatch?.check({ id: 'kid.list', area: 'kid', expect: 'His list (or the lock or the “videos are over” screen) comes from the background',
           code: ['apps/kidtube/kid/render.js mountHome', 'apps/kidtube/background/rules.js viewState'] }, (t) => {
+          if (other) return t.skip(`no KidTube profile runs (${st.app})`);
           if (t.ok('answer to "state"', !!st, 'no answer in 8 s', 'his list')) t.ok('state.videos', Array.isArray(st.videos), st.videos, 'a list (maybe empty)');
           if (st) t.note('shown', { videos: st.videos?.length ?? null, lock: st.lock?.reason ?? null, app: st.app ?? null, parentMode: !!st.parentMode });
         });
       }
-      if (!st) { if (shown === null) { shown = 'problem'; root.classList.toggle('night', locked); body.replaceChildren(locked ? lockView({ reason: 'dailyCap' }) : problemView()); } return; }
+      if (other) return;
+      if (!Array.isArray(st?.videos)) { if (shown === null) { shown = 'problem'; root.classList.toggle('night', locked); body.replaceChildren(locked ? lockView({ reason: 'dailyCap' }) : problemView()); } return; }
       const lock = st.lock ?? (locked ? { reason: 'dailyCap' } : null);
       bar.update({ ...st, lock });
       const key = JSON.stringify([lock, st.videos.map((v) => [v.videoId, v.title, !!v.waiting, !!v.required])]);
@@ -193,7 +197,7 @@
     const open = (v) => ask({ type: 'open', videoId: v.videoId });
     async function refresh() {
       const st = await ask({ type: 'state' });
-      if (!st || !alive) return;
+      if (!Array.isArray(st?.videos) || !alive) return;
       const left = st.session?.secondsUntilUnlock ?? 0;
       const locked = left > 0;
       root.classList.toggle('locked', locked);
