@@ -32,6 +32,7 @@
     svg { display: block; flex: none; }
     .bar { height: 56px; display: flex; align-items: center; gap: 8px; padding: 0 12px 0 16px; }
     .brand { display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 18px; letter-spacing: -.4px; user-select: none; -webkit-user-select: none; }
+    .ver { font-size: 11px; font-weight: 500; letter-spacing: 0; color: var(--muted); align-self: flex-end; margin-bottom: 1px; }
     .grow { flex: 1 1 auto; min-width: 0; }
     .muted { color: var(--muted); }
     .btn { height: 36px; padding: 0 16px; border-radius: 18px; background: var(--soft); font-weight: 500; white-space: nowrap;
@@ -143,7 +144,9 @@
     p.setAttribute('fill', '#fff');
     s.append(r, p);
     const b = el('div', 'brand');
-    b.append(s, el('span', '', 'KidTube'));
+    // The version on every page: which build this browser runs (an unpacked copy from git too).
+    const v = el('span', 'ver', chrome.runtime.getManifest?.().version ?? '');
+    b.append(s, el('span', '', 'KidTube'), v);
     return b;
   }
   function avatar(email, big = false) {
