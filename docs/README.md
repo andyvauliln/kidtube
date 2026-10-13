@@ -5,6 +5,7 @@ Longer texts. The code map is in the `README.md` of each code folder; start at `
 | File | What it is | Kind |
 | --- | --- | --- |
 | `HOW-IT-WORKS.md` | The four parts, the kid's day, parent mode, the helper's night | Guide (as of 0.7.1) |
+| `UPDATES.md` | How a change gets to the tablet: branches, releases (Quetta, Orion), the update phases, who releases, updates without a version | Reference (kept current) |
 | `CONFIGURATION.md` | Every setting: where it lives, its default, what it does | Reference (kept current) |
 | `ORION.md` | KidTube on Orion (iPad/iPhone/Mac): what works, what the build changes | Research + reference |
 | `SAFARI.md` | KidTube on Safari: research, nothing built | Research |
