@@ -2,6 +2,10 @@
 
 Newest first. Each version is built from `extension/` with `build/build-orion.mjs` (see [ORION.md](https://github.com/andyvauliln/kidtube/blob/main/docs/ORION.md)).
 
+## 0.12.3 (2026-10-13)
+
+- **No false problem after App | YouTube.** When YouTube moves the tab to its other address by itself (m.youtube.com → www.youtube.com), the app no longer reports it as a problem.
+
 ## 0.12.2 (2026-10-13)
 
 - **The extension is now called Custom Apps.** KidTube is one of its apps, Instagram is the other. The header shows the Custom Apps logo and name.
