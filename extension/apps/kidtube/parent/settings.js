@@ -1,6 +1,6 @@
-// The settings view (the parent screens' Settings tab): a note for the AI, update, status, rules, the talking friend
-// and the PIN. Everything else has one place only: the account, the GitHub connection and the settings file are in
-// the apps header, Parent | Kid in the bottom bar, the helper's prompt in the Prompt tab.
+// The settings view (the parent screens' Settings tab): status, rules, the talking friend and the PIN. Everything
+// else has one place only: the account, the GitHub connection, the settings file, a new version and the notes for the
+// AI (🔔) are in the apps header, Parent | Kid in the bottom bar, the helper's prompt in the Prompt tab.
 import { hashPin } from '../../../core/lib/pin.js';
 import { say, listen, recordAnswer, transcribeAnswer, FREE_LISTEN_MODELS, PAID_LISTEN_MODELS } from '../lib/voice.js';
 import { ask as send } from '../../../core/lib/ask.js';
@@ -8,7 +8,6 @@ import { el as make } from './kit.js';
 
 const MARKUP = `
   <nav class="secnav noswipe" aria-label="Settings sections">
-    <button type="button" data-sec="sec-update">Update</button>
     <button type="button" data-sec="sec-status">Status</button>
     <button type="button" data-sec="sec-time">Time and list</button>
     <button type="button" data-sec="sec-sites">Websites</button>
@@ -16,14 +15,6 @@ const MARKUP = `
     <button type="button" data-sec="sec-hearing">Hearing</button>
     <button type="button" data-sec="sec-pin">PIN</button>
   </nav>
-
-  <section id="sec-update">
-    <h2>Update</h2>
-    <p class="muted">Gets the newest video list, rules and app version, and sends your notes for the AI.</p>
-    <button class="primary" id="update">Update now</button>
-    <p id="updateOut" class="muted"></p>
-    <a class="install" id="install" hidden>Get the new version (install page)</a>
-  </section>
 
   <section id="sec-status">
     <h2>Status</h2>
@@ -172,7 +163,7 @@ export function mountSettings(root) {
   const $ = (id) => root.querySelector(`#${id}`);
   let voiceLang = 'en-US';
 
-  // --- update, status --------------------------------------------------------------
+  // --- status ----------------------------------------------------------------------
 
   async function renderStatus() {
     const st = await send({ type: 'status' });
@@ -192,27 +183,6 @@ export function mountSettings(root) {
     for (const n of st.sync?.notes ?? []) $('status').append(el('dt', 'Note'), el('dd', n));
     for (const e of st.sync?.errors ?? []) $('status').append(el('dt', 'Problem'), el('dd', e, 'err'));
   }
-
-  $('update').addEventListener('click', async () => {
-    $('update').disabled = true;
-    $('updateOut').textContent = 'Checking…';
-    try {
-      await send({ type: 'sync', notes: true });   // your notes for the AI go too
-      const r = await send({ type: 'checkUpdate' });
-      const parts = [`Installed ${r.installed}`];
-      if (r.latest) parts.push(`newest ${r.latest}`);
-      if (r.check?.status === 'update_available') parts.push('downloading the new version, the app will restart');
-      if (r.check?.status === 'throttled' && r.installPage) parts.push('the browser asks to wait: KidTube tries again within a few minutes');
-      if (r.check?.status === 'manual' && r.installPage) parts.push('install the new .zip by hand (link below)');
-      parts.push(r.sync?.errors?.length ? `sync problem: ${r.sync.errors.join('; ')}` : 'video list and rules are up to date');
-      $('updateOut').textContent = parts.join(' · ');
-      $('install').hidden = !r.installPage;
-      if (r.installPage) $('install').href = r.installPage;
-    } finally {
-      $('update').disabled = false;
-      renderStatus();
-    }
-  });
 
   $('resetToday').addEventListener('click', async () => { await send({ type: 'resetToday' }); renderStatus(); });
 

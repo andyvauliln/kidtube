@@ -372,7 +372,7 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
     assert.equal((await fromPage({ type: 'parentData' })).lists.settings.at(-1).text, 'Open parent mode on the Planned tab');
     assert.equal((await fromPage({ type: 'runStatus' })).held, 2);
     // The header's notifications: each note not sent yet, with Edit, Delete and Send.
-    const noteRows = async () => (await fromPage({ type: 'header' })).inbox.filter((r) => r.type === 'note');
+    const noteRows = async () => (await fromPage({ type: 'header' })).inbox.filter((r) => r.id.startsWith('note:'));
     let rows = await noteRows();
     assert.deepEqual(rows.map((r) => [r.title, r.status.text, r.actions.map((a) => a.label).join()]),
       [['Open parent mode on the Planned tab', 'Not sent', 'Edit,Delete,Send'], ['Too fast', 'Not sent', 'Edit,Delete,Send']]);
@@ -422,7 +422,7 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
     assert.equal((await fromPage({ type: 'runStatus' })).held, 0);
     assert.equal((await fromPage({ type: 'runStatus' })).state, 'queued');
     const inbox = (await fromPage({ type: 'header' })).inbox;
-    assert.deepEqual(inbox.filter((r) => r.type === 'note'), [], 'sent: no note waits');
+    assert.deepEqual(inbox.filter((r) => r.id.startsWith('note:')), [], 'sent: no note waits');
     const run = inbox.find((r) => r.id === 'run');
     assert.deepEqual([run.type, run.status.text], ['data', 'Sent'], 'sent: the AI starts soon');
     await fromPage({ type: 'setMode', mode: 'kid' });
@@ -481,9 +481,35 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
     // The ❓ switch without a "?": a question too. A note without either: a note.
     await fromPage({ type: 'wish', list: 'today', text: 'Tell me what he likes most', ask: true });
     await fromPage({ type: 'wish', list: 'today', text: 'More trains' });
-    assert.deepEqual((await fromPage({ type: 'header' })).inbox.filter((r) => r.note).map((r) => [r.type, r.title]),
+    assert.deepEqual((await fromPage({ type: 'header' })).inbox.filter((r) => r.id.startsWith('note:')).map((r) => [r.type, r.title]),
       [['question', 'Tell me what he likes most'], ['note', 'More trains']]);
     await fromPage({ type: 'dropNote', all: true });
+
+    // What goes with a note (the parent screens send it with offer): kept with it, sent only when its checkbox is ticked.
+    await fromPage({ type: 'wish', list: 'today', text: 'Bigger buttons', screen: { where: 'the Today tab', text: 'Today 3 videos' }, withApp: true, offer: true });
+    let n = (await noteRows()).find((x) => x.title === 'Bigger buttons');
+    assert.deepEqual(n.checks.map((c) => [c.key, c.on, c.can]), [['screen', false, true], ['app', false, true], ['ask', false, true]]);
+    assert.equal((await send({ type: 'inbox', do: 'note.attach', id: n.note, what: 'screen', on: true })).ok, true);
+    assert.equal((await send({ type: 'inbox', do: 'note.attach', id: n.note, what: 'ask', on: true })).ok, true);
+    n = (await noteRows()).find((x) => x.note === n.note);
+    assert.deepEqual([n.type, ...n.checks.map((c) => c.on)], ['question', true, false, true]);
+    assert.equal((await send({ type: 'inbox', do: 'note.attach', id: n.note, what: 'ask', on: false })).ok, true);
+    assert.equal((await send({ type: 'inbox', do: 'note.attach', id: 'gone', what: 'app', on: true })).ok, false);
+    // Send all: every note that can go now.
+    await fromPage({ type: 'wish', list: 'today', text: 'Second one' });
+    assert.equal((await send({ type: 'inbox', do: 'run' })).ok, true);
+    assert.deepEqual(await noteRows(), []);
+    const up = sent().find((e) => e.text === 'Bigger buttons');
+    assert.ok(sent().some((e) => e.text === 'Second one'));
+    assert.deepEqual([Object.keys(up.context), up.context.screen.text, 'offer' in up, !!up.ask], [['screen'], 'Today 3 videos', false, false], 'only what was ticked');
+    // Sent, it is followed: Waiting, then Done with what the AI did about it (answers.json) in its Details.
+    const follow = async () => (await fromPage({ type: 'header' })).inbox.find((r) => r.id === `question:${up.eventId}`);
+    let f = await follow();
+    assert.deepEqual([f.type, f.status.text], ['note', 'Waiting']);
+    files['answers.json'] = { json: { schemaVersion: 1, answers: [{ eventId: up.eventId, answer: 'Made the buttons bigger in 0.12.14.', at: new Date().toISOString() }] } };
+    await fromPage({ type: 'sync' });
+    f = await follow();
+    assert.deepEqual([f.status.text, f.done, f.details, f.actions.map((a) => a.label).join()], ['Done', true, [['What was done', 'Made the buttons bigger in 0.12.14.']], 'Got it']);
 
     // Settings → Update now (sync with notes: true) also sends them.
     await fromPage({ type: 'wish', text: 'More Russian' });
@@ -520,7 +546,7 @@ test('a recording no speech service on the tablet could write down: the server w
     await fromPage({ type: 'sync' });
     assert.equal(files['voice/rec-0001-aaaa.wav']?.raw, voice.audio, 'the recording is in the profile’s folder');
     assert.equal(fake.store['voice:rec-0001-aaaa'], undefined, 'and no longer kept on the tablet');
-    const row = async () => (await fromPage({ type: 'header' })).inbox.find((r) => r.type === 'note');
+    const row = async () => (await fromPage({ type: 'header' })).inbox.find((r) => r.id.startsWith('note:'));
     let r = await row();
     assert.deepEqual([r.title, r.status.text, r.actions.map((a) => a.label).join()], ['🎤 A recorded note (8 s) about the settings', 'Writing down', 'Delete']);
     assert.equal(fake.alarms.set.soon?.delayInMinutes, 1, 'waiting for the server: the next sync in a minute');

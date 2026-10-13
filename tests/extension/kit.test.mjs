@@ -49,7 +49,7 @@ const button = (root, label) => find(root, (n) => n.tagName === 'BUTTON' && n.te
 const { notesDock } = await import('../../extension/apps/kidtube/parent/kit.js');
 let screen = { list: 'today' };
 const card = new FakeEl('div');
-notesDock({ card, where: () => screen, docNames: { math: 'Math' } });
+notesDock({ card, where: () => screen });
 const fab = document.body.children.find((n) => n.className === 'notefab');
 
 test('one 🎤 for every note: pauses keep it one note until ⏹, about the screen it started on', async () => {
@@ -84,16 +84,8 @@ test('a recognition error ends the recording and keeps what was heard', async ()
   assert.deepEqual(sent.filter((m) => m.type === 'note').map((m) => [m.videoId, m.comment]), [['abcdefghijk', 'more animals']]);
 });
 
-test('the notes card: every waiting note with where it was made, ✕, Clear all and Apply notes', async () => {
-  let held = [
-    { id: 'n1', type: 'wish', list: 'today', text: 'more numbers' },
-    { id: 'n2', type: 'parentNote', videoId: 'abcdefghijk', title: 'Counting song', text: 'too fast' },
-    { id: 'n3', type: 'context', doc: 'math', text: 'counts to 20' },
-  ];
-  answers.heldNotes = () => ({ ok: true, notes: held });
-  answers.dropNote = (m) => { held = m.all ? [] : held.filter((n) => n.id !== m.id); return { ok: true }; };
+test('the notes card has no list: a saved note waits in 🔔, with the screen and the app data kept for its checkboxes', async () => {
   answers.runHelper = () => ({ ok: true });
-  globalThis.confirm = () => true;
   sent.length = 0;
   screen = { doc: 'math' };
   fab.click();   // records about the Math document
@@ -101,45 +93,11 @@ test('the notes card: every waiting note with where it was made, ✕, Clear all 
   rec.phrase('and adds small numbers');
   fab.click();
   await tick();
-  assert.deepEqual(sent.find((m) => m.type === 'contextNote'), { type: 'contextNote', doc: 'math', text: 'and adds small numbers' });
-  const shown = text(card);
-  for (const s of ['Notes for the AI · 3', 'Today', 'Video · Counting song', 'Context · Math', 'too fast']) assert.ok(shown.includes(s), s);
-
-  const li = find(card, (n) => n.tagName === 'LI' && text(n).includes('too fast'));
-  button(li, '✕').click();
-  await tick();
-  assert.deepEqual(sent.at(-2), { type: 'dropNote', id: 'n2' });
-  assert.ok(!text(card).includes('too fast'));
-
-  answers.runHelper = () => ({ ok: false, error: 'offline' });   // not sent: the card stays, with its notes
-  button(card, 'Apply notes (2)').click();
-  await tick();
-  assert.ok(sent.some((m) => m.type === 'runHelper'), 'Apply notes sends them and runs the AI');
-  assert.equal(card.hidden, false);
-
-  button(card, 'Clear all').click();
-  await tick();
-  assert.ok(sent.some((m) => m.type === 'dropNote' && m.all));
-  assert.equal(card.hidden, true, 'no notes and not recording: the card hides');
-});
-
-test('the notes card follows the 🔔 list: a note deleted there goes from the card too; ✕ on one already gone says so', async () => {
-  let held = [{ id: 'v1', type: 'wish', list: 'today', text: '🎤 A recorded note: the server writes it down…' }, { id: 'n5', type: 'wish', list: 'today', text: 'keep me' }];
-  answers.heldNotes = () => ({ ok: true, notes: held });
-  answers.dropNote = (m) => { const had = held.some((n) => n.id === m.id); held = held.filter((n) => n.id !== m.id); return { ok: had }; };
-  screen = { list: 'today' };
-  fab.click(); await tick(); rec.phrase('one more'); fab.click(); await tick();   // the card is open
-  assert.ok(text(card).includes('server writes it down'));
-  held = held.filter((n) => n.id !== 'v1');   // deleted in the header's list (Delete, or a swipe)
-  for (const fn of changed) fn({ outbox: { newValue: [] } });
-  await tick();
-  assert.ok(!text(card).includes('server writes it down'), 'gone from the card at once');
-  const stale = held[0];
-  held = [];   // sent meanwhile
-  button(find(card, (n) => n.tagName === 'LI' && text(n).includes(stale.text)), '✕').click();
-  await tick();
-  assert.ok(!text(card).includes('keep me'), 'the card shows what is there now');
-  assert.match(text(document.body), /not here any more: it was sent, or deleted in the 🔔 list/);
+  const m = sent.find((x) => x.type === 'contextNote');
+  assert.deepEqual([m.doc, m.text, m.offer, m.withApp], ['math', 'and adds small numbers', true, true], 'kept with the note, sent only when ticked');
+  assert.ok(!sent.some((x) => x.type === 'heldNotes'), 'the card no longer lists the notes');
+  assert.equal(card.hidden, true, 'saved: the card closes (the note is in the header’s 🔔 list)');
+  for (const gone of ['Clear all', 'Apply notes', 'This screen', 'App data', 'Question']) assert.ok(!text(card).includes(gone), gone);
 });
 
 test('the apps header sits above the page’s sticky toolbar, so its menus show; YouTube’s fixed one is left alone', async () => {
@@ -378,4 +336,43 @@ test('the notifications: rows swiped one after another all stay away (2026-10-13
   assert.ok(rowEl('Third problem'));
   assert.deepEqual(Object.keys(local.inboxHidden).sort(), ['problem:a', 'problem:b']);
   delete local.inboxHidden; delete answers.header; delete answers.version;
+});
+
+test('the notifications: a note’s checkboxes (This screen, App data, Question), Send all, and a sent note’s Details', async () => {
+  const checks = (screen) => [{ key: 'screen', label: '📄 This screen', on: screen, can: true }, { key: 'app', label: '⚙️ App data', on: false, can: true },
+    { key: 'ask', label: '❓ Question', on: false, can: true }];
+  const send = [{ do: 'note.edit', label: 'Edit' }, { do: 'note.drop', label: 'Delete' }, { do: 'note.send', label: 'Send' }];
+  let screenOn = false;
+  answers.header = () => ({ ok: true, open: true, mode: 'parent', running: 'kidtube', site: null, here: null, connected: null, github: { connected: true }, apps: [], inbox: [
+    { id: 'note:n1', note: 'n1', type: 'note', status: { text: 'Not sent', tone: 'wait' }, title: 'Bigger buttons', checks: checks(screenOn), actions: send },
+    { id: 'note:n2', note: 'n2', type: 'note', status: { text: 'Not sent', tone: 'wait' }, title: 'More trains', checks: checks(false), actions: send },
+    { id: 'question:n0', note: 'n0', type: 'note', done: true, status: { text: 'Done', tone: 'ok' }, title: 'Remove update box',
+      details: [['What was done', 'Removed it in 0.12.14.']], actions: [{ do: 'question.dismiss', label: 'Got it' }] },
+  ] });
+  answers.version = () => ({ ok: true, installed: '0.12.14', latest: '0.12.14', newer: false, kind: 'quetta' });
+  answers.inbox = (m) => { if (m.do === 'note.attach' && m.what === 'screen') screenOn = m.on; return { ok: true }; };
+  const h = new FakeEl('div');
+  globalThis.KidTubeHeader.mount(h, { dark: false });
+  await tick(); await tick();
+  const row = (title) => find(h.shadowRoot, (n) => n.className?.startsWith?.('nrow') && text(n).includes(title));
+  const box = (r, label) => find(r, (n) => n.tagName === 'LABEL' && text(n).includes(label)).children[0];
+  const tap = (r, label) => find(r, (n) => n.tagName === 'BUTTON' && text(n).trim().startsWith(label)).click();
+  assert.equal(box(row('Bigger buttons'), 'This screen').checked, false);
+  sent.length = 0;
+  const cb = box(row('Bigger buttons'), 'This screen');
+  cb.checked = true;
+  cb.dispatchEvent({ type: 'change' });
+  await tick(); await tick();
+  assert.deepEqual(sent.find((m) => m.type === 'inbox'), { type: 'inbox', do: 'note.attach', id: 'n1', what: 'screen', on: true });
+  assert.equal(box(row('Bigger buttons'), 'This screen').checked, true, 'drawn again as ticked');
+  // Send all: two notes can go.
+  tap(h.shadowRoot, 'Send all (2)');
+  await tick(); await tick();
+  assert.ok(sent.some((m) => m.type === 'inbox' && m.do === 'run'));
+  // A sent note: Details opens what the AI did about it.
+  assert.ok(!text(row('Remove update box')).includes('Removed it in 0.12.14.'));
+  tap(row('Remove update box'), 'Details');
+  await tick();
+  assert.ok(text(row('Remove update box')).includes('Removed it in 0.12.14.'));
+  delete answers.header; delete answers.version; delete answers.inbox;
 });

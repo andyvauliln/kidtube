@@ -66,11 +66,12 @@ Write the result as JSON to the result file given below. Use exactly these keys:
 
 ```json
 { "summary": "What you did about each note, in plain words for the parent (at most 500 characters).", "runHelper": false, "version": "0.8.10",
-  "answers": [{ "eventId": "the question's eventId", "answer": "The answer, in plain words (at most 2000 characters)." }] }
+  "answers": [{ "eventId": "the note's eventId", "answer": "The answer, or what you did about this note, in plain words (at most 2000 characters)." }] }
 ```
 
-- `answers`: one for each question (the note's `eventId`). The tablet shows each answer under its question in the
-  header's list. No questions: `[]`.
+- `answers`: one for **every** note (its `eventId`). A question: the answer. Any other note: what you did about it in
+  one or two sentences (the change and the version it is in, "the helper will…", or what you need to know). The
+  tablet shows a question's answer under it, and a note's in its Details in the header's list.
 
 - `version`: the version you released, or `null`.
 - `runHelper`: `true` when a note asks for different videos or lists (kind 3), or when the helper should run now with a change you made to it.

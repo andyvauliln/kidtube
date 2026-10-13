@@ -11,7 +11,7 @@ import { applySiteRules } from '../../../core/background/sites.js';
 import { sync, fetchDataFile } from '../../../core/background/sync.js';
 import { PLAN_ACTIONS, pendingPlan, entryFromRecord } from '../lib/plan.js';
 import { loadBundled, effective, contextDocsOf } from './config.js';
-import { dropDoneNotes, getMemory, runView } from './parent.js';
+import { dropDoneNotes, keepResults, getMemory, runView } from './parent.js';
 import { uploadTranscripts } from './transcripts.js';
 import { syncAudio, loadCharacter, syncAvatar } from './media.js';
 import { syncVoice } from './voice.js';
@@ -107,7 +107,7 @@ export async function syncKidTube({ loc, token, data, status, acct }) {
   }
   const done = await withState((s) => {
     Object.assign(s.data, update, { etags });
-    if (s.notes) dropDoneNotes(s.notes, s.data.notesDone ?? []);
+    if (s.notes) { dropDoneNotes(s.notes, s.data.notesDone ?? []); keepResults(s); }
     s.syncStatus = status;
     return true;
   }, { account: acct });
@@ -174,7 +174,8 @@ async function pullPlan(loc, token, acct) {
 // and the server's notes agent (agent/notes.sh) reads them within a minute. ids: only these notes (the header's Send).
 export async function releaseNotes(ids = null) {
   // A recorded note the server is still writing down waits (background/voice.js).
-  await withState((s) => { for (const e of s.outbox) if ((!ids || ids.includes(e.eventId)) && !e.voice) delete e.held; });
+  // What the parent did not tick (This screen, App data: ev.offer) stays on the tablet.
+  await withState((s) => { for (const e of s.outbox) if ((!ids || ids.includes(e.eventId)) && !e.voice) { delete e.held; delete e.offer; } });
 }
 
 // Parent mode → Update. Sends what is waiting (notes, what he watched), then writes requests/run.json;
@@ -251,7 +252,7 @@ async function uploadLocalConfig() {
 // Writes queued events into activity/YYYY-MM-DD.json, de-duplicated by eventId (PLAN.md §3.3).
 async function flushOutbox(loc, token) {
   const all = (await chrome.storage.local.get('outbox')).outbox ?? [];
-  const outbox = all.filter((e) => !e.held);   // notes wait for ↻ Update
+  const outbox = all.filter((e) => !e.held).map(({ offer, ...e }) => e);   // notes wait for ↻ Update; offer stays here
   const { settings = {}, data = {}, localConfig } = await chrome.storage.local.get(['settings', 'data', 'localConfig']);
   if (!outbox.length) return;
   if (!token) throw new Error('no token; events kept on the tablet');

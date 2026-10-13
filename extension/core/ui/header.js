@@ -140,6 +140,16 @@
     .count { min-width: 28px; text-align: right; font-size: 13px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
     .nmore { display: block; width: 100%; padding: 8px 12px; border-top: 1px solid var(--line); color: var(--blue); font-size: 13px; font-weight: 500; text-align: left; }
     .nnone { padding: 10px 12px; color: var(--muted); font-size: 13px; }
+    .nchecks { display: flex; flex-wrap: wrap; gap: 4px 12px; padding-top: 2px; }
+    .nchecks label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; color: var(--muted); cursor: pointer; }
+    .nchecks label.on { color: var(--ink); }
+    .nchecks input { width: 16px; height: 16px; margin: 0; padding: 0; accent-color: var(--blue); }
+    .ndet { display: grid; gap: 2px; margin-top: 4px; padding: 6px 8px; border-radius: 8px; background: var(--soft); }
+    .msg .ndet span { white-space: pre-wrap; color: var(--ink); font-size: 13px; }
+    .msg .ndet span.k { color: var(--muted); font-size: 12px; font-weight: 600; }
+    .nfoot { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-top: 1px solid var(--line); }
+    .nfoot .nhint { flex: 1; padding: 0; border: 0; }
+    .nfoot button { height: 28px; padding: 0 12px; border-radius: 14px; background: var(--ink); color: var(--bg); font-size: 13px; font-weight: 500; white-space: nowrap; }
     @media (max-width: 600px) {
       .who .email, .brand .name, .who > svg, .bar > .btn.primary span { display: none; }
       .bar { gap: 6px; padding: 0 8px 0 12px; }
@@ -269,7 +279,7 @@
 
     let data = null, alive = true, busy = '', loading = false, again = null, ver = null;
     const ui = { menu: false, github: false, repo: null, token: '', note: '', noteKind: '', apps: false,
-      inbox: true, all: false, edit: null, sure: null };
+      inbox: true, all: false, edit: null, sure: null, open: null };
     // The notifications list starts open; the bell closes it, and it stays closed on every page (storage headerUi).
     // A new problem report opens it again (instead of core/ui/watch.js's banner on a page without the header).
     globalThis.KidTubeHeaderShown = true;
@@ -534,7 +544,7 @@
       let x0 = null, y0 = 0, dx = 0, pid = null, side = false;
       const back = () => { row.classList.add('back'); row.style.transform = ''; row.style.opacity = ''; };
       row.addEventListener('pointerdown', (e) => {
-        if (e.target?.closest?.('button, textarea')) return;
+        if (e.target?.closest?.('button, textarea, label')) return;
         x0 = e.clientX; y0 = e.clientY; dx = 0; pid = e.pointerId; side = false; row.classList.remove('back');
       });
       row.addEventListener('pointermove', (e) => {
@@ -587,14 +597,29 @@
         if (!o?.ok) say(o?.error ?? 'That didn’t work. Try again.', 'err');
         return;
       }
+      if (a.do === 'details') { ui.open = ui.open === r.id ? null : r.id; return draw(); }
       if (a.do === 'note.edit') { ui.edit = { id: r.note, text: r.editText ?? r.title }; ui.sure = null; draw(); root.querySelector('textarea')?.focus(); return; }
       // Delete asks once more on the same button: a dictated note can be long.
       if (a.do === 'note.drop' && ui.sure !== r.id) { ui.sure = r.id; return draw(); }
       ui.sure = null;
-      const busyText = { 'question.dismiss': 'Closing…', 'note.drop': 'Deleting…', 'note.send': 'Sending…', run: 'Asking…', 'problems.send': 'Sending…', sync: 'Saving…' }[a.do] ?? 'Working…';
-      const res = await act(busyText, { type: 'inbox', do: a.do, id: r.note });
+      const busyText = { 'question.dismiss': 'Closing…', 'note.drop': 'Deleting…', 'note.send': 'Sending…', 'note.attach': 'Saving…', run: 'Asking…', 'problems.send': 'Sending…', sync: 'Saving…' }[a.do] ?? 'Working…';
+      const res = await act(busyText, { type: 'inbox', do: a.do, id: r.note, ...(a.what ? { what: a.what, on: a.on } : {}) });
       if (res?.ok && res.message) say(res.message, 'ok');
-      refresh(true);
+      await refresh(true);
+      if (a.do === 'note.attach' && res?.ok) {
+        W?.check({ id: 'header.noteAttach', area: 'notes', expect: 'A note’s checkbox in the notifications (This screen, App data, Question) stays as tapped',
+          code: ['core/ui/header.js inboxRow', 'core/background/inbox.js checksOf', 'apps/kidtube/background/parent.js attachHeld'] }, (t) => {
+          const row = (data?.inbox ?? []).find((x) => x.id === r.id);
+          if (!row) return t.skip('the note was sent or deleted meanwhile');
+          t.eq(`${a.what} ticked`, a.on, !!row.checks?.find((c) => c.key === a.what)?.on);
+        }, 5000);
+      }
+      if (a.do === 'run' && r.id === 'all' && res?.ok) {
+        W?.check({ id: 'header.sendAll', area: 'notes', expect: 'Send all sends every note that can go: none is left with a Send button',
+          code: ['core/ui/header.js inboxList', 'apps/kidtube/background/sync.js requestRun'] }, (t) => {
+          t.eq('notes still waiting to be sent', 0, (data?.inbox ?? []).filter((x) => x.actions?.some((b) => b.do === 'note.send')).length);
+        }, 5000);
+      }
     }
     async function saveEdit() {
       const e = ui.edit;
@@ -625,7 +650,27 @@
         if (r.detail) msg.append(el('span', '', r.detail));
         if (r.state) msg.append(el('span', '', r.state));
         if (r.versions) msg.append(el('span', 'pvers', r.versions));   // a problem: where it came from, where it is fixed
-        for (const a of r.actions ?? []) {
+        // A note not sent yet: what goes with it (core/background/inbox.js checksOf).
+        if (r.checks?.length) {
+          const box = el('div', 'nchecks');
+          for (const c of r.checks) {
+            const l = el('label', c.on ? 'on' : '');
+            const cb = Object.assign(el('input'), { type: 'checkbox', checked: !!c.on, disabled: !!busy || !c.can });
+            l.title = c.can ? c.title : 'This note was saved without it';
+            cb.addEventListener('change', () => tapRow(r, { do: 'note.attach', what: c.key, on: cb.checked }));
+            l.append(cb, c.label);
+            box.append(l);
+          }
+          msg.append(box);
+        }
+        // A sent note's Details: the answer, or what the AI did about it.
+        if (r.details?.length && ui.open === r.id) {
+          const d = el('div', 'ndet');
+          for (const [k, v] of r.details) d.append(el('span', 'k', k), el('span', '', v));
+          msg.append(d);
+        }
+        const actions = r.details?.length ? [{ do: 'details', label: ui.open === r.id ? 'Hide details' : 'Details' }, ...(r.actions ?? [])] : r.actions ?? [];
+        for (const a of actions) {
           const sure = a.do === 'note.drop' && ui.sure === r.id;
           const b = button(sure ? 'sure' : a.do === 'note.send' ? 'go' : '', sure ? 'Sure? Delete' : a.label, () => tapRow(r, a));
           b.disabled = !!busy;
@@ -649,7 +694,17 @@
       const shown = ui.all ? rows : rows.slice(0, SHOWN);
       for (const r of shown) box.append(inboxRow(r));
       if (rows.length > SHOWN) box.append(button('nmore', ui.all ? 'Show fewer' : `Show all ${rows.length}`, () => { ui.all = !ui.all; draw(); }));
-      box.append(el('div', 'nhint', 'Swipe a row to the right to remove it. Done rows go by themselves after 3 minutes.'));
+      const foot = el('div', 'nfoot');
+      foot.append(el('div', 'nhint', 'Swipe a row to the right to remove it. Done problems and runs go by themselves after 3 minutes.'));
+      // Send all: every note that can go now (a recording the server still writes down waits).
+      const ready = rows.filter((r) => r.actions?.some((a) => a.do === 'note.send')).length;
+      if (ready > 1) {
+        const all = button('', `Send all (${ready})`, () => tapRow({ id: 'all' }, { do: 'run' }));
+        all.title = 'Send every note waiting here to the AI now';
+        all.disabled = !!busy;
+        foot.append(all);
+      }
+      box.append(foot);
       return box;
     }
 

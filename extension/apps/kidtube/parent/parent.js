@@ -644,7 +644,7 @@ function noteTarget() {
   if (r.tab === 'prompt') return { prompt: true };
   return { list: r.tab };   // today | planned | history | settings
 }
-notesDock({ card: $('notesCard'), fabHost: $('mic'), where: noteTarget, docNames: Object.fromEntries(CONTEXT),
+notesDock({ card: $('notesCard'), fabHost: $('mic'), where: noteTarget,
   onSaved: () => { const t = route().tab; if (t === 'context') renderContext(); if (t === 'prompt') renderPrompt(); } });
 
 window.kidtubeParentReady = true;   // boot.js: the script ran

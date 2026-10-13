@@ -5,7 +5,7 @@ import { guard, viewState, leaveSession } from './rules.js';
 import { HANDLERS, PAGE_ONLY } from './handlers.js';
 import { syncKidTube, releaseNotes, requestRun } from './sync.js';
 import { KIDTUBE_CHECKS } from './checks.js';
-import { runView, heldNotes, editHeld, dropHeld, questionsView, dismissQuestion } from './parent.js';
+import { runView, heldNotes, editHeld, dropHeld, attachHeld, questionsView, dismissQuestion } from './parent.js';
 import { voicePending, dropRecording } from './voice.js';
 
 // What a note is about, in the header's list (the parent screens' tabs and context documents).
@@ -40,7 +40,7 @@ export default {
     const r = runView(s);
     return { held: r.held, run: r.state, message: r.message ?? '', at: r.at ?? null, page: 'parent', send: '↻ Update' };
   },
-  // The parent's notes not sent yet, each with Edit, Delete and Send in the header's list.
+  // The parent's notes not sent yet, each with Edit, Delete and Send and its checkboxes in the header's list.
   notes: {
     list: async (s) => (await heldNotes(s)).notes.map((n) => ({ ...n, about: aboutOf(n) })),
     edit: (s, id, text) => editHeld(s, id, text),
@@ -50,14 +50,17 @@ export default {
       return dropHeld(s, id);
     },
     send: (ids) => requestRun({ ids }),
+    // The row's checkboxes: 📄 This screen, ⚙️ App data, ❓ Question (what: screen | app | ask).
+    attach: (s, id, what, on) => attachHeld(s, id, what, on),
   },
-  // The questions already sent: waiting, answered, or no answer (the header's Question rows).
+  // The notes and questions already sent: waiting, answered (or what was done), or no answer (the header's rows).
   questions: {
     list: (s) => questionsView(s).map((q) => ({ ...q, about: aboutOf(q) })),
     dismiss: (s, id) => dismissQuestion(s, id),
   },
   // Something waits for the server (a question, the run, a recorded note): the core syncs again in a minute, not in 15.
-  waiting: (s) => questionsView(s).some((q) => q.state === 'waiting') || ['queued', 'running'].includes(runView(s).state) || voicePending(s),
+  // A sent note that is not a question needs no quick syncs of its own: the run's own waiting does, and its end brings the answers.
+  waiting: (s) => questionsView(s).some((q) => q.ask && q.state === 'waiting') || ['queued', 'running'].includes(runView(s).state) || voicePending(s),
   sync: syncKidTube,
   beforeSync: (msg) => (msg.notes ? releaseNotes() : undefined),
   async siteRules(stored) {

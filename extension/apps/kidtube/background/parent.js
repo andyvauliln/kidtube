@@ -15,16 +15,20 @@ export const getMemory = async () => (await chrome.storage.local.get('memory')).
 // --- notes for the AI --------------------------------------------------------------------------------------
 // The tablet keeps no history of notes: one stays in its list until the server says the AI worked on it
 // (notes-done.json, agent/poll.sh), then it is deleted. id: the event's id, to match that list.
-// A question for the AI: the parent's ❓ switch, or a "?" in the words. The server's notes agent answers it
-// (answers.json); until then it stays in the header's list as waiting.
+// A question for the AI: the ❓ Question box on its row in the header's list, or a "?" in the words. The server's
+// notes agent answers it (answers.json); until then it stays in the header's list as waiting.
+// Every note is followed the same way once sent (s.notes.questions; ask: false for a note that is not a question):
+// the agent writes what it did about it in answers.json too, and the row's Details shows that.
 const isQuestion = (msg, text) => msg.ask === true || /\?/.test(String(text ?? ''));
 function trackQuestion(s, ev) {
-  if (!ev.ask) return;
+  if (!ev.held || !(ev.comment ?? ev.text)) return;
   const qs = ((s.notes ??= {}).questions ??= []);
-  qs.push({ id: ev.eventId, at: ev.at, type: ev.type, text: ev.comment ?? ev.text,
+  qs.push({ id: ev.eventId, at: ev.at, type: ev.type, text: ev.comment ?? ev.text, ask: !!ev.ask,
     ...(ev.list ? { list: ev.list } : {}), ...(ev.videoId ? { videoId: ev.videoId } : {}), ...(ev.doc ? { doc: ev.doc } : {}) });
   s.notes.questions = qs.slice(-30);
 }
+// Saved before 0.12.16, only questions were followed (no ask field).
+const asks = (q) => q.ask !== false;
 
 // A recorded note no speech service on the tablet could write down (they refuse some countries): its recording goes
 // to the server, which writes it down (background/voice.js). Until then the note has a stand-in text and ev.voice
@@ -55,7 +59,7 @@ export async function heldNotes(s) {
     id: e.eventId, at: e.at, type: e.type, text: e.comment ?? e.text,
     ...(e.list ? { list: e.list } : {}), ...(e.doc ? { doc: e.doc } : {}),
     ...(e.videoId ? { videoId: e.videoId, title: titleOf(e.videoId) } : {}),
-    ...(e.context ? { attached: Object.keys(e.context) } : {}), ...(e.ask ? { ask: true } : {}), ...(e.voice ? { voice: e.voice } : {}),
+    ...(e.context ? { attached: Object.keys(e.context) } : {}), ...(e.offer ? { offered: Object.keys(e.offer) } : {}), ...(e.ask ? { ask: true } : {}), ...(e.voice ? { voice: e.voice } : {}),
   }));
   return { ok: true, notes };
 }
@@ -79,8 +83,43 @@ export function setWords(s, ev, words) {
   for (const box of [n.lists, n.videos]) for (const list of Object.values(box ?? {})) for (const x of list) if (x.id === id) x.text = words;
   for (const x of [...(n.contextNotes ?? []), ...(n.promptOps ?? [])]) if (x.eventId === id) x.text = words;
   for (const q of n.questions ?? []) if (q.id === id) q.text = words;
-  if (!ev.ask && /\?/.test(words)) { ev.ask = true; trackQuestion(s, ev); }   // edited into a question
+  if (!ev.ask && /\?/.test(words)) { ev.ask = true; for (const q of n.questions ?? []) if (q.id === id) q.ask = true; }   // edited into a question
   return { ok: true };
+}
+
+// The checkboxes on a note's row in the header's list, until it is sent: 📄 This screen and ⚙️ App data (kept with
+// the note when it was made, in ev.offer, and only sent when ticked: ev.context), and ❓ Question (ev.ask).
+export async function attachHeld(s, id, what, on) {
+  const ev = s.outbox.find((e) => e.held && e.eventId === id && (e.comment || e.text));
+  if (!ev) return { ok: false, error: 'This note is not here any more: it was sent or deleted.' };
+  if (what === 'ask') {
+    if (on) ev.ask = true; else delete ev.ask;
+    for (const q of s.notes?.questions ?? []) if (q.id === id) q.ask = !!on;
+    return { ok: true };
+  }
+  if (!['screen', 'app'].includes(what)) return { ok: false, error: 'Unknown checkbox.' };
+  const ctx = (ev.context ??= {}), offer = (ev.offer ??= {});
+  if (on) {
+    // App data a note was made without (before 0.12.16): the app's state now.
+    const v = offer[what] ?? (what === 'app' ? await appState(s) : null);
+    if (!v) return { ok: false, error: 'This note was saved without the screen: only notes made from now on have it.' };
+    ctx[what] = v; delete offer[what];
+  } else if (ctx[what]) { offer[what] = ctx[what]; delete ctx[what]; }
+  if (!Object.keys(ctx).length) delete ev.context;
+  if (!Object.keys(offer).length) delete ev.offer;
+  return { ok: true };
+}
+
+// A note made from the parent screens (msg.offer): what This screen and App data would add is kept with it
+// (ev.offer, never sent) until its row's checkbox attaches it. make(ctx) adds the note to the outbox.
+export async function madeWith(s, msg, make) {
+  const ctx = await noteContext(s, msg);
+  if (!msg.offer) return make(ctx);
+  const n = s.outbox.length;
+  const r = make(null);
+  const ev = s.outbox[n];
+  if (r?.ok && ctx && ev?.held) ev.offer = ctx;
+  return r;
 }
 
 // Deletes notes that were not sent yet (id, or all of them when id is null): from the outbox and the tabs' lists.
@@ -98,9 +137,10 @@ export function dropHeld(s, id) {
   return { ok: true, removed: gone.size };
 }
 
-// The questions already sent, for the header's list: waiting for the AI, answered (answers.json from the server's
-// notes agent), or worked on with no answer (notes-done.json has it, answers.json not). Answered ones go after 7
-// days, unanswered after 3; "Got it" (dismissQuestion) removes one at once.
+// The notes and questions already sent, for the header's list: waiting for the AI, answered (answers.json from the
+// server's notes agent: the answer, or what it did about a note), or worked on with no answer (notes-done.json has
+// it, answers.json not; result: what the run said then). Answered questions go after 7 days, the rest after 3;
+// "Got it" (dismissQuestion) removes one at once.
 const DAY = 86400000;
 export function questionsView(s, now = Date.now()) {
   const held = new Set(s.outbox.filter((e) => e.held).map((e) => e.eventId));
@@ -111,11 +151,20 @@ export function questionsView(s, now = Date.now()) {
     if (held.has(q.id)) continue;   // not sent yet: a note row with Edit, Delete, Send
     const a = answers.find((x) => x?.eventId === q.id && typeof x.answer === 'string');
     const state = a ? 'answered' : done.has(q.id) ? 'none' : 'waiting';
-    if (now - Date.parse(a?.at ?? q.at) > (a ? 7 : 3) * DAY) continue;
-    out.push({ ...q, state, ...(a ? { answer: a.answer.slice(0, 2000), answeredAt: a.at ?? null } : {}) });
+    if (now - Date.parse(a?.at ?? q.at) > (a && asks(q) ? 7 : 3) * DAY) continue;
+    out.push({ ...q, ask: asks(q), state, ...(a ? { answer: a.answer.slice(0, 2000), answeredAt: a.at ?? null } : {}) });
   }
   return out;
 }
+// A sent note the AI has worked on (notes-done.json) keeps what its run said (run-status.json): the Details of a
+// note the agent wrote no answer for. The next run's status replaces the file, so it is kept at the first sync.
+export function keepResults(s) {
+  const done = new Set(s.data.notesDone ?? []);
+  const st = s.data.runStatus;
+  if (!st?.message || !['done', 'failed'].includes(st.state)) return;
+  for (const q of s.notes?.questions ?? []) if (!q.result && done.has(q.id) && (st.finishedAt ?? '') >= q.at) q.result = String(st.message).slice(0, 1000);
+}
+
 export function dismissQuestion(s, id) {
   const qs = s.notes?.questions ?? [];
   if (!qs.some((q) => q.id === id)) return { ok: false, error: 'This question is not here any more.' };

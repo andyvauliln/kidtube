@@ -58,19 +58,15 @@ export async function runNow() {
 
 // --- notes for the AI: one 🎤 button (in the bottom bar, right) and one notes card (top of the page) ---------
 // The 🎤 records a note about what is on the screen (where()): a tab, a video, a context document or the prompt.
-// Pauses don't end it: it records until ⏹. Then the words join the card, which lists every note still on this
-// tablet, from every tab, with ✕ and Clear all. Apply notes sends them all to the AI (the same as ↻ Update).
-// The header's notifications list the same notes with Edit, Delete and Send (core/background/inbox.js).
+// Pauses don't end it: it records until ⏹. The card shows the recording and has a box to type a note instead.
+// The notes themselves are only in the header's notifications (🔔): Edit, Delete, Send, Send all, and the checkboxes
+// of what goes with each one (core/background/inbox.js): 📄 This screen and ⚙️ App data, kept with every note when it
+// is made (the background's madeWith) and only sent when ticked, and ❓ Question.
 // The words are written down by Groq's Whisper, Gemini (gemini-3.5-transcribe first) or OpenRouter (Settings → keys). Only without either key
 // the browser's own speech recognition writes them, and the card says so.
-// Two switches in the card attach context to the next notes, so the AI on the server sees what the parent means:
-// This screen (the page's visible text, its tab, the screen size and browser) and App data (the background adds the
-// version, the rules, today's list and the sync status). They stay as set on this tablet.
 const LONG_NOTE_MINUTES = 15;   // the browser's recognition
 const CLOUD_NOTE_MINUTES = 5;   // Gemini / OpenRouter: 5 min of 16 kHz WAV is ~13 MB sent, under Gemini's 20 MB
 const TYPE_LABEL = { today: 'Today', planned: 'Planned', history: 'History', settings: 'Settings' };
-const ATTACH_KEY = 'kidtube.noteAttach';
-const loadAttach = () => { try { return { screen: false, app: false, ...JSON.parse(localStorage.getItem(ATTACH_KEY) ?? '{}') }; } catch { return { screen: false, app: false }; } };
 
 // The screen as the parent sees it now, for a note's This screen. at: where() when the note started.
 function snapshot(at) {
@@ -83,10 +79,12 @@ function snapshot(at) {
   };
 }
 
+// A page that can't be read (no view) sends the note without its screen.
+const shot = (at) => { try { return snapshot(at); } catch { return null; } };
+
 // where(): { list } | { videoId } | { doc, docName } | { prompt: true } — what the screen shows now.
-// docNames: context document id → its name, for the card.
 // fabHost: where the 🎤 goes (the parent page's bottom bar); without one it floats bottom right.
-export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabHost = null }) {
+export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
   const fab = el('button', `notefab${fabHost ? ' docked' : ''}`, '🎤');
   fab.title = 'Record a note for the AI about this screen';
   fab.setAttribute('aria-label', fab.title);
@@ -94,27 +92,24 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabH
   let rec = null;            // the recording in progress: { stop }
   let writing = false;       // the recording is being written down
   let started = 0, clock = null, notice = '', cloud = false;
-  let notes = [];
-  // On a fresh page the card is closed (the waiting notes are in the header's 🔔 list); a recording opens it.
+  // On a fresh page the card is closed (the notes are in the header's 🔔 list); a recording opens it.
   let expanded = false;
-  const attach = loadAttach();   // { screen, app }: what goes with the next notes
 
-  const label = (n) => n.videoId ? `Video · ${n.title || n.videoId}` : n.doc ? `Context · ${docNames[n.doc] ?? n.doc}`
-    : n.type === 'prompt' ? 'Prompt' : TYPE_LABEL[n.list] ?? 'Message';
   // more: what else goes with the note (voice: a recording for the server to write down).
   const save = async (text, at = where(), more = {}) => {
-    // The screen where the note started (a recording took it then), and the app's state now.
-    const extra = { ...(attach.screen ? { screen: at.shot ?? snapshot(at) } : {}), ...(attach.app ? { withApp: true } : {}), ...(asking ? { ask: true } : {}), ...more };
+    // The screen where the note started (a recording took it then) and the app's state now: kept with the note,
+    // sent only when its row in 🔔 ticks them (offer).
+    const extra = { screen: at.shot ?? shot(at), withApp: true, offer: true, ...more };
     const r = at.videoId ? await ask({ type: 'note', videoId: at.videoId, comment: text, ...extra })
       : at.doc ? await ask({ type: 'contextNote', doc: at.doc, text, ...extra })
       : at.prompt ? await ask({ type: 'promptNote', action: 'add', text, ...extra })
       : await ask({ type: 'wish', list: at.list ?? 'settings', text, ...extra });
     if (!r?.ok) { toast('Could not save the note. Is parent mode still on?'); return false; }
-    if (asking) { asking = false; showAsk(); }   // the ❓ switch is for one note
     notice = '';
-    expanded = true;
-    card.classList.remove('open');   // the card stays while notes wait
+    expanded = false;
+    card.classList.remove('open');
     await draw();
+    toast('Saved. It waits in the 🔔 list: send it there, or tick what goes with it.');
     onSaved();
     hooks.afterRun();
     return true;
@@ -126,47 +121,16 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabH
   typed.placeholder = 'Or type a note…';
   const addTyped = btn('Add', async () => { const t = typed.value.trim(); if (t && (await save(t))) typed.value = ''; }, 'small');
 
-  // The two switches: pressed = attached to the next notes.
-  function attachSwitch(key, text, title) {
-    const b = el('button', 'small attach', text);
-    b.type = 'button';
-    b.title = title;
-    const show = () => { b.setAttribute('aria-pressed', String(attach[key])); b.classList.toggle('on', attach[key]); };
-    b.addEventListener('click', (e) => {
-      e.stopPropagation();
-      attach[key] = !attach[key];
-      try { localStorage.setItem(ATTACH_KEY, JSON.stringify(attach)); } catch {}
-      show();
-    });
-    show();
-    return b;
-  }
-  // ❓ Question: the AI answers this note in the header's list (a "?" in the words does the same). For one note.
-  let asking = false;
-  const askBtn = el('button', 'small attach', '❓ Question');
-  askBtn.type = 'button';
-  askBtn.title = 'The AI answers this note: the answer shows in the header’s 🔔 list';
-  const showAsk = () => { askBtn.setAttribute('aria-pressed', String(asking)); askBtn.classList.toggle('on', asking); };
-  askBtn.addEventListener('click', (e) => { e.stopPropagation(); asking = !asking; showAsk(); });
-  showAsk();
-  const attachRow = el('div', 'attachrow');
-  attachRow.append(el('span', 'muted', 'Send with the note:'),
-    attachSwitch('screen', '📄 This screen', 'Attach what this screen shows (its text, the tab, the screen size), so the AI sees what you mean'),
-    attachSwitch('app', '⚙️ App data', 'Attach the app’s state: version, rules, today’s list, sync status'), askBtn);
-
   async function draw() {
-    const r = await ask({ type: 'heldNotes' });
-    notes = r?.ok ? r.notes ?? [] : notes;
     const busy = rec || writing;
-    // The waiting notes are in the header's notifications (Edit, Delete, Send): the card opens only to add one.
     card.hidden = !busy && !retry && !notice && !expanded && !card.classList.contains('open');
     fab.textContent = rec ? '⏹' : writing ? '…' : '🎤';
     fab.classList.toggle('on', !!rec);
     if (card.hidden) return;
     const head = el('div', 'nchead');
-    head.append(el('h2', '', notes.length ? `Notes for the AI · ${notes.length}` : 'Notes for the AI'));
+    head.append(el('h2', '', 'Note for the AI'));
     const close = el('button', 'ghost small nclose', '✕');
-    close.title = 'Close (the notes stay: they are in the header’s 🔔 list)';
+    close.title = 'Close (your notes are in the header’s 🔔 list)';
     close.addEventListener('click', () => { expanded = false; notice = ''; card.classList.remove('open'); if (!busy) card.hidden = true; else draw(); });
     if (!busy) head.append(close);
     const parts = [head];
@@ -182,45 +146,13 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabH
         btn('Try again', () => writeDown(retry.audio, retry.at), 'small primary'));
       parts.push(again);
     }
-    if (notes.length) {
-      const ul = el('ul', 'notes nlist');
-      for (const n of notes) {
-        const li = el('li');
-        const body = el('div');
-        body.append(el('span', 'nwhere', `${n.ask ? '❓ ' : ''}${label(n)}`), el('span', '', n.text));
-        if (n.attached?.length) body.append(el('span', 'nattached', ['screen', 'app'].filter((a) => n.attached.includes(a)).map((a) => (a === 'screen' ? '📄 screen' : '⚙️ app data')).join(' · ')));
-        const x = btn('✕', async () => {
-          const gone = (await ask({ type: 'dropNote', id: n.id }))?.ok;
-          await draw();
-          if (gone) hooks.afterRun(); else toast('This note is not here any more: it was sent, or deleted in the 🔔 list.');
-        }, 'ghost small');
-        x.title = 'Remove this note';
-        li.append(body, x);
-        ul.append(li);
-      }
-      parts.push(ul);
-    }
     const row = el('div', 'noterow');
     row.append(typed, addTyped);
-    parts.push(row, attachRow);
-    if (notes.length) {
-      const acts = el('div', 'ncacts');
-      acts.append(
-        btn('Clear all', async () => {
-          if (!confirm(`Delete all ${notes.length} notes? They were not sent.`)) return;
-          await ask({ type: 'dropNote', all: true });
-          expanded = false;
-          card.classList.remove('open');
-          await draw();
-          hooks.afterRun();
-        }, 'small'),
-        btn(`Apply notes (${notes.length})`, async () => { if (rec) rec.stop(); if (await runNow()) { expanded = false; card.classList.remove('open'); await draw(); } }, 'small primary'));
-      parts.push(acts);
-    }
+    parts.push(row, el('p', 'hint', 'Saved notes wait in the 🔔 list above: Send, Send all, Edit, Delete, and what goes with each one.'));
     card.replaceChildren(...parts);
   }
 
-  // Why a model could not write a recording down, in the card.
+// Why a model could not write a recording down, in the card.
   const WHY = { 400: 'refused the request', 401: 'refused the key', 403: 'refused the key', 404: 'model not found', 429: 'limit reached',
     500: 'error', 503: 'busy', refused: 'did not hear it', timeout: 'too slow', network: 'no connection' };
   let retry = null;          // a recording that could not be written down: { audio, at }, kept for Try again
@@ -277,7 +209,7 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabH
   async function record() {
     const lang = navigator.language || 'en-US';
     const at = where();      // the screen where the note started, even if you move on while it records
-    if (attach.screen) at.shot = snapshot(at);
+    at.shot = shot(at);
     const keys = await listenKeys();
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     notice = '';
@@ -342,11 +274,6 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabH
     record();
   });
   draw();
-  // A note deleted, edited or given its words elsewhere (the header's 🔔 list, a sync): the card follows, unless the
-  // parent is recording or typing in it.
-  chrome.storage.onChanged.addListener((ch) => {
-    if ((ch.outbox || ch.notes) && !rec && !writing && document.activeElement !== typed) draw();
-  });
   return { refresh: draw };
 }
 

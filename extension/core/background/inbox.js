@@ -3,6 +3,7 @@
 //   error       the code broke (a script error, a dead button, no answer)     validation  a self-check failed
 //   data        the server's AI run on the notes, posts in an app's list        note        a note not sent yet
 //   question    a note that asks something: not sent yet (like a note), waiting for the AI, then its answer
+//   (a note sent is followed too: waiting, then Done with what the AI did about it in its Details)
 //   (a recorded note the server still writes down is a note row too: Uploading, Writing down, Failed)
 //   (the header adds its own: update, a newer version; system, what its last action said)
 // The same problem again is not a new row: its count goes up (core/checks/runner.js counts it and does not send it
@@ -68,36 +69,55 @@ const VOICE = {
   server: [['Writing down', 'wait'], 'The server writes the recording down (usually within 2 minutes). This row changes by itself; then you can edit and send it.'],
   failed: [['Failed', 'bad'], 'The server could not write it down either'],
 };
+// The checkboxes of a note not sent yet: what goes with it (kept with the note since it was made; ticked: sent too).
+function checksOf(n) {
+  const has = (k) => (n.attached ?? []).includes(k) || (n.offered ?? []).includes(k);
+  return [
+    { key: 'screen', label: '📄 This screen', on: (n.attached ?? []).includes('screen'), can: has('screen'),
+      title: 'Send what the screen showed when you made the note (its text, the tab, the screen size), so the AI sees what you mean' },
+    { key: 'app', label: '⚙️ App data', on: (n.attached ?? []).includes('app'), can: true, title: 'Send the app’s state: version, rules, today’s list, sync status' },
+    { key: 'ask', label: '❓ Question', on: !!n.ask, can: true, title: 'The AI answers it here instead of changing something' },
+  ];
+}
+
 function voiceRow(n, about) {
   const [st, words] = VOICE[n.voice.state] ?? VOICE.server;
   const failed = n.voice.state === 'failed';
   return { id: `note:${n.id}`, note: n.id, type: n.ask ? 'question' : 'note', status: status(st), at: n.at, count: null,
     editText: '', title: `🎤 A recorded ${n.ask ? 'question' : 'note'}${n.voice.seconds ? ` (${n.voice.seconds} s)` : ''} about ${about}`,
     detail: failed ? `${words}: ${n.voice.error ?? 'no reason given'}. Type the note with Edit, or delete it.` : words,
-    actions: failed ? [{ do: 'note.edit', label: 'Edit' }, { do: 'note.drop', label: 'Delete' }] : [{ do: 'note.drop', label: 'Delete' }] };
+    checks: checksOf(n), actions: failed ? [{ do: 'note.edit', label: 'Edit' }, { do: 'note.drop', label: 'Delete' }] : [{ do: 'note.drop', label: 'Delete' }] };
 }
 
 function noteRow(n) {
   const about = n.about ?? 'the app';
   if (n.voice) return voiceRow(n, about);
-  const attached = (n.attached ?? []).map((a) => (a === 'screen' ? 'the screen' : a === 'app' ? 'the app data' : a));
   return { id: `note:${n.id}`, note: n.id, type: n.ask ? 'question' : 'note', status: status(['Not sent', 'wait']), title: n.text,
-    detail: `Your ${n.ask ? 'question' : 'note'} about ${about}${attached.length ? `, with ${attached.join(' and ')}` : ''}. It waits on this tablet until you send it.${n.ask ? ' The AI answers it here.' : ''}`,
-    at: n.at, count: null, actions: [{ do: 'note.edit', label: 'Edit' }, { do: 'note.drop', label: 'Delete' }, { do: 'note.send', label: 'Send' }] };
+    detail: `Your ${n.ask ? 'question' : 'note'} about ${about}. It waits on this tablet until you send it.${n.ask ? ' The AI answers it here.' : ''}`,
+    at: n.at, count: null, checks: checksOf(n), actions: [{ do: 'note.edit', label: 'Edit' }, { do: 'note.drop', label: 'Delete' }, { do: 'note.send', label: 'Send' }] };
 }
 
-// A question already sent: waiting for the AI, answered, or worked on with no answer. The row changes by itself:
-// the tablet looks for answers.json every minute while one waits (core/background/sync.js, the app's waiting()).
+// A note or question already sent: waiting for the AI, then its answer (a question) or what was done about it (a
+// note), or worked on with no answer. The row changes by itself: the tablet looks for answers.json every minute while
+// one waits (core/background/sync.js, the app's waiting()). Details opens what the AI wrote.
 function questionRow(q, run) {
-  const base = { id: `question:${q.id}`, note: q.id, type: 'question', title: q.text, at: q.answeredAt ?? q.at, count: null };
+  const ask = q.ask !== false;
+  const base = { id: `question:${q.id}`, note: q.id, type: ask ? 'question' : 'note', title: q.text, at: q.answeredAt ?? q.at, count: null };
   const gotIt = { do: 'question.dismiss', label: 'Got it' };
-  if (q.state === 'answered') return { ...base, fresh: true, status: status(['Answered', 'ok']), answer: q.answer, state: `Your question about ${q.about}.`, actions: [gotIt] };
+  const said = q.result ?? run?.message ?? '';
+  if (q.state === 'answered') {
+    return ask ? { ...base, fresh: true, status: status(['Answered', 'ok']), answer: q.answer, state: `Your question about ${q.about}.`, actions: [gotIt] }
+      : { ...base, done: true, status: status(['Done', 'ok']), state: `Your note about ${q.about}.`, details: [['What was done', q.answer]], actions: [gotIt] };
+  }
   if (q.state === 'none') {
-    return { ...base, status: status(['No answer', 'bad']), actions: [gotIt],
-      detail: `The AI worked on your notes but wrote no answer to this question.${run?.message ? ` What it said: ${run.message}` : ''} Ask it again in a new note.` };
+    return ask ? { ...base, status: status(['No answer', 'bad']), actions: [gotIt],
+      detail: `The AI worked on your notes but wrote no answer to this question.${said ? ` What it said: ${said}` : ''} Ask it again in a new note.` }
+      : { ...base, done: true, status: status(['Done', 'ok']), state: `Your note about ${q.about}.`,
+        details: [['What the AI said about this run', said || 'Nothing: it gave no summary.']], actions: [gotIt] };
   }
   return { ...base, status: status(['Waiting', 'wait']), actions: [],
-    detail: `Sent. The AI answers when the server picks it up (usually within 2–10 minutes). This row changes by itself.` };
+    detail: ask ? 'Sent. The AI answers when the server picks it up (usually within 2–10 minutes). This row changes by itself.'
+      : 'Sent. The AI works on it when the server picks it up (about 10–30 minutes); then Details says what it did.' };
 }
 
 // cur: the running profile's account (null: no app runs, only the checks' problems).
@@ -150,8 +170,11 @@ export async function inboxAct(msg) {
     case 'note.drop': {
       if (!notes || !id) return { ok: false, error: 'This note is not here any more.' };
       const r = await withState((s) => notes.drop(s, id));
-      return r.ok ? r : { ok: false, error: 'This note was sent already: it can’t be deleted now.' };
+      return r.ok ? r : { ok: false, error: 'This note is not here any more: it was sent or deleted already.' };
     }
+    case 'note.attach':
+      if (!notes?.attach || !id) return { ok: false, error: 'This note is not here any more.' };
+      return withState((s) => notes.attach(s, id, String(msg.what ?? ''), !!msg.on));
     case 'note.send':
     case 'run':
       if (!notes?.send) return { ok: false, error: 'This app has no AI run to ask for.' };

@@ -11,7 +11,7 @@ import { visibleVideos } from '../lib/queue.js';
 import { loadBundled, effective, contextDocsOf } from './config.js';
 import { todayPlayed, lockNow, videoInfo, fullLang, newEvent, sessionUnlocked, endSession, markWatchedIfCounts,
   isOpenable, pickQuiz, openTalk } from './rules.js';
-import { heldNotes, dropHeld, noteContext, noteVideo, wish, contextNote, promptNote, parentData, videoDetail, helperData, contextData, planChange, runView } from './parent.js';
+import { heldNotes, dropHeld, madeWith, noteVideo, wish, contextNote, promptNote, parentData, videoDetail, helperData, contextData, planChange, runView } from './parent.js';
 import { requestRun, saveRules } from './sync.js';
 import { keepRecording, dropRecording } from './voice.js';
 import { Expect } from '../../../core/checks/kit.js';
@@ -216,11 +216,12 @@ export const HANDLERS = {
   }),
 
   // 👍 / 👎 / a note for the AI about one video (the 👍 goes to GitHub now; a note waits for ↻ Update).
-  // Every note can carry what the parent attached: screen (the page's snapshot) and withApp (noteContext).
-  note: voiced((msg) => withState(async (s) => noteVideo(s, msg, await noteContext(s, msg))).then((r) => { if (r.ok) sync(); return r; })),
+  // Every note can carry what the parent attached: screen (the page's snapshot) and withApp (noteContext); with
+  // offer, both are only kept with the note until its row in the header's list ticks them (parent.js madeWith).
+  note: voiced((msg) => withState((s) => madeWith(s, msg, (ctx) => noteVideo(s, msg, ctx))).then((r) => { if (r.ok) sync(); return r; })),
 
   // "message to the helper", or a note for the AI about a whole list.
-  wish: voiced((msg) => withState(async (s) => wish(s, msg, await noteContext(s, msg)))),
+  wish: voiced((msg) => withState((s) => madeWith(s, msg, (ctx) => wish(s, msg, ctx)))),
 
   // Parent screens: open the video in this tab, no rules (parent mode).
   watchHere: (msg, { tabId }) => {
@@ -238,7 +239,7 @@ export const HANDLERS = {
   helperData: () => withState((s) => helperData(s)),
 
   // Add a standing instruction for the helper, or remove one (the Prompt tab).
-  promptNote: voiced((msg) => withState(async (s) => promptNote(s, msg, await noteContext(s, msg))).then((r) => { if (r.ok) sync(); return r; })),
+  promptNote: voiced((msg) => withState((s) => madeWith(s, msg, (ctx) => promptNote(s, msg, ctx))).then((r) => { if (r.ok) sync(); return r; })),
 
   // Parent mode → Update: send everything, then ask the server to run the helper now.
   runHelper: () => requestRun(),
@@ -248,13 +249,13 @@ export const HANDLERS = {
   contextData: () => withState((s) => contextData(s)),
   contextNote: voiced(async (msg) => {
     const docs = await contextDocsOf();
-    return withState(async (s) => contextNote(s, msg, docs, await noteContext(s, msg))).then((r) => { if (r.ok) sync(); return r; });
+    return withState((s) => madeWith(s, msg, (ctx) => contextNote(s, msg, docs, ctx))).then((r) => { if (r.ok) sync(); return r; });
   }),
 
-  // The notes card: every note for the AI still on this tablet (Apply notes sends them).
+  // Every note for the AI still on this tablet (the header's 🔔 list shows them).
   heldNotes: () => withState((s) => heldNotes(s)),
 
-  // The notes card: ✕ on one note (id), or Clear all (all: true); only notes not sent yet.
+  // Deletes one note (id), or all of them (all: true); only notes not sent yet.
   dropNote: (msg) => withState((s) => dropHeld(s, msg.all ? null : String(msg.id ?? ''))),
   plan: (msg) => withState((s) => planChange(s, msg)).then((r) => { if (r?.ok) sync(); return r; }),
   getRules: () => withState(async (s) => ({ config: (await effective(s)).config, pending: !!s.localConfig, repoAvatars: s.repoAvatars ?? [] })),
