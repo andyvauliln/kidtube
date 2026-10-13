@@ -2,7 +2,7 @@
 // belongs to the profile's app, whose part syncs it (apps.js sync).
 import { nowIso } from '../lib/time.js';
 import { ghHeaders, contentsUrl, getRepoFile, putRepoFile, explainHttp } from '../lib/github.js';
-import { PAGES_URL, BACKUP_KEYS } from './constants.js';
+import { PAGES_URL, BACKUP_KEYS, SOON_ALARM } from './constants.js';
 import { withState, dataLocation } from './store.js';
 import { applySiteRules } from './sites.js';
 import { partOf } from './apps.js';
@@ -77,7 +77,9 @@ async function doSync() {
   }
   status.errors = [...new Set(status.errors)];
   await applySiteRules();
-  await withState((s) => { s.syncStatus = status; }, { account: acct });
+  // The app waits for the server (a question for the AI, a run asked for): look again in a minute, not in 15.
+  const waiting = await withState((s) => { s.syncStatus = status; return !!partOf(account).waiting?.(s); }, { account: acct });
+  if (waiting) chrome.alarms?.create(SOON_ALARM, { delayInMinutes: 1 });
   if (token && loc.base) {
     const t = new Expect();
     t.eq('sync errors', [], status.errors);

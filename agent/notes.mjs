@@ -5,9 +5,13 @@
 //   node agent/notes.mjs mark FILE [--state DIR]           → marks the notes in FILE (the array printed by `new`) handled
 //   node agent/notes.mjs done FILE [--data DIR]            → adds them to notes-done.json in the data folder: the tablet
 //                                                            deletes those notes from its lists (it keeps no history)
+//   node agent/notes.mjs answers RESULT FILE [--data DIR]  → the agent's answers to the questions in FILE (RESULT's
+//                                                            "answers": [{ eventId, answer }]) into answers.json in the
+//                                                            data folder; the tablet shows each under its question
 // A note: a message or a note about a list / Settings (wish), a note about a video (parentNote with a comment),
 // a standing change to the helper's prompt (prompt add), a note on a context document (context). A note keeps the
-// context the parent attached on the tablet (context.screen, context.app).
+// context the parent attached on the tablet (context.screen, context.app). question: true when the parent asked
+// something (the ❓ switch, or a "?" in the words): the agent answers it.
 import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,6 +27,10 @@ const HANDLED = join(STATE, 'notes-handled.json');
 const readJson = (p, fallback) => { try { return JSON.parse(readFileSync(p, 'utf8')); } catch { return fallback; } };
 
 export function noteOf(e) {
+  const n = noteKind(e);
+  return n && e.ask === true ? { ...n, question: true } : n;
+}
+function noteKind(e) {
   if (e.type === 'wish' && e.text) return { where: e.list ? `note about ${e.list === 'settings' ? 'the app (Settings)' : `the ${e.list} list`}` : 'message to the helper', text: e.text };
   if (e.type === 'parentNote' && e.comment) return { where: 'note about a video', text: e.comment, videoId: e.videoId };
   if (e.type === 'prompt' && e.action === 'add' && e.text) return { where: 'standing change to the helper’s prompt', text: e.text };
@@ -43,6 +51,21 @@ export function allNotes(dataDir) {
     }
   }
   return out.sort((a, b) => a.at.localeCompare(b.at));
+}
+
+// The agent's answers (result.answers) to notes of this run (notes): added to answers.json, newest last, at most 50.
+// Only answers to a note of this run count; the words are cut at 2000 characters. Returns how many were added.
+export function writeAnswers(dataDir, result, notes, now = new Date().toISOString()) {
+  const asked = new Map(notes.map((n) => [n.eventId, n]));
+  const fresh = (Array.isArray(result?.answers) ? result.answers : [])
+    .filter((a) => asked.has(a?.eventId) && typeof a.answer === 'string' && a.answer.trim())
+    .map((a) => ({ eventId: a.eventId, question: String(asked.get(a.eventId).text ?? '').slice(0, 500), answer: a.answer.trim().slice(0, 2000), at: now }));
+  if (!fresh.length) return 0;
+  const p = join(dataDir, 'answers.json');
+  const ids = new Set(fresh.map((a) => a.eventId));
+  const answers = [...(readJson(p, {}).answers ?? []).filter((a) => !ids.has(a.eventId)), ...fresh].slice(-50);
+  writeFileSync(p, JSON.stringify({ schemaVersion: 1, updatedAt: now, answers }, null, 2) + '\n');
+  return fresh.length;
 }
 
 function save(handled) {
@@ -71,8 +94,10 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     const ids = [...new Set([...(readJson(p, {}).ids ?? []), ...done])].slice(-300);
     writeFileSync(p, JSON.stringify({ schemaVersion: 1, updatedAt: new Date().toISOString(), ids }, null, 2) + '\n');
     console.log(`done ${done.length}`);
+  } else if (cmd === 'answers' && file && positionals[2]) {
+    console.log(`answers ${writeAnswers(DATA, readJson(file, {}), readJson(positionals[2], []))}`);
   } else {
-    console.error('usage: notes.mjs new | mark FILE | done FILE');
+    console.error('usage: notes.mjs new | mark FILE | done FILE | answers RESULT FILE');
     process.exit(2);
   }
 }

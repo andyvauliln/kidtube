@@ -228,6 +228,10 @@
                 },
                 "context": {
                   "$ref": "#/$defs/noteContext"
+                },
+                "ask": {
+                  "type": "boolean",
+                  "description": "a question: the notes agent answers it in answers.json"
                 }
               }
             }
@@ -333,6 +337,10 @@
                 },
                 "context": {
                   "$ref": "#/$defs/noteContext"
+                },
+                "ask": {
+                  "type": "boolean",
+                  "description": "a question: the notes agent answers it in answers.json"
                 }
               }
             }
@@ -431,6 +439,10 @@
                 },
                 "context": {
                   "$ref": "#/$defs/noteContext"
+                },
+                "ask": {
+                  "type": "boolean",
+                  "description": "a question: the notes agent answers it in answers.json"
                 }
               },
               "allOf": [
@@ -486,6 +498,10 @@
                 },
                 "context": {
                   "$ref": "#/$defs/noteContext"
+                },
+                "ask": {
+                  "type": "boolean",
+                  "description": "a question: the notes agent answers it in answers.json"
                 }
               }
             }

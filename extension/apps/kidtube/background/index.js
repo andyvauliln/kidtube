@@ -5,7 +5,7 @@ import { guard, viewState, leaveSession } from './rules.js';
 import { HANDLERS, PAGE_ONLY } from './handlers.js';
 import { syncKidTube, releaseNotes, requestRun } from './sync.js';
 import { KIDTUBE_CHECKS } from './checks.js';
-import { runView, heldNotes, editHeld, dropHeld } from './parent.js';
+import { runView, heldNotes, editHeld, dropHeld, questionsView, dismissQuestion } from './parent.js';
 
 // What a note is about, in the header's list (the parent screens' tabs and context documents).
 const LISTS = { today: 'the Today list', planned: 'the Planned list', history: 'the History list', settings: 'the settings' };
@@ -46,6 +46,13 @@ export default {
     drop: (s, id) => dropHeld(s, id),
     send: (ids) => requestRun({ ids }),
   },
+  // The questions already sent: waiting, answered, or no answer (the header's Question rows).
+  questions: {
+    list: (s) => questionsView(s).map((q) => ({ ...q, about: aboutOf(q) })),
+    dismiss: (s, id) => dismissQuestion(s, id),
+  },
+  // Something waits for the server (a question, the run): the core syncs again in a minute, not in 15.
+  waiting: (s) => questionsView(s).some((q) => q.state === 'waiting') || ['queued', 'running'].includes(runView(s).state),
   sync: syncKidTube,
   beforeSync: (msg) => (msg.notes ? releaseNotes() : undefined),
   async siteRules(stored) {

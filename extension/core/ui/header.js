@@ -12,9 +12,11 @@
 // No innerHTML anywhere: YouTube's Trusted Types policy refuses it.
 (() => {
   if (globalThis.KidTubeHeader) return;
-  // Same as lib/ask.js. Orion only returns sendMessage answers to the callback.
-  const ask = (msg) => new Promise((resolve) => {
-    const timer = setTimeout(() => { globalThis.KidTubeWatch?.noAnswer(msg, 15000); resolve(undefined); }, 15000);
+  // Same as lib/ask.js. Orion only returns sendMessage answers to the callback. 15 s; a note's Send (inbox) 60 s, as
+  // ↻ Update (lib/ask.js WAIT: a whole sync and the run request, 8–9 s on a slow tablet).
+  const LONG = { inbox: 60000 };
+  const ask = (msg, ms = LONG[msg?.type] ?? 15000) => new Promise((resolve) => {
+    const timer = setTimeout(() => { globalThis.KidTubeWatch?.noAnswer(msg, ms); resolve(undefined); }, ms);
     try {
       chrome.runtime.sendMessage(msg, (value) => { clearTimeout(timer); void chrome.runtime.lastError; resolve(value); });
     } catch { clearTimeout(timer); resolve(undefined); }
@@ -114,6 +116,7 @@
     .chip.validation { background: color-mix(in srgb, #e37400 16%, var(--bg)); color: #b06000; }
     .chip.data, .chip.update { background: var(--blue-soft); color: var(--blue); }
     .chip.note { background: color-mix(in srgb, #8430ce 14%, var(--bg)); color: #8430ce; }
+    .chip.question { background: color-mix(in srgb, #007b83 15%, var(--bg)); color: #007b83; } :host(.dark) .chip.question { color: #78d9ec; }
     :host(.dark) .chip.validation { color: #fdd663; } :host(.dark) .chip.note { color: #d7aefb; }
     .st { font-size: 12px; font-weight: 600; white-space: nowrap; }
     .st::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 0; background: var(--muted); }
@@ -123,6 +126,7 @@
     .msg { min-width: 0; display: grid; gap: 1px; }
     .msg b { font-weight: 500; overflow-wrap: anywhere; }
     .msg span { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+    .msg span.answer { font-size: 14px; color: var(--ink); white-space: pre-wrap; padding: 2px 0; }
     .msg textarea { font: inherit; font-size: 14px; width: 100%; min-height: 60px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line);
       background: var(--bg); color: var(--ink); resize: vertical; }
     .acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
@@ -469,7 +473,7 @@
     // The notifications (core/background/inbox.js, only where the parent is), one row each:
     // [type] [status] the message [its buttons] [how many times]. The header adds two kinds of its own: a newer
     // version (App update) and what its last action said (System, with ✕).
-    const TYPE = { error: 'Error', validation: 'Validation', data: 'Data update', note: 'My note', update: 'App update', system: 'System' };
+    const TYPE = { error: 'Error', validation: 'Validation', data: 'Data update', note: 'My note', question: 'Question', update: 'App update', system: 'System' };
     const SHOWN = 5;
     function rowsNow(h) {
       const rows = [...(h.inbox ?? [])];
@@ -499,7 +503,7 @@
       // Delete asks once more on the same button: a dictated note can be long.
       if (a.do === 'note.drop' && ui.sure !== r.id) { ui.sure = r.id; return draw(); }
       ui.sure = null;
-      const busyText = { 'note.drop': 'Deleting…', 'note.send': 'Sending…', run: 'Asking…', 'problems.send': 'Sending…', sync: 'Saving…' }[a.do] ?? 'Working…';
+      const busyText = { 'question.dismiss': 'Closing…', 'note.drop': 'Deleting…', 'note.send': 'Sending…', run: 'Asking…', 'problems.send': 'Sending…', sync: 'Saving…' }[a.do] ?? 'Working…';
       const res = await act(busyText, { type: 'inbox', do: a.do, id: r.note });
       if (res?.ok && res.message) say(res.message, 'ok');
       refresh(true);
@@ -517,7 +521,7 @@
       const st = el('span', `st ${r.status?.tone ?? ''}`, `${r.status?.text ?? ''}${r.tries > 1 ? ` · try ${r.tries}` : ''}`);
       if (r.tries > 1) st.title = `Sent to the AI ${r.tries} times: once for each version that still had it`;
       const msg = el('div', 'msg');
-      const editing = r.type === 'note' && ui.edit?.id === r.note;
+      const editing = !!r.note && ui.edit?.id === r.note && r.actions?.some((a) => a.do === 'note.edit');
       const acts = el('div', 'acts');
       if (editing) {
         const box = Object.assign(el('textarea'), { value: ui.edit.text, maxLength: 2000 });
@@ -529,6 +533,7 @@
         acts.append(save, button('', 'Cancel', () => { ui.edit = null; draw(); }));
       } else {
         msg.append(el('b', '', r.title));
+        if (r.answer) msg.append(el('span', 'answer', `Answer: ${r.answer}`));   // the AI's answer to a question
         if (r.detail) msg.append(el('span', '', r.detail));
         if (r.state) msg.append(el('span', '', r.state));
         for (const a of r.actions ?? []) {

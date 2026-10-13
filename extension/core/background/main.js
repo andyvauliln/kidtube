@@ -1,7 +1,7 @@
 // The service worker: the rules live here. Content scripts and pages only ask and show.
 // This file registers the apps' background parts and wires the browser's events to the core modules
 // (README.md in this folder lists them); each app's own rules are in apps/<app>/background/.
-import { POLL_MINUTES, INSTALL_PAGE } from './constants.js';
+import { POLL_MINUTES, INSTALL_PAGE, SOON_ALARM } from './constants.js';
 import { withState, serial } from './store.js';
 import { migrateProfileKeys } from './profiles.js';
 import { registerApps, allParts } from './apps.js';
@@ -70,6 +70,7 @@ chrome.runtime.onInstalled.addListener(async ({ reason } = {}) => {
 });
 chrome.runtime.onStartup.addListener(async () => { await start(); checkStart('startup'); });
 chrome.alarms.onAlarm.addListener(async (a) => {
+  if (a.name === SOON_ALARM) return sync();   // an answer or a run is on its way (core/background/sync.js)
   if (a.name !== 'poll') return;
   sync();
   autoUpdate(await latestRelease());

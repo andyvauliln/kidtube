@@ -15,6 +15,17 @@ export const getMemory = async () => (await chrome.storage.local.get('memory')).
 // --- notes for the AI --------------------------------------------------------------------------------------
 // The tablet keeps no history of notes: one stays in its list until the server says the AI worked on it
 // (notes-done.json, agent/poll.sh), then it is deleted. id: the event's id, to match that list.
+// A question for the AI: the parent's ❓ switch, or a "?" in the words. The server's notes agent answers it
+// (answers.json); until then it stays in the header's list as waiting.
+const isQuestion = (msg, text) => msg.ask === true || /\?/.test(String(text ?? ''));
+function trackQuestion(s, ev) {
+  if (!ev.ask) return;
+  const qs = ((s.notes ??= {}).questions ??= []);
+  qs.push({ id: ev.eventId, at: ev.at, type: ev.type, text: ev.comment ?? ev.text,
+    ...(ev.list ? { list: ev.list } : {}), ...(ev.videoId ? { videoId: ev.videoId } : {}), ...(ev.doc ? { doc: ev.doc } : {}) });
+  s.notes.questions = qs.slice(-30);
+}
+
 function addNote(list, ev) {
   list.push({ id: ev.eventId, at: ev.at, text: ev.comment ?? ev.text });
   list.splice(0, Math.max(0, list.length - 20));
@@ -39,7 +50,7 @@ export async function heldNotes(s) {
     id: e.eventId, at: e.at, type: e.type, text: e.comment ?? e.text,
     ...(e.list ? { list: e.list } : {}), ...(e.doc ? { doc: e.doc } : {}),
     ...(e.videoId ? { videoId: e.videoId, title: titleOf(e.videoId) } : {}),
-    ...(e.context ? { attached: Object.keys(e.context) } : {}),
+    ...(e.context ? { attached: Object.keys(e.context) } : {}), ...(e.ask ? { ask: true } : {}),
   }));
   return { ok: true, notes };
 }
@@ -53,6 +64,8 @@ export function editHeld(s, id, text) {
   const n = s.notes ?? {};
   for (const box of [n.lists, n.videos]) for (const list of Object.values(box ?? {})) for (const x of list) if (x.id === id) x.text = words;
   for (const x of [...(n.contextNotes ?? []), ...(n.promptOps ?? [])]) if (x.eventId === id) x.text = words;
+  for (const q of n.questions ?? []) if (q.id === id) q.text = words;
+  if (!ev.ask && /\?/.test(words)) { ev.ask = true; trackQuestion(s, ev); }   // edited into a question
   return { ok: true };
 }
 
@@ -67,7 +80,33 @@ export function dropHeld(s, id) {
   }
   if (n.contextNotes) n.contextNotes = n.contextNotes.filter((x) => !gone.has(x.eventId));
   if (n.promptOps) n.promptOps = n.promptOps.filter((x) => !gone.has(x.eventId));
+  if (n.questions) n.questions = n.questions.filter((q) => !gone.has(q.id));
   return { ok: true, removed: gone.size };
+}
+
+// The questions already sent, for the header's list: waiting for the AI, answered (answers.json from the server's
+// notes agent), or worked on with no answer (notes-done.json has it, answers.json not). Answered ones go after 7
+// days, unanswered after 3; "Got it" (dismissQuestion) removes one at once.
+const DAY = 86400000;
+export function questionsView(s, now = Date.now()) {
+  const held = new Set(s.outbox.filter((e) => e.held).map((e) => e.eventId));
+  const answers = Array.isArray(s.data.answers) ? s.data.answers : [];
+  const done = new Set(s.data.notesDone ?? []);
+  const out = [];
+  for (const q of s.notes?.questions ?? []) {
+    if (held.has(q.id)) continue;   // not sent yet: a note row with Edit, Delete, Send
+    const a = answers.find((x) => x?.eventId === q.id && typeof x.answer === 'string');
+    const state = a ? 'answered' : done.has(q.id) ? 'none' : 'waiting';
+    if (now - Date.parse(a?.at ?? q.at) > (a ? 7 : 3) * DAY) continue;
+    out.push({ ...q, state, ...(a ? { answer: a.answer.slice(0, 2000), answeredAt: a.at ?? null } : {}) });
+  }
+  return out;
+}
+export function dismissQuestion(s, id) {
+  const qs = s.notes?.questions ?? [];
+  if (!qs.some((q) => q.id === id)) return { ok: false, error: 'This question is not here any more.' };
+  s.notes.questions = qs.filter((q) => q.id !== id);
+  return { ok: true };
 }
 
 // What the parent attached to a note (the notes card's This screen / App data), cut to the sizes in
@@ -107,8 +146,9 @@ export function noteVideo(s, msg, ctx = null) {
   if (typeof msg.liked === 'boolean') ev.liked = msg.liked;
   if (msg.comment) ev.comment = String(msg.comment).trim().slice(0, 2000);
   if (ev.liked === undefined && !ev.comment) return { ok: false };
-  if (ev.comment) { ev.held = true; if (ctx) ev.context = ctx; }   // a note waits on the tablet until ↻ Update
+  if (ev.comment) { ev.held = true; if (ctx) ev.context = ctx; if (isQuestion(msg, ev.comment)) ev.ask = true; }   // a note waits on the tablet until ↻ Update
   s.outbox.push(ev);
+  trackQuestion(s, ev);
   s.notes ??= {};
   if (ev.comment) addNote(((s.notes.videos ??= {})[msg.videoId] ??= []), ev);
   if (typeof ev.liked === 'boolean') (s.notes.liked ??= {})[msg.videoId] = ev.liked;
@@ -120,8 +160,9 @@ export function wish(s, msg, ctx = null) {
   const text = String(msg.text ?? '').trim().slice(0, 2000);
   if (!text) return { ok: false };
   const list = ['today', 'planned', 'history', 'settings'].includes(msg.list) ? msg.list : null;
-  const ev = { ...newEvent('wish', { text, ...(list ? { list } : {}), ...(ctx ? { context: ctx } : {}) }), held: true };
+  const ev = { ...newEvent('wish', { text, ...(list ? { list } : {}), ...(ctx ? { context: ctx } : {}), ...(isQuestion(msg, text) ? { ask: true } : {}) }), held: true };
   s.outbox.push(ev);
+  trackQuestion(s, ev);
   if (list) addNote((((s.notes ??= {}).lists ??= {})[list] ??= []), ev);
   return { ok: true };
 }
@@ -131,8 +172,9 @@ export function contextNote(s, msg, docs, ctx = null) {
   if (!parentMode(s)) return { ok: false };
   const text = String(msg.text ?? '').trim().slice(0, 2000);
   if (!text || !docs.includes(msg.doc)) return { ok: false };
-  const ev = { ...newEvent('context', { doc: msg.doc, text, ...(ctx ? { context: ctx } : {}) }), held: true };
+  const ev = { ...newEvent('context', { doc: msg.doc, text, ...(ctx ? { context: ctx } : {}), ...(isQuestion(msg, text) ? { ask: true } : {}) }), held: true };
   s.outbox.push(ev);
+  trackQuestion(s, ev);
   ((s.notes ??= {}).contextNotes ??= []).push(ev);
   s.notes.contextNotes = s.notes.contextNotes.slice(-100);
   return { ok: true };
@@ -145,8 +187,9 @@ export function promptNote(s, msg, ctx = null) {
   if (msg.action === 'add' && !text) return { ok: false };
   if (msg.action === 'remove' && !/^[A-Za-z0-9-]{8,64}$/.test(msg.noteId ?? '')) return { ok: false };
   const ev = newEvent('prompt', { action: msg.action });
-  Object.assign(ev, msg.action === 'add' ? { noteId: ev.eventId, text, held: true, ...(ctx ? { context: ctx } : {}) } : { noteId: msg.noteId });
+  Object.assign(ev, msg.action === 'add' ? { noteId: ev.eventId, text, held: true, ...(ctx ? { context: ctx } : {}), ...(isQuestion(msg, text) ? { ask: true } : {}) } : { noteId: msg.noteId });
   s.outbox.push(ev);
+  trackQuestion(s, ev);
   ((s.notes ??= {}).promptOps ??= []).push(ev);
   return { ok: true, noteId: ev.noteId };
 }

@@ -242,7 +242,7 @@ const QUIET = new Set(['state', 'tick', 'header', 'ping', 'frameReady', 'runStat
   'parentData', 'videoDetail', 'helperData', 'contextData', 'talk', 'apps', 'checks', 'checkResult', 'details']);
 // How long the asking page waits (core/lib/ask.js 8 s or its WAIT; the apps header 15 s). An answer later than that never arrives.
 const HEADER_TYPES = new Set(['header', 'inbox', 'openApp', 'connect', 'plainSite', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings']);
-const waitOf = (type) => (HEADER_TYPES.has(type) ? 15000 : WAIT[type] ?? 8000);
+const waitOf = (type) => WAIT[type] ?? (HEADER_TYPES.has(type) ? 15000 : 8000);
 // Answers the page shows as they are: { ok: false } must say why, or the parent sees "That didn't work".
 const SAYS_WHY = new Set(['inbox', 'openApp', 'connect', 'plainSite', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings', 'runHelper', 'updateApp', 'setMode']);
 // When a content script last spoke, per tab (the start check "the YouTube tab answers").

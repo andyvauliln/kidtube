@@ -18,6 +18,9 @@
 //                 parent added that are not sent yet, the server's latest run, the page to act on) or { queued }
 //   notes         the parent's notes not sent yet, for the header's list: { list(s) → [{ id, at, type, text, list,
 //                 videoId, title, doc }], edit(s, id, text), drop(s, id), send(ids) } (Edit, Delete, Send on each)
+//   questions     the parent's questions already sent: { list(s) → [{ id, text, about, state: waiting | answered | none,
+//                 answer }], dismiss(s, id) } (the header's Question rows, Got it)
+//   waiting(s)    true while the app waits for the server (a question, a run): the core syncs every minute then
 //   checks        { start: [...], actions: { type: check } } what the app's start and messages must do
 //                 (core/checks/README.md)
 import { appOf } from '../../apps/registry.js';

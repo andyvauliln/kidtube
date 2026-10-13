@@ -6,7 +6,7 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, chmo
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
-import { noteOf, allNotes } from '../../agent/notes.mjs';
+import { noteOf, allNotes, writeAnswers } from '../../agent/notes.mjs';
 
 const sh = (cmd, cwd) => execFileSync('bash', ['-c', cmd], { cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
 const ev = (id, at, type, extra) => ({ eventId: id, at, type, ...extra });
@@ -20,6 +20,22 @@ test('which events are notes', () => {
   assert.equal(noteOf(ev('a', 't', 'prompt', { action: 'remove', noteId: 'a' })), null);
   assert.ok(noteOf(ev('a', 't', 'context', { doc: 'math', text: 'x' })));
   assert.equal(noteOf(ev('a', 't', 'watch', { videoId: 'v' })), null);
+});
+
+test('a question: the note says so, and the agent’s answers go to answers.json', () => {
+  assert.equal(noteOf(ev('a', 't', 'wish', { text: 'Why?', ask: true })).question, true);
+  assert.equal(noteOf(ev('a', 't', 'parentNote', { videoId: 'v', comment: 'Is it too long?', ask: true })).question, true);
+  assert.equal(noteOf(ev('a', 't', 'wish', { text: 'More animals' })).question, undefined);
+  const dir = mkdtempSync(join(tmpdir(), 'kt-answers-'));
+  const notes = [{ eventId: 'q1', text: 'Why does he skip songs?', question: true }, { eventId: 'n2', text: 'More trains' }];
+  assert.equal(writeAnswers(dir, { answers: [{ eventId: 'q1', answer: ' He skips long ones. ' }, { eventId: 'other', answer: 'not this run' }, { eventId: 'n2', answer: '' }] }, notes, '2026-10-13T10:00:00Z'), 1);
+  let file = JSON.parse(readFileSync(join(dir, 'answers.json'), 'utf8'));
+  assert.deepEqual(file.answers, [{ eventId: 'q1', question: 'Why does he skip songs?', answer: 'He skips long ones.', at: '2026-10-13T10:00:00Z' }]);
+  // A new answer to the same question replaces the old one; no answers: the file stays as it is.
+  writeAnswers(dir, { answers: [{ eventId: 'q1', answer: 'Better: they are too slow.' }] }, notes, '2026-10-13T11:00:00Z');
+  assert.equal(writeAnswers(dir, { summary: 'x' }, notes), 0);
+  file = JSON.parse(readFileSync(join(dir, 'answers.json'), 'utf8'));
+  assert.deepEqual(file.answers.map((a) => a.answer), ['Better: they are too slow.']);
 });
 
 test('a note keeps the context the parent attached on the tablet', () => {
@@ -121,6 +137,19 @@ test('poll.sh: old notes are not worked on; a new note wakes the notes agent onc
 
   w.poll();                                            // nothing new: no second run
   assert.equal(w.calls().length, 1);
+});
+
+test('poll.sh: a question gets its answer in answers.json, pushed with the status', () => {
+  const w = world();
+  w.send([]);
+  w.poll();                                            // first run: nothing old
+  w.answer({ summary: 'Answered your question.', runHelper: false, version: null, answers: [{ eventId: 'q-1', answer: 'He skips the songs longer than 5 minutes.' }] });
+  w.send([ev('q-1', '2026-10-13T10:00:00Z', 'wish', { list: 'today', text: 'Why does he skip the songs?', ask: true })], 'req-q');
+  w.poll();
+  assert.match(w.calls()[0].prompt, /"question": true/);
+  assert.equal(w.status().state, 'done');
+  const file = JSON.parse(readFileSync(w.p('tablet', 'answers.json'), 'utf8'));
+  assert.deepEqual(file.answers.map((a) => [a.eventId, a.question, a.answer]), [['q-1', 'Why does he skip the songs?', 'He skips the songs longer than 5 minutes.']]);
 });
 
 test('poll.sh: a note about the lists → the notes agent asks for a helper run, which runs after it', () => {

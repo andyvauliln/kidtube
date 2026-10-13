@@ -102,12 +102,13 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabH
     : n.type === 'prompt' ? 'Prompt' : TYPE_LABEL[n.list] ?? 'Message';
   const save = async (text, at = where()) => {
     // The screen where the note started (a recording took it then), and the app's state now.
-    const extra = { ...(attach.screen ? { screen: at.shot ?? snapshot(at) } : {}), ...(attach.app ? { withApp: true } : {}) };
+    const extra = { ...(attach.screen ? { screen: at.shot ?? snapshot(at) } : {}), ...(attach.app ? { withApp: true } : {}), ...(asking ? { ask: true } : {}) };
     const r = at.videoId ? await ask({ type: 'note', videoId: at.videoId, comment: text, ...extra })
       : at.doc ? await ask({ type: 'contextNote', doc: at.doc, text, ...extra })
       : at.prompt ? await ask({ type: 'promptNote', action: 'add', text, ...extra })
       : await ask({ type: 'wish', list: at.list ?? 'settings', text, ...extra });
     if (!r?.ok) { toast('Could not save the note. Is parent mode still on?'); return false; }
+    if (asking) { asking = false; showAsk(); }   // the ❓ switch is for one note
     notice = '';
     expanded = true;
     card.classList.remove('open');   // the card stays while notes wait
@@ -138,10 +139,18 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabH
     show();
     return b;
   }
+  // ❓ Question: the AI answers this note in the header's list (a "?" in the words does the same). For one note.
+  let asking = false;
+  const askBtn = el('button', 'small attach', '❓ Question');
+  askBtn.type = 'button';
+  askBtn.title = 'The AI answers this note: the answer shows in the header’s 🔔 list';
+  const showAsk = () => { askBtn.setAttribute('aria-pressed', String(asking)); askBtn.classList.toggle('on', asking); };
+  askBtn.addEventListener('click', (e) => { e.stopPropagation(); asking = !asking; showAsk(); });
+  showAsk();
   const attachRow = el('div', 'attachrow');
   attachRow.append(el('span', 'muted', 'Send with the note:'),
     attachSwitch('screen', '📄 This screen', 'Attach what this screen shows (its text, the tab, the screen size), so the AI sees what you mean'),
-    attachSwitch('app', '⚙️ App data', 'Attach the app’s state: version, rules, today’s list, sync status'));
+    attachSwitch('app', '⚙️ App data', 'Attach the app’s state: version, rules, today’s list, sync status'), askBtn);
 
   async function draw() {
     const r = await ask({ type: 'heldNotes' });
@@ -176,7 +185,7 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabH
       for (const n of notes) {
         const li = el('li');
         const body = el('div');
-        body.append(el('span', 'nwhere', label(n)), el('span', '', n.text));
+        body.append(el('span', 'nwhere', `${n.ask ? '❓ ' : ''}${label(n)}`), el('span', '', n.text));
         if (n.attached?.length) body.append(el('span', 'nattached', ['screen', 'app'].filter((a) => n.attached.includes(a)).map((a) => (a === 'screen' ? '📄 screen' : '⚙️ app data')).join(' · ')));
         const x = btn('✕', async () => {
           if ((await ask({ type: 'dropNote', id: n.id }))?.ok) { await draw(); hooks.afterRun(); } else toast('Already sent: it can’t be removed now.');

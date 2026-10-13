@@ -10,6 +10,10 @@ You run on the server with no one watching. This checkout is your own copy of th
 2. **A change to how the helper works.** For example: how it picks, how many videos, the quiz style, what it reads, how often it runs. Change `agent/DAILY.md`, `agent/SYSTEM.md`, `agent/config.json` or `.claude/skills/helper-*`, then commit and push. The next helper run uses it. If the helper is already told something in its standing prompt changes, don't repeat it.
 3. **A wish about the videos or the lists.** For example: "more animals", "too hard", "add a video about X", a note about one video. No code change. Set `"runHelper": true`; the helper reads all of the parent's notes on its run and updates the lists.
 4. **Unclear, unsafe or impossible.** Don't guess at a big change. Say in the summary what you need to know.
+5. **A question.** A note with `"question": true` (the parent asked something). Answer it in `answers` (below), in
+   plain words the parent understands, from what you can check: the code, the data repo, the server's logs and state.
+   Say what you are not sure of. A question asks for an answer, not a change: change something only when the note
+   also asks for it. A note without `question` that clearly asks something can get an answer too.
 
 One note can be several kinds. Several notes can be one change.
 
@@ -46,8 +50,12 @@ The tablet then sees the new version: Quetta installs it by itself within about 
 Write the result as JSON to the result file given below. Use exactly these keys:
 
 ```json
-{ "summary": "What you did about each note, in plain words for the parent (at most 500 characters).", "runHelper": false, "version": "0.8.10" }
+{ "summary": "What you did about each note, in plain words for the parent (at most 500 characters).", "runHelper": false, "version": "0.8.10",
+  "answers": [{ "eventId": "the question's eventId", "answer": "The answer, in plain words (at most 2000 characters)." }] }
 ```
+
+- `answers`: one for each question (the note's `eventId`). The tablet shows each answer under its question in the
+  header's list. No questions: `[]`.
 
 - `version`: the version you released, or `null`.
 - `runHelper`: `true` when a note asks for different videos or lists (kind 3), or when the helper should run now with a change you made to it.

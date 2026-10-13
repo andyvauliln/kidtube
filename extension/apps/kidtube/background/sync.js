@@ -97,6 +97,8 @@ export async function syncKidTube({ loc, token, data, status, acct }) {
     await optional('run-status.json', 'runStatus', (j) => j?.schemaVersion === 1 && (update.runStatus = j));
     // notes-done.json: the notes the AI has worked on, deleted from the lists below.
     await optional('notes-done.json', 'notesDone', (j) => Array.isArray(j?.ids) && (update.notesDone = j.ids));
+    // answers.json: the notes agent's answers to the parent's questions (agent/notes.mjs answers).
+    await optional('answers.json', 'answers', (j) => Array.isArray(j?.answers) && (update.answers = j.answers.slice(-50)));
     // runs.json: time, turns and cost of the latest runs (agent/runlog.mjs).
     await optional('runs.json', 'runs', (j) => Array.isArray(j?.runs) && (update.runs = j.runs.slice(-10)));
     try { await pullKeys(loc, token, etags); } catch {}

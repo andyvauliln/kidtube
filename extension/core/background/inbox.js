@@ -2,6 +2,7 @@
 // [type] [status] message [actions] [count]. Types:
 //   error       the code broke (a script error, a dead button, no answer)     validation  a self-check failed
 //   data        the server's AI run on the notes, posts in an app's list        note        a note not sent yet
+//   question    a note that asks something: not sent yet (like a note), waiting for the AI, then its answer
 //   (the header adds its own: update, a newer version; system, what its last action said)
 // The same problem again is not a new row: its count goes up (core/checks/runner.js counts it and does not send it
 // again). A new version that still has it sends it once more: its try goes up (one try per version).
@@ -55,9 +56,23 @@ function runRow(a) {
 function noteRow(n) {
   const about = n.about ?? 'the app';
   const attached = (n.attached ?? []).map((a) => (a === 'screen' ? 'the screen' : a === 'app' ? 'the app data' : a));
-  return { id: `note:${n.id}`, note: n.id, type: 'note', status: status(['Not sent', 'wait']), title: n.text,
-    detail: `Your note about ${about}${attached.length ? `, with ${attached.join(' and ')}` : ''}. It waits on this tablet until you send it.`,
+  return { id: `note:${n.id}`, note: n.id, type: n.ask ? 'question' : 'note', status: status(['Not sent', 'wait']), title: n.text,
+    detail: `Your ${n.ask ? 'question' : 'note'} about ${about}${attached.length ? `, with ${attached.join(' and ')}` : ''}. It waits on this tablet until you send it.${n.ask ? ' The AI answers it here.' : ''}`,
     at: n.at, count: null, actions: [{ do: 'note.edit', label: 'Edit' }, { do: 'note.drop', label: 'Delete' }, { do: 'note.send', label: 'Send' }] };
+}
+
+// A question already sent: waiting for the AI, answered, or worked on with no answer. The row changes by itself:
+// the tablet looks for answers.json every minute while one waits (core/background/sync.js, the app's waiting()).
+function questionRow(q, run) {
+  const base = { id: `question:${q.id}`, note: q.id, type: 'question', title: q.text, at: q.answeredAt ?? q.at, count: null };
+  const gotIt = { do: 'question.dismiss', label: 'Got it' };
+  if (q.state === 'answered') return { ...base, fresh: true, status: status(['Answered', 'ok']), answer: q.answer, state: `Your question about ${q.about}.`, actions: [gotIt] };
+  if (q.state === 'none') {
+    return { ...base, status: status(['No answer', 'bad']), actions: [gotIt],
+      detail: `The AI worked on your notes but wrote no answer to this question.${run?.message ? ` What it said: ${run.message}` : ''} Ask it again in a new note.` };
+  }
+  return { ...base, status: status(['Waiting', 'wait']), actions: [],
+    detail: `Sent. The AI answers when the server picks it up (usually within 2–10 minutes). This row changes by itself.` };
 }
 
 // cur: the running profile's account (null: no app runs, only the checks' problems).
@@ -66,11 +81,13 @@ export async function inboxOf(cur) {
   const mine = part ? await withState(async (s) => ({
     ai: part.aiView?.(s) ?? null,
     notes: (await part.notes?.list?.(s)) ?? [],
+    questions: part.questions?.list?.(s) ?? [],
     sync: s.syncStatus ?? null,
-  })) : { ai: null, notes: [], sync: null };
+  })) : { ai: null, notes: [], questions: [], sync: null };
   const rows = [];
-  for (const n of mine.notes) rows.push(noteRow(n));
   const a = mine.ai ?? {};
+  for (const q of mine.questions) rows.push(questionRow(q, a));
+  for (const n of mine.notes) rows.push(noteRow(n));
   const run = a.run ? runRow(a) : null;
   if (run) rows.push(run);
   if (a.queued) {
@@ -92,7 +109,7 @@ export async function inboxOf(cur) {
     if (!p.done || recent(p.fix?.at)) rows.push(problemRow(p));
   }
   // What waits for the parent first, what is done last.
-  const rank = (r) => (r.done ? 2 : r.status.tone === 'bad' ? 0 : 1);
+  const rank = (r) => (r.done ? 2 : r.status.tone === 'bad' || r.fresh ? 0 : 1);   // an answer is what the parent waits for
   return rows.sort((x, y) => rank(x) - rank(y));
 }
 
@@ -115,6 +132,11 @@ export async function inboxAct(msg) {
       if (!notes?.send) return { ok: false, error: 'This app has no AI run to ask for.' };
       // The run's own row says where it is now: no second message.
       return notes.send(msg.do === 'note.send' && id ? [id] : null).then((r) => (r?.ok ? { ok: true } : r));
+    case 'question.dismiss': {
+      const qs = account?.key ? partOf(account).questions : null;
+      if (!qs || !id) return { ok: false, error: 'This question is not here any more.' };
+      return withState((s) => qs.dismiss(s, id));
+    }
     case 'problems.send': {
       const r = await sendReports();
       return r.ok ? { ...r, message: r.sent ? `Sent ${r.sent} report${r.sent === 1 ? '' : 's'} to the server.` : 'Nothing was waiting to be sent.' } : r;

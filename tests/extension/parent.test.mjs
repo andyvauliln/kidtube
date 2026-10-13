@@ -360,7 +360,7 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
       return { ok: true, status: 200, json: async () => ({}) };
     }
     if (!files[path]) return { ok: false, status: 404, json: async () => ({}), headers: { get: () => null } };
-    if (path === 'run-status.json') return { ok: true, status: 200, json: async () => files[path].json, headers: { get: () => null } };   // read raw
+    if (path === 'run-status.json' || path === 'answers.json') return { ok: true, status: 200, json: async () => files[path].json, headers: { get: () => null } };   // read raw
     return { ok: true, status: 200, json: async () => ({ sha: files[path].sha, content: Buffer.from(JSON.stringify(files[path].json)).toString('base64') }) };
   };
   try {
@@ -454,6 +454,35 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
     assert.equal((await send({ type: 'inbox', do: 'note.drop', id: (await noteRows())[0].note })).ok, true);
     assert.deepEqual(await noteRows(), []);
     assert.equal((await send({ type: 'inbox', do: 'note.drop', id: one.note })).ok, false, 'a sent note can’t be deleted');
+
+    // A question (a "?" in the words, or the ❓ switch: ask): a Question row; sent, it waits and the tablet looks
+    // again in a minute; the server's answer (answers.json) shows under it; Got it closes it.
+    const qRow = async (id) => (await fromPage({ type: 'header' })).inbox.find((r) => r.type === 'question' && (!id || r.note === id));
+    await fromPage({ type: 'wish', list: 'today', text: 'Why does he skip the songs?' });
+    let q = await qRow();
+    assert.deepEqual([q.id.startsWith('note:'), q.status.text, q.actions.map((a) => a.label).join()], [true, 'Not sent', 'Edit,Delete,Send']);
+    assert.match(q.detail, /^Your question about the Today list\..*The AI answers it here\.$/);
+    const qid = q.note;
+    delete fake.alarms.set.soon;
+    assert.equal((await send({ type: 'inbox', do: 'note.send', id: qid })).ok, true);
+    assert.ok(sent().some((e) => e.eventId === qid && e.ask === true), 'the server sees it is a question');
+    q = await qRow(qid);
+    assert.deepEqual([q.id, q.status.text, q.actions], [`question:${qid}`, 'Waiting', []]);
+    assert.equal(fake.alarms.set.soon?.delayInMinutes, 1, 'waiting: the next sync in a minute, not in 15');
+    files['answers.json'] = { json: { schemaVersion: 1, answers: [{ eventId: qid, question: 'Why does he skip the songs?', answer: 'He skips the songs longer than 5 minutes.', at: new Date().toISOString() }] } };
+    delete fake.alarms.set.soon;
+    await fromPage({ type: 'sync' });
+    q = await qRow(qid);
+    assert.deepEqual([q.status.text, q.answer, q.actions.map((a) => a.label).join()], ['Answered', 'He skips the songs longer than 5 minutes.', 'Got it']);
+    assert.equal(fake.alarms.set.soon, undefined, 'answered: no more quick syncs for it');
+    assert.equal((await send({ type: 'inbox', do: 'question.dismiss', id: qid })).ok, true);
+    assert.equal(await qRow(qid), undefined);
+    // The ❓ switch without a "?": a question too. A note without either: a note.
+    await fromPage({ type: 'wish', list: 'today', text: 'Tell me what he likes most', ask: true });
+    await fromPage({ type: 'wish', list: 'today', text: 'More trains' });
+    assert.deepEqual((await fromPage({ type: 'header' })).inbox.filter((r) => r.note).map((r) => [r.type, r.title]),
+      [['question', 'Tell me what he likes most'], ['note', 'More trains']]);
+    await fromPage({ type: 'dropNote', all: true });
 
     // Settings → Update now (sync with notes: true) also sends them.
     await fromPage({ type: 'wish', text: 'More Russian' });
