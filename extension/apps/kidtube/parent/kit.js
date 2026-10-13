@@ -221,17 +221,32 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabH
     500: 'error', 503: 'busy', refused: 'did not hear it', timeout: 'too slow', network: 'no connection' };
   let retry = null;          // a recording that could not be written down: { audio, at }, kept for Try again
 
+  // The self-check of dictation (an outside service: a probe): every model failed → a report with each one's reason,
+  // the recording's size and where each key comes from (typed here or from the data repo; never the key itself).
+  async function voiceCheck(heard, fails, audio) {
+    const { geminiKey = '', voiceKey = '', groqKey = '', repoKeys = {} } = await chrome.storage.local.get(['geminiKey', 'voiceKey', 'groqKey', 'repoKeys']).catch(() => ({}));
+    const from = (typed, repo) => (typed.trim() ? 'typed in Settings' : repo ? 'data repo' : 'none');
+    globalThis.KidTubeWatch?.check({ id: 'voice.writeDown', kind: 'probe', area: 'notes',
+      expect: 'A dictated note is written down by one of the speech models (Groq Whisper, then Gemini, then OpenRouter)',
+      code: ['apps/kidtube/lib/voice.js transcribeAnswer', 'apps/kidtube/parent/kit.js writeDown'] }, (t) => {
+      t.note('fails', fails).note('audio', { bytes: audio?.length ?? 0, ...(audio?.info ?? {}) }).note('online', navigator.onLine)
+        .note('keys', { groq: from(groqKey, repoKeys.groq), gemini: from(geminiKey, repoKeys.gemini), openrouter: from(voiceKey, repoKeys.openrouter) });
+      t.ok('a model wrote the recording down', heard != null, fails.join('; ') || 'no model to ask', 'one model answered');
+    });
+  }
+
   async function writeDown(audio, at) {
     const keys = await listenKeys();
     retry = null;
     notice = '';
     writing = true;
     await draw();
-    const fails = [];
+    const fails = [], details = [];
     const heard = await transcribeAnswer(audio, { keys, lang: navigator.language || 'en-US', maxTokens: 6000, freeModels: NOTE_LISTEN_MODELS,
       instruction: 'A parent dictates a note about their child\'s videos and learning, or about the app. Use punctuation.',
-      onFail: (r, why) => fails.push(`${r.model}: ${WHY[why] ?? why}`) });
+      onFail: (r, why, detail) => { fails.push(`${r.model}: ${WHY[why] ?? why}`); details.push(`${r.via}:${r.model}: ${why} ${detail ?? ''}`.trim()); } });
     writing = false;
+    voiceCheck(heard, details, audio);
     if (heard?.length) { await save(heard[0], at); return; }
     if (heard) {
       const i = audio.info;

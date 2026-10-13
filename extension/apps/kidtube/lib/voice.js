@@ -263,7 +263,9 @@ function rest(route, seconds) {
 const restFor = (status, retryAfter) => (status === 429 ? Math.min(600, Number(retryAfter) || 60) : status === 401 || status === 403 || status === 404 ? 300 : 30);
 
 const b64 = (bytes) => { let s = ''; for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000)); return btoa(s); };
-class Failed extends Error { constructor(status, retryAfter) { super(`HTTP ${status}`); this.status = status; this.retryAfter = retryAfter; } }
+class Failed extends Error { constructor(status, retryAfter, said = '') { super(`HTTP ${status}${said ? `: ${said}` : ''}`); this.status = status; this.retryAfter = retryAfter; } }
+// A refused answer with the start of what the service said (its error message: never the key), for the self-check.
+const failure = async (r) => new Failed(r.status, r.headers.get('retry-after'), (await r.text().catch(() => '')).replace(/\s+/g, ' ').slice(0, 160));
 
 async function askGemini(model, key, hint, data, maxTokens, signal) {
   if (/transcribe/.test(model)) return askGeminiTranscribe(model, key, data, maxTokens, signal);
@@ -276,7 +278,7 @@ async function askGemini(model, key, hint, data, maxTokens, signal) {
   // Without "minimal" thinking a free answer can take a minute; models that refuse it are asked plainly.
   let r = await call(true);
   if (r.status === 400) r = await call(false);
-  if (!r.ok) throw new Failed(r.status, r.headers.get('retry-after'));
+  if (!r.ok) throw await failure(r);
   const j = await r.json();
   return (j.candidates?.[0]?.content?.parts ?? []).map((p) => p.text ?? '').join('').trim();
 }
@@ -288,7 +290,7 @@ async function askGeminiTranscribe(model, key, data, maxTokens, signal) {
     body: JSON.stringify({ contents: [{ parts: [{ inline_data: { mime_type: 'audio/wav', data } }] }], generationConfig: { temperature: 0, maxOutputTokens: maxTokens } }),
     signal,
   });
-  if (!r.ok) throw new Failed(r.status, r.headers.get('retry-after'));
+  if (!r.ok) throw await failure(r);
   const j = await r.json();
   return (j.candidates?.[0]?.content?.parts ?? []).map((p) => p.audioTranscription?.text ?? p.text ?? '').join(' ').trim();
 }
@@ -301,7 +303,7 @@ async function askGroq(model, key, audio, signal) {
   form.append('temperature', '0');
   form.append('response_format', 'json');
   const r = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', { method: 'POST', headers: { Authorization: `Bearer ${key}` }, body: form, signal });
-  if (!r.ok) throw new Failed(r.status, r.headers.get('retry-after'));
+  if (!r.ok) throw await failure(r);
   const text = ((await r.json()).text ?? '').trim();
   return NO_WORDS.test(text) ? '(none)' : text;
 }
@@ -313,7 +315,7 @@ async function askOpenRouter(model, key, hint, data, maxTokens, signal) {
       { type: 'text', text: hint }, { type: 'input_audio', input_audio: { data, format: 'wav' } }] }] }),
     signal,
   });
-  if (!r.ok) throw new Failed(r.status, r.headers.get('retry-after'));
+  if (!r.ok) throw await failure(r);
   const j = await r.json();
   if (j.error) throw new Failed(j.error.code ?? 502);
   return j.choices?.[0]?.message?.content?.trim() ?? '';
@@ -331,7 +333,7 @@ export function listenRoutes({ keys = {}, freeModels, models } = {}) {
 // Sends the recording along the routes. Returns [text] | [] (nothing said) | null (all failed: use the device).
 // The first route starts at once; if it hasn't answered after `staggerMs` (or fails), the next one starts too,
 // and the first good answer wins. onUsed({ via, model, free, ms }) says which one it was; onFail(route, why) says why
-// one failed (an HTTP status, 'refused', 'timeout' or 'network').
+// one failed (an HTTP status, 'refused', 'timeout' or 'network'; detail: the error's words, the service's message).
 // instruction: what the recording is (default: a small child answering). `key` alone (older callers) is the OpenRouter key.
 export async function transcribeAnswer(audio, { keys, key, freeModels, models, lang = 'en-US', instruction = '', maxTokens = 60, staggerMs = 2500, onUsed, onFail } = {}) {
   if (!audio) return null;
@@ -378,7 +380,7 @@ export async function transcribeAnswer(audio, { keys, key, freeModels, models, l
         clearTimeout(limit);
         running.delete(i);
         if (done) return;
-        onFail?.(r, e.status === 0 ? 'refused' : e.status ?? (e.name === 'AbortError' ? 'timeout' : 'network'));
+        onFail?.(r, e.status === 0 ? 'refused' : e.status ?? (e.name === 'AbortError' ? 'timeout' : 'network'), String(e?.message ?? e).slice(0, 200));
         if (e.status !== 0) rest(r, restFor(e.status, e.retryAfter));
         start();
       });
