@@ -1008,4 +1008,9 @@ test('Context: no notes box, a 🔳 Full screen button and a swipe up to the nex
   assert.match(set, /upDown\(root, \{ on: \(\) => shown\.slides/, 'Settings: a swipe up or ↓ goes to the next box');
   assert.doesNotMatch(set, /prevBox|nextBox|touchend/, 'Settings: no ‹ › and no swipe left / right');
   assert.match(src, /view\.classList\.remove\('noswipe'\)/, 'other tabs get their swipe back');
+  // The parent's notes (2026-10-13): a swipe down there reloaded the page; now no pull-to-refresh in the mode, and full screen.
+  assert.match(ctx, /holdPage\(contextFull, true\)/, 'Context: the button asks for full screen');
+  assert.match(set, /holdPage\(shown\.slides, true\)/, 'Settings: the button asks for full screen');
+  assert.match(src, /shownTab !== r\.tab\) \{ holdPage\(false\)/, 'another tab: pull-to-refresh back');
+  assert.match(readFileSync(new URL('../../extension/apps/kidtube/parent/parent.css', import.meta.url), 'utf8'), /html\.updown[^{]*\{ overscroll-behavior-y: none/);
 });

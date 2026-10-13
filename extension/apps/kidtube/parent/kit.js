@@ -66,6 +66,15 @@ export function upDown(host, { on, box, go, skip = '' }) {
   };
   addEventListener('keydown', key);
 }
+// While the mode is on (the parent's notes, 2026-10-13): a swipe down at the top goes to the box before, it does not
+// reload the page (html.updown stops the browser's pull-to-refresh; parent.css). Out of the mode it reloads as before.
+// tapped: the mode's button was just tapped, so the browser may also go full screen (no status bar or notifications
+// on top); leaving the mode leaves full screen. A browser that refuses full screen keeps the mode as it was.
+export function holdPage(on, tapped = false) {
+  document.documentElement.classList.toggle('updown', on);
+  if (on && tapped && !document.fullscreenElement) document.documentElement.requestFullscreen?.({ navigationUI: 'hide' })?.catch?.(() => {});
+  if (!on && document.fullscreenElement) document.exitFullscreen?.()?.catch?.(() => {});
+}
 // The box comes in from below (step 1) or from above (-1).
 export function slideIn(node, step) {
   node.classList.remove('from-below', 'from-above');

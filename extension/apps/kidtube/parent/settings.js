@@ -4,7 +4,7 @@
 import { hashPin } from '../../../core/lib/pin.js';
 import { say, listen, recordAnswer, transcribeAnswer, FREE_LISTEN_MODELS, PAID_LISTEN_MODELS } from '../lib/voice.js';
 import { ask as send } from '../../../core/lib/ask.js';
-import { el as make, upDown, slideIn } from './kit.js';
+import { el as make, upDown, slideIn, holdPage } from './kit.js';
 
 const MARKUP = `
   <nav class="secnav noswipe" aria-label="Settings sections">
@@ -258,6 +258,7 @@ export function mountSettings(root) {
     root.classList.toggle('slides', shown.slides);
     // In 🔳 One box a swipe goes to the next box, not to the next tab (parent.js skips .noswipe).
     root.classList.toggle('noswipe', shown.slides);
+    holdPage(shown.slides);
     $('slideMode').classList.toggle('on', shown.slides);
     $('slideMode').textContent = shown.slides ? '✕ All boxes' : '🔳 One box';
     $('pager').hidden = !shown.slides;
@@ -270,7 +271,7 @@ export function mountSettings(root) {
       sec.querySelector('h2').setAttribute('aria-expanded', String(open));
     });
     if (shown.slides) {
-      $('boxOf').textContent = `${shown.at + 1} of ${secs.length} · ${shown.title}${shown.at < secs.length - 1 ? ' · swipe up for the next' : ''}`;
+      $('boxOf').textContent = `${shown.at + 1} of ${secs.length} · ${shown.title} · ${shown.at < secs.length - 1 ? 'swipe up for the next' : 'the last box: swipe down for the one before'}`;
       for (const c of chips) c.classList.toggle('on', c.dataset.sec === secs[shown.at].id);
     }
   }
@@ -294,6 +295,7 @@ export function mountSettings(root) {
   }
   $('slideMode').addEventListener('click', () => {
     shown.slides = !shown.slides;
+    holdPage(shown.slides, true);
     // Back to all boxes: the one just seen stays open there.
     if (!shown.slides) shown.open.add(secs[shown.at].id);
     goBox(shown.at);
@@ -319,6 +321,7 @@ export function mountSettings(root) {
       t.eq('the marked chip', secs[shown.at].id, root.querySelector('.secnav button[data-sec].on')?.dataset.sec ?? null);
       t.eq('the box a note is about', titleOf(secs[shown.at]), settingsBox());
       t.eq('no ‹ › buttons (a swipe up or down)', 0, root.querySelectorAll('.pager button').length);
+      t.eq('a swipe down is the box before, not a reload', 'none', getComputedStyle(document.documentElement).overscrollBehaviorY);
     }, 1500);
   }
   // The chip tapped stays marked: a sign the tap worked even when the page is already at that section. Its box opens.

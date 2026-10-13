@@ -396,3 +396,27 @@ test('up and down through boxes: a swipe up or ↓ is the next box; a swipe only
   assert.equal(keyStep(key('ArrowDown', { ctrlKey: true })), 0);
   assert.equal(keyStep(key('ArrowDown', { target: { closest: () => ({}) } })), 0, 'not in a field');
 });
+
+// The parent's notes (2026-10-13): in 🔳 One box / Full screen a swipe down at the top reloaded the page (the browser's
+// pull-to-refresh), so the box before never came. html.updown stops it; the mode's button also asks for full screen.
+test('holdPage: no pull-to-refresh in the mode, full screen on a tap, both back when the mode ends', async () => {
+  const { holdPage } = await import('../../extension/apps/kidtube/parent/kit.js');
+  const asked = [];
+  const html = new FakeEl('html');
+  html.requestFullscreen = (o) => { asked.push(['on', o]); document.fullscreenElement = html; return Promise.resolve(); };
+  document.documentElement = html;
+  document.fullscreenElement = null;
+  document.exitFullscreen = () => { asked.push(['off']); document.fullscreenElement = null; return Promise.resolve(); };
+  holdPage(true);
+  assert.ok(html.classList.contains('updown'), 'pull-to-refresh off');
+  assert.equal(asked.length, 0, 'full screen only from a tap');
+  holdPage(true, true);
+  assert.deepEqual(asked, [['on', { navigationUI: 'hide' }]]);
+  holdPage(false);
+  assert.ok(!html.classList.contains('updown'), 'out of the mode a swipe down reloads again');
+  assert.deepEqual(asked.at(-1), ['off']);
+  html.requestFullscreen = () => Promise.reject(new Error('refused'));
+  holdPage(true, true);
+  assert.ok(html.classList.contains('updown'), 'a refused full screen keeps the mode');
+  delete document.documentElement; delete document.fullscreenElement; delete document.exitFullscreen;
+});

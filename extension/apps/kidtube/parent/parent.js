@@ -3,7 +3,7 @@
 import { ask } from '../../../core/lib/ask.js';
 import { APPS } from '../../registry.js';
 import { say, listen, recordedUrl } from '../lib/voice.js';
-import { el, btn, toast, runNow, notesDock, promptNotesBox, hooks, upDown, slideIn } from './kit.js';
+import { el, btn, toast, runNow, notesDock, promptNotesBox, hooks, upDown, slideIn, holdPage } from './kit.js';
 import { mountSettings, settingsBox } from './settings.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { renderMarkdown, promptSteps } from './markdown.js';
@@ -98,10 +98,11 @@ function render() {
   }
   // Only the Context tab in 🔳 Full screen keeps the swipe for itself (renderContext).
   view.classList.remove('noswipe');
-  if (r.video) { shownTab = null; return renderDetail(r.video); }
+  if (r.video) { shownTab = null; holdPage(false); return renderDetail(r.video); }
   // The settings page keeps its own state: redrawn only when you come to the tab.
   if (r.tab === 'settings' && shownTab === 'settings') return;
-  if (shownTab !== r.tab) { scrollTo(0, 0); checkTab(r.tab); }
+  // Another tab: out of 🔳 (pull-to-refresh back, full screen left); the tab's own mode sets it again when drawn.
+  if (shownTab !== r.tab) { holdPage(false); scrollTo(0, 0); checkTab(r.tab); }
   lastTab = shownTab = r.tab;
   if (r.tab === 'planned') return renderPlanned();
   if (r.tab === 'history') return renderHistory();
@@ -478,7 +479,7 @@ async function renderContext() {
   if (!c?.ok) { view.replaceChildren(el('p', 'err', 'Could not load the context documents.')); return; }
   const at = CONTEXT.findIndex(([id]) => id === contextDoc);
   const chips = el('div', 'chips noswipe');
-  const full = btn(contextFull ? '✕ Exit full screen' : '🔳 Full screen', () => { contextFull = !contextFull; renderContext(); }, contextFull ? 'small slidebtn on' : 'small slidebtn');
+  const full = btn(contextFull ? '✕ Exit full screen' : '🔳 Full screen', () => { contextFull = !contextFull; holdPage(contextFull, true); renderContext(); }, contextFull ? 'small slidebtn on' : 'small slidebtn');
   full.title = 'The document on the whole screen: swipe up for the next document';
   chips.append(full);
   for (const [id, name] of CONTEXT) {
@@ -490,9 +491,10 @@ async function renderContext() {
   body.append(doc?.text ? renderMarkdown(doc.text) : el('p', 'muted', 'Not written yet. It appears after the next sync, or the helper writes it on its next run.'));
   // In 🔳 Full screen a swipe goes to the next document, not to the next tab (the swipe below; the tabs' swipe skips .noswipe).
   view.classList.toggle('noswipe', contextFull);
+  holdPage(contextFull);
   if (!contextFull) { view.replaceChildren(chips, body); return; }
   const pager = el('div', 'pager');
-  pager.append(el('span', '', `${at + 1} of ${CONTEXT.length} · ${CONTEXT[at][1]}${at < CONTEXT.length - 1 ? ' · swipe up for the next' : ''}`));
+  pager.append(el('span', '', `${at + 1} of ${CONTEXT.length} · ${CONTEXT[at][1]} · ${at < CONTEXT.length - 1 ? 'swipe up for the next' : 'the last one: swipe down for the one before'}`));
   view.replaceChildren(chips, pager, body);
   if (contextStep) slideIn(body, contextStep);
   contextStep = 0;
@@ -504,6 +506,7 @@ async function renderContext() {
     t.ok('fills the screen', view.querySelector('.box.doc')?.getBoundingClientRect().height >= innerHeight * 0.5, 'small', 'at least half the screen');
     t.eq('no notes box', 0, [...view.querySelectorAll('h2')].filter((h) => /Your notes/.test(h.textContent)).length);
     t.eq('no ‹ › buttons (a swipe up or down)', 0, view.querySelectorAll('.pager button').length);
+    t.eq('a swipe down is the document before, not a reload', 'none', getComputedStyle(document.documentElement).overscrollBehaviorY);
   }, 1500);
 }
 let contextStep = 0;

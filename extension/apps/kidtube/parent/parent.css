@@ -154,6 +154,8 @@ details.step > summary::-webkit-details-marker { display: none; }
 @keyframes from-below { from { transform: translateY(60px); opacity: .3; } }
 @keyframes from-above { from { transform: translateY(-60px); opacity: .3; } }
 @media (prefers-reduced-motion: reduce) { .from-below, .from-above { animation: none; } }
+/* in those modes a swipe down at the top is the box before, not the browser's pull-to-refresh (kit.js holdPage) */
+html.updown, html.updown body { overscroll-behavior-y: none; }
 
 /* --- notes for the AI: the 🎤 bottom right, and the card on top of every tab -------------------------------------- */
 .notefab { position: fixed; right: 20px; bottom: 20px; z-index: 9; width: 60px; height: 60px; padding: 0; border-radius: 50%;
