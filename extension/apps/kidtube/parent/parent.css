@@ -75,6 +75,12 @@ textarea { min-height: 70px; resize: vertical; }
 .title { font-weight: 600; cursor: pointer; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 .meta { color: var(--muted); font-size: 13px; margin: 2px 0 6px; }
 .chips { display: flex; flex-wrap: wrap; gap: 4px; margin: 4px 0; }
+/* Context → 🔳 Full screen: the document fills the screen, ‹ › (or a swipe) goes to the next one */
+.chips .slidebtn { font-weight: 600; }
+.pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 6px 0 10px; }
+.pager span { flex: 1; text-align: center; color: var(--muted); font-size: 14px; }
+.pager button { margin: 0; min-width: 48px; font-size: 20px; padding: 4px 12px; }
+.box.doc.full { min-height: calc(100vh - 220px); }
 .chip { font-size: 12px; background: var(--chip); border-radius: 10px; padding: 1px 8px; white-space: nowrap; }
 .chip.star { background: #efe6fb; color: var(--star); }
 .chip.ok { background: #e8f5e9; color: var(--ok); }

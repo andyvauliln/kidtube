@@ -992,3 +992,15 @@ test('a note made in a Settings box names the box: in the event, the header’s 
   writeFileSync(file, JSON.stringify({ schemaVersion: 1, date, device: { deviceId: 'tab-test', extensionVersion: '0.1.0', quizTypes: ['text'], lastSyncAt: ev.at }, events: [sent] }));
   assert.deepEqual(validateFile(file).errors, []);
 });
+
+// The parent's note (2026-10-13): Context has no "Your notes on this document" box, and 🔳 Full screen as in Settings.
+test('Context: no notes box, a 🔳 Full screen button with ‹ › and a swipe to the next document', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../../extension/apps/kidtube/parent/parent.js', import.meta.url), 'utf8');
+  const ctx = src.slice(src.indexOf('async function renderContext'), src.indexOf('// --- Settings: its own view here'));
+  assert.doesNotMatch(ctx, /Your notes on this document/);
+  assert.match(ctx, /🔳 Full screen/);
+  assert.match(ctx, /id: 'parent\.context\.full'/, 'its check in the app');
+  assert.match(ctx, /view\.addEventListener\('touchend'/, 'the swipe goes to the next document');
+  assert.match(src, /view\.classList\.remove\('noswipe'\)/, 'other tabs get their swipe back');
+});
