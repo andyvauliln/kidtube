@@ -2,6 +2,10 @@
 
 Newest first. Each version is built from `extension/` with `build/build-orion.mjs` (see [ORION.md](https://github.com/andyvauliln/kidtube/blob/main/docs/ORION.md)).
 
+## 0.12.6 (2026-10-13)
+
+- **Fetching the newest lists no longer gives up too early.** On a slow connection, getting the newest video list and rules from GitHub can take more than 8 seconds. The parent screen now waits up to a minute for it, so it no longer counts this as "the extension did not answer".
+
 ## 0.12.5 (2026-10-13)
 
 - **↻ Update no longer gives up too early.** Sending your notes to GitHub can take more than 8 seconds on a slow connection. The parent screen now waits up to a minute, so it no longer says "the extension did not answer" while the notes are still being sent.
