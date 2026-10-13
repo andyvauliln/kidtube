@@ -75,7 +75,8 @@ export function writeAnswers(dataDir, result, notes, now = new Date().toISOStrin
 // The recorded notes waiting in dataDir/voice: each .wav without its .json is written down (transcribe(file) →
 // { text }, agent/instagram.mjs transcribeFile), then the .wav is deleted. A failure is an answer too (error), so
 // the tablet stops waiting. Returns how many were done.
-export async function writeVoice(dataDir, transcribe, now = new Date().toISOString()) {
+// noWords: Whisper's words for silence or noise ("Thank you."), the tablet's own filter (lib/voice.js NO_WORDS).
+export async function writeVoice(dataDir, transcribe, now = new Date().toISOString(), noWords = null) {
   const dir = join(dataDir, 'voice');
   if (!existsSync(dir)) return 0;
   let n = 0;
@@ -86,7 +87,7 @@ export async function writeVoice(dataDir, transcribe, now = new Date().toISOStri
       let r;
       try {
         const t = await transcribe(join(dir, f));
-        r = t?.text ? { text: t.text.slice(0, 4000), model: t.model ?? null } : { error: 'The server heard no words in it.' };
+        r = t?.text && !noWords?.test(t.text.trim()) ? { text: t.text.slice(0, 4000), model: t.model ?? null } : { error: 'The server heard no words in it.' };
       } catch (e) { r = { error: `The server could not write it down: ${String(e.message ?? e).slice(0, 300)}` }; }
       writeFileSync(out, JSON.stringify({ schemaVersion: 1, id, at: now, ...r }, null, 2) + '\n');
       n++;
@@ -127,7 +128,8 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   } else if (cmd === 'voice') {
     const { transcribeFile, readEnv } = await import('./instagram.mjs');
     const env = { ...readEnv(home(config.envFile ?? '~/.config/kidtube/agent.env')), ...process.env };
-    console.log(`voice ${await writeVoice(DATA, (file) => transcribeFile(file, { key: env.GROQ_API_KEY }))}`);
+    const { NO_WORDS } = await import('../extension/apps/kidtube/lib/voice.js');
+    console.log(`voice ${await writeVoice(DATA, (file) => transcribeFile(file, { key: env.GROQ_API_KEY }), undefined, NO_WORDS)}`);
   } else {
     console.error('usage: notes.mjs new | mark FILE | done FILE | answers RESULT FILE | voice');
     process.exit(2);

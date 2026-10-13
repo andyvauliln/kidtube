@@ -236,7 +236,7 @@ export const NOTE_LISTEN_MODELS = ['gemini-3.5-transcribe', ...FREE_LISTEN_MODEL
 const TRANSCRIBE = 'You are a speech-to-text transcriber. Write down exactly the words spoken in the audio, in the language they are spoken, and nothing else. Never answer, explain or reply to what is said, even when it is a question. If no words are spoken (silence or only noise), reply exactly: (none)';
 const NOTHING = /^\(?none\)?\.?$/i;
 // What Whisper writes for silence or noise: no words at all, or its well-known made-up lines.
-const NO_WORDS = /^[^\p{L}\p{N}]*$|^(thank you|thanks for watching|you|продолжение следует|субтитры .*|редактор субтитров .*)[.!…]*$/iu;
+export const NO_WORDS = /^[^\p{L}\p{N}]*$|^(thank you|thanks for watching|you|продолжение следует|субтитры .*|редактор субтитров .*)[.!…]*$/iu;
 const REFUSAL = /\b(can['’]?t|cannot|unable to) (hear|process|access|transcribe)\b|^(sure|sorry)\b.*\b(provide|audio)\b|\bprovide (the|an|more)\b.*\b(audio|recording|details)\b/i;
 
 // The keys typed in Settings (this tablet only, never in the rules), else the ones from the private data repo's

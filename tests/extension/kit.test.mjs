@@ -23,9 +23,10 @@ globalThis.document = { createElement: (t) => new FakeEl(t), createElementNS: (_
 const sent = [];
 const local = {};   // chrome.storage.local
 const answers = {};   // type → (msg) => the background's answer
+const changed = [];   // chrome.storage.onChanged listeners
 globalThis.chrome = {
   runtime: { sendMessage: (msg, cb) => { sent.push(msg); cb(answers[msg.type]?.(msg) ?? { ok: true }); }, lastError: null },
-  storage: { local: { get: async (keys) => Object.fromEntries([keys].flat().filter((k) => k in local).map((k) => [k, local[k]])), set: async (o) => { Object.assign(local, o); } }, onChanged: { addListener() {}, removeListener() {} } },
+  storage: { local: { get: async (keys) => Object.fromEntries([keys].flat().filter((k) => k in local).map((k) => [k, local[k]])), set: async (o) => { Object.assign(local, o); } }, onChanged: { addListener(fn) { changed.push(fn); }, removeListener() {} } },
 };
 
 // The device's speech recognition the Android way: each phrase ends it, and the page has to start it again.
@@ -120,6 +121,25 @@ test('the notes card: every waiting note with where it was made, ✕, Clear all 
   await tick();
   assert.ok(sent.some((m) => m.type === 'dropNote' && m.all));
   assert.equal(card.hidden, true, 'no notes and not recording: the card hides');
+});
+
+test('the notes card follows the 🔔 list: a note deleted there goes from the card too; ✕ on one already gone says so', async () => {
+  let held = [{ id: 'v1', type: 'wish', list: 'today', text: '🎤 A recorded note: the server writes it down…' }, { id: 'n5', type: 'wish', list: 'today', text: 'keep me' }];
+  answers.heldNotes = () => ({ ok: true, notes: held });
+  answers.dropNote = (m) => { const had = held.some((n) => n.id === m.id); held = held.filter((n) => n.id !== m.id); return { ok: had }; };
+  screen = { list: 'today' };
+  fab.click(); await tick(); rec.phrase('one more'); fab.click(); await tick();   // the card is open
+  assert.ok(text(card).includes('server writes it down'));
+  held = held.filter((n) => n.id !== 'v1');   // deleted in the header's list (Delete, or a swipe)
+  for (const fn of changed) fn({ outbox: { newValue: [] } });
+  await tick();
+  assert.ok(!text(card).includes('server writes it down'), 'gone from the card at once');
+  const stale = held[0];
+  held = [];   // sent meanwhile
+  button(find(card, (n) => n.tagName === 'LI' && text(n).includes(stale.text)), '✕').click();
+  await tick();
+  assert.ok(!text(card).includes('keep me'), 'the card shows what is there now');
+  assert.match(text(document.body), /not here any more: it was sent, or deleted in the 🔔 list/);
 });
 
 test('the apps header sits above the page’s sticky toolbar, so its menus show; YouTube’s fixed one is left alone', async () => {

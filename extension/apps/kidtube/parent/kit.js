@@ -190,7 +190,9 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabH
         body.append(el('span', 'nwhere', `${n.ask ? '❓ ' : ''}${label(n)}`), el('span', '', n.text));
         if (n.attached?.length) body.append(el('span', 'nattached', ['screen', 'app'].filter((a) => n.attached.includes(a)).map((a) => (a === 'screen' ? '📄 screen' : '⚙️ app data')).join(' · ')));
         const x = btn('✕', async () => {
-          if ((await ask({ type: 'dropNote', id: n.id }))?.ok) { await draw(); hooks.afterRun(); } else toast('Already sent: it can’t be removed now.');
+          const gone = (await ask({ type: 'dropNote', id: n.id }))?.ok;
+          await draw();
+          if (gone) hooks.afterRun(); else toast('This note is not here any more: it was sent, or deleted in the 🔔 list.');
         }, 'ghost small');
         x.title = 'Remove this note';
         li.append(body, x);
@@ -340,6 +342,11 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabH
     record();
   });
   draw();
+  // A note deleted, edited or given its words elsewhere (the header's 🔔 list, a sync): the card follows, unless the
+  // parent is recording or typing in it.
+  chrome.storage.onChanged.addListener((ch) => {
+    if ((ch.outbox || ch.notes) && !rec && !writing && document.activeElement !== typed) draw();
+  });
   return { refresh: draw };
 }
 

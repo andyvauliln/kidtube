@@ -352,8 +352,9 @@ test('a recorded note the tablet could not write down: the server writes it down
   writeFileSync(join(dir, 'voice', 'rec-0001-aaaa.wav'), 'RIFF');
   writeFileSync(join(dir, 'voice', 'rec-0002-bbbb.wav'), 'RIFF');
   writeFileSync(join(dir, 'voice', '..bad.wav'), 'RIFF');
-  const said = { 'rec-0001-aaaa': { text: 'Bigger buttons, please.', model: 'whisper-large-v3' }, 'rec-0002-bbbb': { text: '' } };
-  assert.equal(await writeVoice(dir, async (f) => said[f.split('/').pop().slice(0, -4)], '2026-10-13T12:00:00Z'), 2);
+  const said = { 'rec-0001-aaaa': { text: 'Bigger buttons, please.', model: 'whisper-large-v3' }, 'rec-0002-bbbb': { text: 'Thank you.' } };   // Whisper on silence
+  const { NO_WORDS } = await import('../../extension/apps/kidtube/lib/voice.js');
+  assert.equal(await writeVoice(dir, async (f) => said[f.split('/').pop().slice(0, -4)], '2026-10-13T12:00:00Z', NO_WORDS), 2);
   assert.deepEqual(JSON.parse(readFileSync(join(dir, 'voice', 'rec-0001-aaaa.json'), 'utf8')),
     { schemaVersion: 1, id: 'rec-0001-aaaa', at: '2026-10-13T12:00:00Z', text: 'Bigger buttons, please.', model: 'whisper-large-v3' });
   assert.match(JSON.parse(readFileSync(join(dir, 'voice', 'rec-0002-bbbb.json'), 'utf8')).error, /heard no words/);
@@ -371,6 +372,8 @@ test('poll.sh: a recording the tablet pushed is answered in voice/<id>.json with
   copyFileSync('agent/instagram.mjs', join(root, 'agent', 'instagram.mjs'));
   mkdirSync(join(root, 'extension', 'apps', 'instagram', 'lib'), { recursive: true });
   copyFileSync('extension/apps/instagram/lib/posts.js', join(root, 'extension', 'apps', 'instagram', 'lib', 'posts.js'));
+  mkdirSync(join(root, 'extension', 'apps', 'kidtube', 'lib'), { recursive: true });
+  for (const f of ['voice.js', 'lips.js']) copyFileSync(`extension/apps/kidtube/lib/${f}`, join(root, 'extension', 'apps', 'kidtube', 'lib', f));
   w.poll();
   const tablet = w.p('tablet');
   sh('git pull -q --rebase origin main', tablet);
