@@ -51,6 +51,10 @@ test('helper.json describes the real prompt, toolkit and config', async () => {
   const { helperInfo } = await import('../../agent/lib/info.mjs');
   const info = helperInfo('.', JSON.parse(readFileSync('agent/config.json', 'utf8')));
   assert.ok(info.prompt.includes('## Steps'));
+  // each prompt on its own, with its file (the Prompt tab's "All its prompts")
+  assert.deepEqual(info.prompts.map((p) => p.file), ['agent/SYSTEM.md', 'agent/DAILY.md']);
+  assert.ok(info.prompts.every((p) => p.text && p.title && p.when && info.prompt.includes(p.text)));
+  assert.ok(info.skills.every((s) => s.file === `.claude/skills/${s.name}/SKILL.md`));
   assert.ok(info.commands.some((c) => c.command === 'start'));
   assert.equal(info.run.schedule, '30 3 * * *');
   assert.ok(!JSON.stringify(info).match(/sk-or-|AIza|ntn_|secret_/));   // no keys

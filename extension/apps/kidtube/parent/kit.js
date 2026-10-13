@@ -346,6 +346,67 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
   return { refresh: draw };
 }
 
+// --- a double tap on a text makes it editable (the parent's note, 2026-10-13) ----------------------------------
+// The Prompt and Context tabs: a double tap (or double click) on a paragraph, a list item or a heading of a text
+// (inside [data-source]: the file it comes from) opens a field with its words. Save sends the change as a note for
+// the AI, with the old words and the new, and the file: the texts live in GitHub, so the AI on the server makes the
+// change (the prompt files in the code, the documents in the data repo). The tablet marks the paragraph meanwhile.
+export const EDITABLE = 'p, li, h3, h4, h5, h6, pre';
+// The note for one change: under 2000 characters (the notes' limit); a long old text is shortened to its start.
+export function editNote(source, before, after) {
+  const cut = (t, n) => (t.length > n ? `${t.slice(0, n)}…` : t);
+  const now = after ? `replace “${cut(before, 1900 - Math.min(after.length, 1400) - source.length - 40)}” with “${cut(after, 1400)}”`
+    : `delete “${cut(before, 1800)}”`;
+  return `Edit in ${source}: ${now}.`;
+}
+// The words of a paragraph or list item without its sub-list.
+export function ownText(node) {
+  const c = node.cloneNode(true);
+  for (const sub of c.querySelectorAll?.('ul, ol, .editform, .edited') ?? []) sub.remove();
+  return c.textContent.replace(/\s+/g, ' ').trim();
+}
+// root: the page part to watch; send(text, source): saves the note, returns { ok }. Two taps on the same text within
+// 450 ms open it (a tablet's double tap sends no dblclick when it zooms; a mouse sends both, and both open it once).
+export function editOnDoubleTap(root, send, ms = 450) {
+  let last = null;
+  const target = (e) => {
+    const n = e.target?.closest?.(EDITABLE);
+    return n && n.closest('[data-source]') && !n.closest('.editform, .edited, .old, summary, button, .about') ? n : null;
+  };
+  root.addEventListener('click', (e) => {
+    const n = target(e);
+    if (n && last?.n === n && e.timeStamp - last.t < ms) { last = null; startEdit(n, send); return; }
+    last = n ? { n, t: e.timeStamp } : null;
+  });
+  root.addEventListener('dblclick', (e) => { const n = target(e); if (n) { getSelection?.()?.removeAllRanges?.(); startEdit(n, send); } });
+}
+export function startEdit(node, send) {
+  if (node.classList.contains('editing')) return;
+  const source = node.closest('[data-source]').dataset.source;
+  const before = ownText(node);
+  const form = el('div', 'editform');
+  const area = el('textarea');
+  area.value = before;
+  area.rows = Math.min(14, Math.max(3, Math.ceil(before.length / 50)));
+  const close = (...put) => { node.classList.remove('editing'); form.replaceWith(...put); };
+  const save = btn('Save', async () => {
+    const after = area.value.replace(/\s+/g, ' ').trim();
+    if (after === before) return close();
+    const r = await send(editNote(source, before, after), source);
+    if (!r?.ok) return toast('Could not save the change. Is parent mode still on?');
+    node.classList.add('old');
+    close(el('div', 'edited', after ? `✎ Your new words: ${after}` : '✎ You deleted this'));
+    toast('Saved. It waits in the 🔔 list: send it there, and the AI changes the text.');
+    hooks.afterRun();
+  }, 'small primary');
+  const actions = el('div', 'actions');
+  actions.append(save, btn('Cancel', () => close(), 'small'));
+  form.append(el('div', 'muted', `Change the words, then Save. The AI changes ${source} with them.`), area, actions);
+  node.classList.add('editing');
+  if (node.tagName === 'LI') node.append(form); else node.after(form);
+  area.focus();
+}
+
 // The standing instructions for the helper (the Prompt tab): the list with Remove (added with the 🎤).
 // onChange() redraws the page after one is added or removed.
 export function promptNotesBox(notes, onChange) {

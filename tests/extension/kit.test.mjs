@@ -425,3 +425,32 @@ test('holdPage: no pull-to-refresh in the mode, full screen on a tap, both back 
   assert.ok(html.classList.contains('updown'), 'a refused full screen keeps the mode');
   delete document.documentElement; delete document.fullscreenElement; delete document.exitFullscreen;
 });
+
+// The parent's note (2026-10-13): a double tap on a paragraph of the Prompt or Context tab makes it editable; Save sends
+// the old words, the new ones and the file as a note for the AI (the texts live in GitHub).
+test('a double tap on a text: a note with the file, the old words and the new; one tap or another text does nothing', async () => {
+  const { editNote, editOnDoubleTap } = await import('../../extension/apps/kidtube/parent/kit.js');
+  assert.equal(editNote('agent/DAILY.md', 'Pick 5 videos.', 'Pick 6 videos.'), 'Edit in agent/DAILY.md: replace “Pick 5 videos.” with “Pick 6 videos.”.');
+  assert.equal(editNote('context/kid.md', 'He is 4.', ''), 'Edit in context/kid.md: delete “He is 4.”.');
+  const long = editNote('agent/SYSTEM.md', 'a'.repeat(5000), 'b'.repeat(5000));
+  assert.ok(long.length <= 2000, `under the notes' limit (${long.length})`);
+  assert.ok(long.includes('…'), 'a long text is shortened, and says so');
+  // two taps on the same paragraph open it; taps on two paragraphs, or one slow pair, don't
+  const root = new FakeEl('div');
+  const doc = { dataset: { source: 'context/kid.md' } };
+  const para = (name) => ({ name, closest: (sel) => (sel === '[data-source]' ? doc : /editform/.test(sel) ? null : undefined) });
+  const a = para('a'), b = para('b');
+  const opened = [];
+  // startEdit needs a real page: count the paragraphs it is asked to open (classList.contains is its first look)
+  for (const p of [a, b]) p.classList = { contains: (c) => { if (c === 'editing') opened.push(p.name); return true; } };
+  editOnDoubleTap(root, async () => ({ ok: true }));
+  const tap = (n, t) => root.dispatchEvent({ type: 'click', target: { closest: (sel) => (sel.includes('li') ? n : null) }, timeStamp: t });
+  tap(a, 0); tap(b, 100); tap(a, 2000); tap(a, 3000);
+  assert.deepEqual(opened, [], 'another paragraph, or too slow');
+  tap(b, 4000); tap(b, 4300);
+  assert.deepEqual(opened, ['b']);
+  // not a text of a prompt or document (no [data-source]): nothing
+  const free = { closest: (sel) => (sel === '[data-source]' ? null : undefined), classList: { contains: () => { opened.push('free'); return true; } } };
+  tap(free, 5000); tap(free, 5100);
+  assert.deepEqual(opened, ['b']);
+});

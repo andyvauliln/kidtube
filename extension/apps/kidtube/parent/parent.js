@@ -3,7 +3,7 @@
 import { ask } from '../../../core/lib/ask.js';
 import { APPS } from '../../registry.js';
 import { say, listen, recordedUrl } from '../lib/voice.js';
-import { el, btn, toast, runNow, notesDock, promptNotesBox, hooks, upDown, slideIn, holdPage } from './kit.js';
+import { el, btn, toast, runNow, notesDock, promptNotesBox, hooks, upDown, slideIn, holdPage, editOnDoubleTap } from './kit.js';
 import { mountSettings, settingsBox } from './settings.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { renderMarkdown, promptSteps } from './markdown.js';
@@ -96,7 +96,7 @@ function render() {
     a.classList.toggle('on', a.dataset.tab === (r.tab ?? lastTab));
     if (a.classList.contains('on')) a.scrollIntoView?.({ inline: 'center', block: 'nearest' });
   }
-  // Only the Context tab in 🔳 Full screen keeps the swipe for itself (renderContext).
+  // Only Context in 🔳 Full screen and Prompt in 🔳 One box keep the swipe for themselves (renderContext, renderPrompt).
   view.classList.remove('noswipe');
   if (r.video) { shownTab = null; holdPage(false); return renderDetail(r.video); }
   // The settings page keeps its own state: redrawn only when you come to the tab.
@@ -361,20 +361,61 @@ function fold(title, ...body) {
   return d;
 }
 
+// The parent's notes (2026-10-13): the tab in boxes, each with where its words come from, how the helper uses them
+// and why the box is here (ABOUT); a first box shows how it all fits together, and the last one every prompt it reads.
+// 🔳 One box as in Settings: one box on the whole screen, a swipe up (or ↓) for the next. A double tap on a text of a
+// prompt (or of what it noticed, its study plan) makes it editable: Save sends the change as a note (kit.js editOnDoubleTap).
+const ABOUT = {
+  flow: { chip: 'Overview', from: 'This app: how the helper is built (agent/ on the server).', used: 'Not by the helper: it is for you.', why: 'The whole picture first: who starts it, what it reads, what it makes.' },
+  runs: { chip: 'Runs', from: 'The server’s run log and the helper’s diary (memory.json).', used: 'The diary is read on the next run, so it remembers what it did.', why: 'To see that it ran, how long it took and what it cost.' },
+  noticed: { chip: 'Noticed', from: 'The helper writes it in memory.json (step “notes”).', used: 'Read on every run when it picks videos and writes questions.', why: 'What it has learned about him. Double-tap a paragraph to correct it.' },
+  plan: { chip: 'Study plan', from: 'The helper writes it in memory.json every few days.', used: 'It picks the subjects of new videos from it.', why: 'The longer view. Double-tap a paragraph to change it.' },
+  messages: { chip: 'Messages', from: 'Your 🎤 notes on the other tabs, kept in memory.json.', used: 'Read on every run; your words win over its own ideas.', why: 'So you see what it still keeps in mind.' },
+  changes: { chip: 'Your changes', from: 'Your 🎤 notes on this tab, and your edits (double tap).', used: 'Added to its prompt on every run. The AI on the server may also change the prompt files with them.', why: 'Your standing rules for the helper, with Remove.' },
+  steps: { chip: 'Steps', from: 'agent/DAILY.md in the code (GitHub).', used: 'The order of every run: it does step 1, then step 2…', why: 'What it does, step by step. Double-tap a text to change it.' },
+  skills: { chip: 'Skills', from: '.claude/skills/helper-*/SKILL.md in the code.', used: 'Loaded only when the run reaches that step: the long how-to for it.', why: 'The details of the big steps. Double-tap a text to change it.' },
+  settings: { chip: 'Settings', from: 'agent/config.json on the server, and the Settings tab on this tablet.', used: 'Its numbers (how many videos, questions, voices) and the tablet’s rules.', why: 'To change one: the Settings tab, or a 🎤 note here.' },
+  io: { chip: 'Reads & writes', from: 'helper.json: made from agent/kt.mjs (its toolkit) on every run.', used: 'The toolkit is the only way it reads and changes the data.', why: 'What it may touch, and what it can’t.' },
+  prompts: { chip: 'All prompts', from: 'The prompt files in the code (GitHub), as the last run used them.', used: 'Rules first, then the steps, then your changes; the skills at their steps.', why: 'Every prompt in full. Double-tap a text to change it.' },
+};
+let promptFull = false, promptAt = 'flow', promptStep = 0;
+let promptDraw = null;   // redraws the boxes of the page on the screen (renderPrompt)
+
+function aboutBox(a) {
+  const dl = el('dl', 'about');
+  for (const [k, v] of [['From', a.from], ['Used', a.used], ['Why', a.why]]) dl.append(el('dt', '', k), el('dd', '', v));
+  return dl;
+}
+// Markdown that can be edited with a double tap: source names the file the words are in.
+const editable = (md, source) => { const n = renderMarkdown(md); n.dataset.source = source; return n; };
+
 async function renderPrompt() {
   const h = await ask({ type: 'helperData' });
   if (route().tab !== 'prompt') return;
   if (!h?.ok) { view.replaceChildren(el('p', 'err', 'Could not load the helper’s description.')); return; }
   const info = h.info;
-  const parts = [];
-  const box = (title, ...body) => { const b = el('div', 'box'); b.append(el('h2', '', title), ...body); parts.push(b); return b; };
+  const boxes = [];
+  const box = (id, title, ...body) => { const b = el('div', 'box pbox'); b.dataset.box = id; b.append(el('h2', '', title), aboutBox(ABOUT[id]), ...body); boxes.push(b); return b; };
+  const run = info?.run;
+
+  // 0. How it all fits together.
+  const flow = el('ol', 'flow');
+  flow.append(...[
+    `The server starts it ${run ? scheduleText(run.schedule, run.timezone) : 'every night'}, or when you tap ↻ Update.`,
+    run?.runner === 'node' ? 'The fixed program (agent/run.mjs) does the steps with OpenRouter text models.'
+      : `Claude Code${run?.model ? ` (${run.model})` : ''} reads its rules (agent/SYSTEM.md), then the steps (agent/DAILY.md), with your changes added at the end.`,
+    'At the big steps it loads a skill: the long how-to for finding videos, for writing the words and questions, and for its notes.',
+    'It works only through its toolkit (node agent/kt.mjs): it reads what he watched and your notes, searches YouTube, asks Gemini to watch a video, and saves.',
+    'It saves the lists and the words to GitHub (kidtube-data). This tablet gets them on its next sync.',
+    'Your 🎤 notes go another way too: within minutes the AI on the server (agent/NOTES.md) reads them, changes the app or these prompts, and answers your questions.',
+  ].map((t) => el('li', '', t)));
+  box('flow', 'How it all fits together', flow);
 
   // 1. When and how it runs.
-  const run = info?.run;
   const howBody = [];
   if (run) {
     howBody.push(el('p', '', `Runs ${scheduleText(run.schedule, run.timezone)}. ${run.runner === 'claude'
-      ? `Claude Code (${run.model}) reads the prompt below and does the work with its toolkit${run.maxTurns ? `, in up to ${run.maxTurns} steps` : ''}.`
+      ? `Claude Code (${run.model}) reads the prompt and does the work with its toolkit${run.maxTurns ? `, in up to ${run.maxTurns} steps` : ''}.`
       : 'The fixed program (agent/run.mjs) does the work with OpenRouter text models.'}${run.fallbackToNode ? ' If Claude can’t run and nothing was saved that day, the backup program does the same steps with OpenRouter models.' : ''}`));
   } else {
     howBody.push(el('p', 'muted', h.hasToken ? 'The helper hasn’t published its description yet. It does on its next run.' : 'Needs the GitHub token for this account (the header’s account menu → GitHub connection).'));
@@ -389,36 +430,37 @@ async function renderPrompt() {
     howBody.push(el('h3', '', 'Its latest diary'), el('p', '', h.journal[0].summary));
     if (h.journal.length > 1) howBody.push(fold('Earlier days', ...h.journal.slice(1).map((j) => el('p', '', `${new Date(j.at).toLocaleDateString([], { weekday: 'short', day: 'numeric', month: 'short' })}: ${j.summary}`))));
   }
-  box('How the helper works', ...howBody);
+  box('runs', 'When it runs, and its diary', ...howBody);
 
   // What it learned about him, its study plan, and the messages it has from you (all in memory.json).
-  if (h.noticed) box('What it noticed', renderMarkdown(h.noticed));
-  if (h.studyPlan) box('Study plan', ...(h.studyPlanAt ? [el('p', 'muted', `Written ${new Date(h.studyPlanAt).toLocaleDateString()}. Send a message to change it.`)] : []), renderMarkdown(h.studyPlan));
+  if (h.noticed) box('noticed', 'What it noticed', editable(h.noticed, 'memory.json (what it noticed)'));
+  if (h.studyPlan) box('plan', 'Study plan', ...(h.studyPlanAt ? [el('p', 'muted', `Written ${new Date(h.studyPlanAt).toLocaleDateString()}.`)] : []), editable(h.studyPlan, 'memory.json (the study plan)'));
   if (h.messages?.length) {
     const ul = el('ul', 'notes');
     ul.append(...h.messages.map((m) => el('li', '', `${m.at.slice(0, 10)}: ${m.aboutList ? `(${m.aboutList}) ` : ''}${m.text}`)));
-    box('Your messages it keeps in mind', ul);
+    box('messages', 'Your messages it keeps in mind', ul);
   }
 
   // 2. Your changes to the prompt.
-  box('Your changes to the prompt', ...promptNotesBox(h.notes, () => { if (route().tab === 'prompt') renderPrompt(); }));
+  box('changes', 'Your changes to the prompt', ...promptNotesBox(h.notes, () => { if (route().tab === 'prompt') renderPrompt(); }));
 
   // 3. The run, step by step (straight from the prompt).
   if (info?.prompt) {
     const { steps, after } = promptSteps(info.prompt);
+    const daily = info.prompts?.[1]?.file ?? 'agent/DAILY.md';
     const ol = el('div', 'steps');
     for (const st of steps) {
       const d = el('details', 'step');
       const sum = el('summary');
       sum.append(el('span', 'n', String(st.n)), el('span', '', st.title));
-      d.append(sum, renderMarkdown(st.body));
+      d.append(sum, editable(st.body, `${daily} (step ${st.n}, ${st.title})`));
       ol.append(d);
     }
-    box('What it does, step by step', el('p', 'muted', 'Tap a step to see exactly what the prompt tells it.'), ol, ...(after ? [renderMarkdown(after)] : []));
+    box('steps', 'What it does, step by step', el('p', 'muted', 'Tap a step to see exactly what the prompt tells it.'), ol, ...(after ? [editable(after, daily)] : []));
   }
   if (info?.skills?.length) {
-    box('Step details (skills)', el('p', 'muted', 'The helper loads these when it reaches the step.'),
-      ...info.skills.map((s) => fold(s.text.match(/^# (.+)/m)?.[1] ?? s.name, renderMarkdown(s.text.replace(/^# .+\n/, '')))));
+    box('skills', 'Step details (skills)', ...info.skills.map((s) => fold(s.text.match(/^# (.+)/m)?.[1] ?? s.name,
+      el('p', 'muted', `${s.file ?? `.claude/skills/${s.name}/SKILL.md`}`), editable(s.text.replace(/^# .+\n/, ''), s.file ?? `.claude/skills/${s.name}/SKILL.md`))));
   }
 
   // 4. The settings it uses.
@@ -454,17 +496,72 @@ async function renderPrompt() {
     ['Talking friend', `${r.friend.name}: ${[r.friend.intro && 'hello before', r.friend.outro && 'what we learned after'].filter(Boolean).join(', ') || 'quiet'}${r.friend.recorded ? ', recorded voice' : ''}`],
     ['Hearing his answers', r.friend.listen], ['Other websites', r.blockSites ? 'blocked' : 'open'],
   ]));
-  box('Settings it uses', ...setBody);
+  box('settings', 'Settings it uses', ...setBody);
 
-  // 5. What it reads and writes, its toolkit, the full prompt.
+  // 5. What it reads and writes, its toolkit, and every prompt in full.
   if (info) {
     const ul = (items) => { const u = el('ul'); u.append(...items.map((x) => el('li', '', x))); return u; };
-    box('What it reads and writes', el('h3', '', 'Reads'), ul(info.reads ?? []), el('h3', '', 'Writes'), ul(info.writes ?? []),
+    box('io', 'What it reads and writes', el('h3', '', 'Reads'), ul(info.reads ?? []), el('h3', '', 'Writes'), ul(info.writes ?? []),
       fold(`Its toolkit (${(info.commands ?? []).length} commands)`, table((info.commands ?? []).map((c) => [c.command, c.what]))));
-    box('The full prompt', el('p', 'muted', `agent/DAILY.md, as the helper uses it${info.updatedAt ? ` (published ${new Date(info.updatedAt).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''}. Your changes above are added to it.`),
-      fold('Read the whole prompt', renderMarkdown(info.prompt)));
+    // Helpers before 0.12.25 published the rules and the steps as one text.
+    const prompts = info.prompts?.length ? info.prompts : [{ file: 'agent/SYSTEM.md + agent/DAILY.md', title: 'The prompt', when: 'Read on every run.', text: info.prompt }];
+    const one = (title, file, when, text) => fold(title, el('p', 'muted', `${file} · ${when}`), editable(text, file));
+    box('prompts', 'All its prompts', el('p', 'muted', `As the helper used them${info.updatedAt ? ` (published ${new Date(info.updatedAt).toLocaleString([], { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })})` : ''}. Tap one to read it.`),
+      ...prompts.map((p) => one(p.title, p.file, p.when, p.text)),
+      ...(info.skills ?? []).map((s) => one(`Skill: ${s.text.match(/^# (.+)/m)?.[1] ?? s.name}`, s.file ?? `.claude/skills/${s.name}/SKILL.md`, 'Loaded when the run reaches its step.', s.text.replace(/^# .+\n/, ''))),
+      fold('Your changes', el('p', 'muted', `memory.json (promptNotes) · Added after the steps on every run. ${h.notes.length ? `${h.notes.length} now: see “Your changes to the prompt”.` : 'None yet.'}`)));
   }
-  view.replaceChildren(...parts);
+
+  // The chips: one per box (a tap goes to it), and 🔳 One box as in Settings.
+  const chips = el('div', 'chips noswipe pchips');
+  const full = btn(promptFull ? '✕ All boxes' : '🔳 One box', () => { promptFull = !promptFull; holdPage(promptFull, true); draw(); if (!promptFull) boxes.find((b) => b.dataset.box === promptAt)?.scrollIntoView({ block: 'start' }); }, promptFull ? 'small slidebtn on' : 'small slidebtn');
+  full.title = 'One box at a time, full screen: swipe up for the next box';
+  const pager = el('div', 'pager');
+  function draw(step = 0) {
+    const ids = boxes.map((b) => b.dataset.box);
+    if (!ids.includes(promptAt)) promptAt = ids[0];
+    const at = ids.indexOf(promptAt);
+    full.textContent = promptFull ? '✕ All boxes' : '🔳 One box';
+    full.className = promptFull ? 'small slidebtn on' : 'small slidebtn';
+    chips.replaceChildren(full, ...boxes.map((b) => btn(ABOUT[b.dataset.box].chip, () => {
+      promptAt = b.dataset.box;
+      if (promptFull) { scrollTo(0, 0); draw(); } else b.scrollIntoView({ block: 'start', behavior: 'smooth' });
+    }, promptFull && b.dataset.box === promptAt ? 'small primary' : 'small')));
+    // In 🔳 One box a swipe goes to the next box, not to the next tab (the tabs' swipe skips .noswipe).
+    view.classList.toggle('noswipe', promptFull);
+    holdPage(promptFull);
+    for (const b of boxes) b.hidden = promptFull && b.dataset.box !== promptAt;
+    pager.hidden = !promptFull;
+    pager.replaceChildren(el('span', '', `${at + 1} of ${boxes.length} · ${boxes[at].querySelector('h2').textContent} · ${at < boxes.length - 1 ? 'swipe up for the next' : 'the last box: swipe down for the one before'}`));
+    if (promptFull && step) slideIn(boxes[at], step);
+    if (promptFull) checkPromptFull();
+  }
+  view.replaceChildren(chips, pager, ...boxes);
+  promptDraw = (step) => { if (chips.isConnected) draw(step); };
+  draw(promptStep);
+  promptStep = 0;
+}
+// A swipe up (or ↓): the next box; down (or ↑): the one before (only in 🔳 One box).
+upDown(view, { on: () => promptFull && route().tab === 'prompt' && !route().video, box: () => view.querySelector('.box.pbox:not([hidden])'), skip: '.chips', go: (step) => {
+  const ids = [...view.querySelectorAll('.box.pbox')].map((b) => b.dataset.box);
+  const i = ids.indexOf(promptAt) + step;
+  if (i < 0 || i >= ids.length) return;
+  promptAt = ids[i];
+  scrollTo(0, 0);
+  promptDraw?.(step);
+} });
+function checkPromptFull() {
+  globalThis.KidTubeWatch?.check({ id: 'parent.prompt.oneBox', area: 'parent', expect: '🔳 One box on the Prompt tab shows one box on the whole screen, its chip marked, each box says where it comes from',
+    code: ['apps/kidtube/parent/parent.js renderPrompt'] }, (t) => {
+    if (route().tab !== 'prompt' || !promptFull) return t.skip('left the mode');
+    const seen = [...view.querySelectorAll('.box.pbox')].filter((b) => !b.hidden);
+    t.eq('boxes on the screen', 1, seen.length);
+    t.eq('the box', promptAt, seen[0]?.dataset.box ?? null);
+    t.eq('the marked chip', ABOUT[promptAt]?.chip, view.querySelector('.pchips .primary')?.textContent ?? null);
+    t.ok('From, Used, Why', seen[0]?.querySelectorAll('.about dt').length === 3, seen[0]?.querySelectorAll('.about dt').length, '3 lines');
+    t.eq('a swipe down is the box before, not a reload', 'none', getComputedStyle(document.documentElement).overscrollBehaviorY);
+    t.eq('nothing on top (no apps header, notifications or tabs)', 'none', getComputedStyle(document.querySelector('body > header') ?? document.body).display);
+  }, 1500);
 }
 
 // --- Context: the documents the helper plans from (kidtube-data context/*.md) ---------------------------
@@ -488,7 +585,8 @@ async function renderContext() {
   }
   const doc = c.docs[contextDoc];
   const body = el('div', contextFull ? 'box doc full' : 'box doc');
-  body.append(doc?.text ? renderMarkdown(doc.text) : el('p', 'muted', 'Not written yet. It appears after the next sync, or the helper writes it on its next run.'));
+  // A double tap on a paragraph edits it (the parent's note, 2026-10-13): the change goes as a note on this document.
+  body.append(doc?.text ? editable(doc.text, `context/${contextDoc}.md`) : el('p', 'muted', 'Not written yet. It appears after the next sync, or the helper writes it on its next run.'));
   // In 🔳 Full screen a swipe goes to the next document, not to the next tab (the swipe below; the tabs' swipe skips .noswipe).
   view.classList.toggle('noswipe', contextFull);
   holdPage(contextFull);
@@ -520,6 +618,10 @@ upDown(view, { on: () => contextFull && route().tab === 'context' && !route().vi
   scrollTo(0, 0);
   renderContext();
 } });
+
+// A double tap on a text of the Prompt or Context tab: the change goes as a note, like one from the 🎤 (kit.js startEdit).
+editOnDoubleTap(view, (text) => (route().tab === 'context' ? ask({ type: 'contextNote', doc: contextDoc, text })
+  : route().tab === 'prompt' ? ask({ type: 'promptNote', action: 'add', text }) : { ok: false }));
 
 // --- Settings: its own view here (settings.js; no second PIN in parent mode) ---------------------
 

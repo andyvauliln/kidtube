@@ -11,10 +11,15 @@ export function helperInfo(root, config, where = {}) {
   // What the helper reads: the system prompt, the steps, and the step details (skills), in that order.
   const skills = ['helper-find-videos', 'helper-write-words', 'helper-notes'].map((n) => {
     const f = join(root, '.claude/skills', n, 'SKILL.md');
-    return existsSync(f) ? { name: n, text: readFileSync(f, 'utf8').replace(/^---[\s\S]*?---\n/, '').trim() } : null;
+    return existsSync(f) ? { name: n, file: `.claude/skills/${n}/SKILL.md`, text: readFileSync(f, 'utf8').replace(/^---[\s\S]*?---\n/, '').trim() } : null;
   }).filter(Boolean);
   const app = where.appConfig ?? {};
-  const prompt = [readFileSync(join(root, app.system ?? 'agent/SYSTEM.md'), 'utf8'), readFileSync(join(root, app.daily ?? 'agent/DAILY.md'), 'utf8')].join('\n\n');
+  // Each prompt file on its own too (the Prompt tab's box "All its prompts": where each comes from and when it is read).
+  const prompts = [
+    { file: app.system ?? 'agent/SYSTEM.md', title: 'Its rules (system prompt)', when: 'Read first, on every run. Safety and the rules it never breaks.' },
+    { file: app.daily ?? 'agent/DAILY.md', title: 'The run, step by step', when: 'Read on every run, after the rules: the steps in their order.' },
+  ].map((p) => ({ ...p, text: readFileSync(join(root, p.file), 'utf8').trim() }));
+  const prompt = prompts.map((p) => p.text).join('\n\n');
   const commands = readFileSync(join(root, 'agent/kt.mjs'), 'utf8').split('\n')
     .map((l) => l.match(/^\/\/\s+node agent\/kt\.mjs (\S+)(.*?)\s{2,}(\S.*)$/)).filter(Boolean)
     .map(([, cmd, args, what]) => ({ command: `${cmd}${args}`.trim(), what: what.trim() }));
@@ -22,7 +27,7 @@ export function helperInfo(root, config, where = {}) {
   return {
     schemaVersion: 1,
     updatedAt: iso(),
-    prompt, skills,
+    prompt, prompts, skills,
     run: {
       schedule: config.schedule ?? '30 3 * * *', timezone: config.timezone ?? 'UTC',
       runner: config.orchestrator?.runner ?? 'claude', model: config.orchestrator?.model ?? 'sonnet', maxTurns: config.orchestrator?.maxTurns ?? null,
