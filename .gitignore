@@ -6,3 +6,4 @@ dist/
 !site/*.zip
 !site/orion/*.zip
 .screenshots/
+.claude/change-actions.json

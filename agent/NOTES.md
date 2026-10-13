@@ -6,7 +6,7 @@ You run on the server with no one watching. This checkout is your own copy of th
 
 ## For each note, decide which kind it is
 
-1. **A change to the app.** For example: what a screen shows, a button, how parent mode or the quiz behaves, the voices, the settings. Change `extension/`, then test and release it (below).
+1. **A change to the app.** For example: what a screen shows, a button, how parent mode or the quiz behaves, the voices, the settings. Change `extension/`, then release it (below).
 2. **A change to how the helper works.** For example: how it picks, how many videos, the quiz style, what it reads, how often it runs. Change `agent/DAILY.md`, `agent/SYSTEM.md`, `agent/config.json` or `.claude/skills/helper-*`, then commit and push. The next helper run uses it. If the helper is already told something in its standing prompt changes, don't repeat it.
 3. **A wish about the videos or the lists.** For example: "more animals", "too hard", "add a video about X", a note about one video. No code change. Set `"runHelper": true`; the helper reads all of the parent's notes on its run and updates the lists.
 4. **Unclear, unsafe or impossible.** Don't guess at a big change. Say in the summary what you need to know.
@@ -36,24 +36,27 @@ Use it to find what "this", "here" or "the button" means, and to reproduce a pro
 
 ## Releasing a change to the app
 
-One version number for both browsers. Other writers (a person in a chat session, another agent run) push to `main`
-too, so the release files are made last, on top of the newest code (`docs/UPDATES.md` section 9):
+Other writers (a person in a chat session, another agent run) push to `main` too. One command does the push and the
+release in the right order, and waits while another writer does the same (`build/ship.mjs`, `docs/UPDATES.md`
+section 9):
 
-1. `git fetch origin && git rebase origin/main`. Solve a conflict by keeping both changes; run `npm test` again.
-2. Raise the patch number in `extension/manifest.json` above the newest one on `main` (`site/latest.json`):
-   0.8.9 → 0.8.10. Commit the change with it: `<version>: <short summary>`.
-3. `git push origin main`. If it is refused: go back to step 1. If the rebase stops on `extension/manifest.json`,
-   take the next free number above the remote's and change your commit message to it.
-4. Only now, with your code on `main`: **Quetta:** `node build/pack.mjs extension --key ~/kidtube-key.pem --out site --base-url https://andyvauliln.github.io/kidtube`,
-   (it deletes the old `.crx` and `.zip`), then `git add -A site` and commit as `quetta <version>: release`.
-5. **Orion:** follow the `update-orion` skill (orion-check, `node build/build-orion.mjs`, a section in `site/orion/CHANGES.md` the parent understands). Commit as `orion <version>: <short summary>`.
-6. `git push origin main`. If it is refused, run `git fetch origin && git rebase origin/main`:
-   - The rebase goes through (the other writer changed code only): `npm test`, then push.
-   - The rebase stops on a file in `site/` (someone released in the meantime): `git rebase --abort`, then
-     `git reset --hard origin/main` (this drops only your release commits: your code is on `main` since step 3).
-     If the newest release (`site/latest.json` → `sourceCommit`) already has your code, you are done. If not, do
-     steps 2–6 again with the next number.
-   - Never solve a `site/` file by hand: the scripts make it.
+1. Commit your change. Do not change the version in `extension/manifest.json` and do not touch the release files in
+   `site/` (`latest.json`, `updates.xml`, the `.crx` and `.zip`, `site/orion/`): `ship` makes them.
+2. `npm run ship -- -m "<short summary>"`. It rebases on `origin/main`, gives `extension/` the next free version
+   (commit `<version>: <summary>`), runs `npm test`, pushes the code, then makes the Quetta release on top of it
+   (`quetta <version>: release`) and pushes that. A push refused in between is handled by `ship`.
+3. It stops when the rebase needs you (two writers changed the same lines): solve it by keeping both changes,
+   `git rebase --continue`, then run step 2 again. It also stops when `npm test` fails: fix it, commit, step 2 again.
+4. The last line says `ship: released <version>`. That is the version for your result. A change only outside
+   `extension/` (the helper, a test) gets no release: `ship` only pushes it.
+
+Never `git push` the release files yourself, and never solve a conflict in them by hand. A push that breaks the rules
+is refused by the hook (`.githooks/pre-push`). After your run the server checks that `main`'s newest release has
+`main`'s code, and releases it if not.
+
+**Orion only when the parent asks for it in a note:** `npm run ship -- -m "<summary>" --orion` (it also runs
+`build/orion-check.mjs` and adds the summary to `site/orion/CHANGES.md`; follow the `update-orion` skill for what to
+check).
 
 The tablet then sees the new version next to the logo in the header. Quetta is asked for it once, then every 30 minutes; it is not proven that Quetta installs it by itself. If the label says "· by hand", the parent taps it and installs the .crx from the install page. Orion: the parent downloads the .zip. Never promise that the parent does nothing: say "tap the new version next to the logo".
 

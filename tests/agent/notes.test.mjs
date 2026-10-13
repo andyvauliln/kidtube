@@ -6,6 +6,8 @@ import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, copyFileSync, chmo
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
+import { generateKeyPairSync } from 'node:crypto';
+import { publicKeyDer } from '../../build/crx.mjs';
 import { noteOf, allNotes, writeAnswers } from '../../agent/notes.mjs';
 
 const sh = (cmd, cwd) => execFileSync('bash', ['-c', cmd], { cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
@@ -49,7 +51,7 @@ test('a note keeps the context the parent attached on the tablet', () => {
 });
 
 // A world: data repo + code repo (bare "GitHub" remotes), the main checkout with agent/, a state dir, a fake claude.
-function world() {
+function world(extraEnv = {}) {
   const dir = mkdtempSync(join(tmpdir(), 'kt-notes-'));
   const p = (...x) => join(dir, ...x);
   sh(`git init -q --bare -b main ${p('data.git')} && git init -q --bare -b main ${p('code.git')}`);
@@ -70,12 +72,14 @@ const fs = require('fs');
 const prompt = process.argv[process.argv.indexOf('-p') + 1];
 fs.appendFileSync(${JSON.stringify(p('claude-calls.jsonl'))}, JSON.stringify({ cwd: process.cwd(), prompt, args: process.argv.slice(2) }) + '\\n');
 const result = prompt.match(/Result file: (\\S+)/)[1];
+const work = ${JSON.stringify(p('agent-does.sh'))};
+if (fs.existsSync(work)) require('child_process').execFileSync('bash', [work], { stdio: 'ignore' });
 fs.writeFileSync(result, fs.readFileSync(${JSON.stringify(p('answer.json'))}, 'utf8'));
 console.log('{}');
 `);
   chmodSync(p('bin', 'claude'), 0o755);
   const env = { ...process.env, PATH: `${p('bin')}:${process.env.PATH}`, KIDTUBE_STATE_DIR: p('state'), KIDTUBE_DATA_DIR: p('data'), KIDTUBE_APP_DIR: p('app'),
-    GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' };
+    GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t', ...extraEnv };
   const tablet = p('tablet');
   sh(`git clone -q ${p('data.git')} ${tablet} 2>/dev/null`);
   return {
@@ -295,4 +299,49 @@ test('poll.sh: a problem the fix agent gave no answer for (a usage limit) is tri
   twoHoursLater(); anyPush(4);
   w.poll();
   assert.equal(runs(), 3);
+});
+
+// The code repo with a real Quetta release (build/ship.mjs and what it needs, a test signing key) and an agent that
+// pushes its code but stops before the release.
+function releaseWorld({ key = true } = {}) {
+  const keys = mkdtempSync(join(tmpdir(), 'kt-key-'));
+  const { privateKey } = generateKeyPairSync('rsa', { modulusLength: 2048, privateKeyEncoding: { type: 'pkcs8', format: 'pem' }, publicKeyEncoding: { type: 'spki', format: 'pem' } });
+  writeFileSync(join(keys, 'key.pem'), privateKey);
+  const w = world({ KIDTUBE_KEY: join(keys, key ? 'key.pem' : 'missing.pem'), KIDTUBE_PUSH_LOCK: join(keys, 'push.lock'), KIDTUBE_PUSH_LOCKED: '' });
+  const root = w.p('root');
+  mkdirSync(join(root, 'build'));
+  mkdirSync(join(root, 'extension', 'core', 'lib'), { recursive: true });
+  for (const f of ['ship.mjs', 'pack.mjs', 'crx.mjs', 'build-orion.mjs']) copyFileSync(join('build', f), join(root, 'build', f));
+  copyFileSync('extension/core/lib/version.js', join(root, 'extension/core/lib/version.js'));
+  mkdirSync(join(root, '.githooks'));
+  copyFileSync('.githooks/pre-push', join(root, '.githooks/pre-push'));
+  chmodSync(join(root, '.githooks/pre-push'), 0o755);
+  writeFileSync(join(root, 'package.json'), JSON.stringify({ type: 'module', scripts: { test: 'node -e 0' } }));
+  writeFileSync(join(root, 'extension/manifest.json'), JSON.stringify({ name: 'Custom Apps', version: '0.1.0', key: publicKeyDer(privateKey).toString('base64') }, null, 2) + '\n');
+  sh(`git add -A && git commit -qm "0.1.0: app" && node build/pack.mjs extension --key ${join(keys, 'key.pem')} --out site >/dev/null && git add -A && git commit -qm "quetta 0.1.0: release" && git push -q origin HEAD:main`, root);
+  writeFileSync(w.p('agent-does.sh'), `set -e\necho 'export const fixed = 1;' > extension/fix.js\nsed -i 's/"version": "0.1.0"/"version": "0.1.1"/' extension/manifest.json\ngit add -A && git commit -qm "0.1.1: the fix" && git push -q origin HEAD:main\n`);
+  w.answer({ summary: 'Fixed.', version: '0.1.1', fixes: [{ key: 'action.kidHome|orion', state: 'fixed', version: '0.1.1', message: 'Kid waits.' }] });
+  w.poll();
+  return w;
+}
+const released = (w) => JSON.parse(sh(`git --git-dir=${w.p('code.git')} show main:site/latest.json`));
+
+test('poll.sh: an agent pushed its code but no release → the server releases it after the run', () => {
+  const w = releaseWorld();
+  w.report([problem('r-1', 'action.kidHome', '0.1.0')]);
+  w.poll();
+  assert.equal(w.calls().length, 1);
+  const rel = released(w);
+  assert.equal(rel.version, '0.1.1');
+  assert.equal(sh(`git --git-dir=${w.p('code.git')} show ${rel.sourceCommit}:extension/fix.js`).trim(), 'export const fixed = 1;');
+  assert.equal(w.fixes()[0].message, 'Kid waits.', 'released: nothing more to say');
+  assert.match(readFileSync(w.p('state', 'fix.log'), 'utf8'), /release check: main's code is not released/);
+});
+
+test('poll.sh: the server could not release it either → the parent reads that in the fix’s message', () => {
+  const w = releaseWorld({ key: false });
+  w.report([problem('r-1', 'action.kidHome', '0.1.0')]);
+  w.poll();
+  assert.equal(released(w).version, '0.1.0');
+  assert.match(w.fixes()[0].message, /^Kid waits\. The new version could not be published yet/);
 });

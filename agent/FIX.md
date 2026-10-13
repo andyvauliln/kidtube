@@ -32,7 +32,7 @@ may have pushed a minute ago. Before you change anything:
   time): one fix, one version.
 - `context.app.update` and `installType` say whether the tablet can get a new version by itself (`development` = a
   .zip install: never). Say so in the message when it matters.
-- Push with `git pull --rebase origin main` first; a conflict means someone changed the same lines: keep both changes.
+- Push only with `npm run ship` (below): it rebases, waits for the other writers, and releases.
 
 ## For each problem
 
@@ -66,7 +66,7 @@ GraphQL `query` name, variable names, status, `posts` found, and for some the `a
 
 ## Releasing
 
-When you changed `extension/`, release it exactly as `agent/NOTES.md` says under "Releasing a change to the app" (one new version for Quetta and Orion, `site/orion/CHANGES.md`, commit messages, push). Several problems fixed in one run go into one version. A change only to a test or to `agent/` needs no release: commit and push it.
+Commit your changes, then `npm run ship -- -m "<short summary>"`, exactly as `agent/NOTES.md` says under "Releasing a change to the app". It gives `extension/` the next free version, tests, pushes, and makes the Quetta release; its last line `ship: released <version>` is the version for your fixes. Several problems fixed in one run go into one version: one `ship` at the end. A change only to a test or to `agent/` gets no release (`ship` only pushes it). No Orion build: the parent asks for one when they want it.
 
 ## Rules
 

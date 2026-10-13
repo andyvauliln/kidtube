@@ -4,6 +4,7 @@ Release tools. They read `extension/` and write into `site/`.
 
 | File | What it does |
 | --- | --- |
+| `ship.mjs` | **Push and release, for every writer.** Rebase, next free version, `npm test`, push the code, then the Quetta release (`--orion`: also Orion), push; under a lock so writers take turns. `verify`: is `main`'s release made from `main`'s code. `pre-push`: the git hook (`.githooks/pre-push`). `npm run ship -- -m "summary"` |
 | `pack.mjs` | **Quetta release.** Signs `extension/` as a CRX3, writes the `.crx`, the same files as `.zip`, `updates.xml` and `latest.json` into `site/`, and removes older versions there. `npm run release:quetta` |
 | `crx.mjs` | The CRX3 writer and zip builder (no dependencies) |
 | `keygen.mjs` | Makes the signing key once. Keep the `.pem` out of git (`~/kidtube-key.pem`) |
@@ -14,10 +15,10 @@ Release tools. They read `extension/` and write into `site/`.
 
 ## Release
 
-1. Raise `version` in `extension/manifest.json` and commit.
-2. `npm test`.
-3. Quetta: `npm run release:quetta`, then commit `site/` as `quetta <version>: release`.
-4. Orion (only when asked): follow `.claude/skills/update-orion/SKILL.md`.
-5. Push `main`. `.github/workflows/pages.yml` publishes `site/`.
+1. Commit the change (not the version, not `site/`).
+2. `npm run ship -- -m "<what changed>"`: version, tests, push, Quetta release, push (`docs/UPDATES.md` section 3).
+3. Orion (only when asked): add `--orion`, and follow `.claude/skills/update-orion/SKILL.md` for what to check.
+
+`.github/workflows/pages.yml` publishes `site/`.
 
 `dist/` is the build's scratch folder and is not in git.

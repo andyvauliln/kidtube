@@ -7,7 +7,10 @@
     "validate": "node tools/validate.mjs",
     "orion:check": "node build/orion-check.mjs",
     "orion:build": "node build/build-orion.mjs",
-    "release:quetta": "node build/pack.mjs extension --key ~/kidtube-key.pem"
+    "release:quetta": "node build/pack.mjs extension --key ~/kidtube-key.pem",
+    "ship": "node build/ship.mjs",
+    "ship:verify": "node build/ship.mjs verify",
+    "prepare": "git config core.hooksPath .githooks || true"
   },
   "devDependencies": {
     "ajv": "^8.17.1",

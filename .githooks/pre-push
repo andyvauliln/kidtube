@@ -1,0 +1,4 @@
+#!/bin/sh
+# A push to main must follow the rules in CLAUDE.md (build/ship.mjs pre-push checks the version and site/).
+# On in every checkout that ran npm install/ci or npm run ship (git config core.hooksPath .githooks).
+exec node "$(git rev-parse --show-toplevel)/build/ship.mjs" pre-push "$@"

@@ -5,7 +5,7 @@
 //   node agent/problems.mjs mark   FILE --state DIR [--result RESULT]  → the problems in FILE (the array from `new`) are handled
 //                                                                         (with RESULT: only those the agent answered)
 //   node agent/problems.mjs working FILE --data DIR                    → fixes.json says the AI works on the problems in FILE now
-//   node agent/problems.mjs record RESULT --data DIR [--asked FILE --state DIR]
+//   node agent/problems.mjs record RESULT --data DIR [--asked FILE --state DIR] [--note TEXT]
 //                                                                       → the fix agent's answers go into fixes.json (the tablets read
 //                                                                         it); a problem of FILE with no answer: no-answer or gave-up
 // The reports are in the data repo's problems/<day>.json (every tablet and profile). One problem is one check on one
@@ -106,7 +106,7 @@ export function afterRun(file, result, asked, handled, now = new Date().toISOStr
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const { values, positionals } = parseArgs({ allowPositionals: true, options: { data: { type: 'string' }, state: { type: 'string' }, result: { type: 'string' }, asked: { type: 'string' } } });
+  const { values, positionals } = parseArgs({ allowPositionals: true, options: { data: { type: 'string' }, state: { type: 'string' }, result: { type: 'string' }, asked: { type: 'string' }, note: { type: 'string' } } });
   const [cmd, file] = positionals;
   const HANDLED = values.state ? join(values.state, 'problems-handled.json') : null;
   if (cmd === 'new' && values.data && HANDLED) {
@@ -134,10 +134,13 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
   } else if (cmd === 'record' && file && values.data) {
     const p = join(values.data, 'fixes.json');
     const asked = values.asked ? readJson(values.asked, []) : [];
-    writeFileSync(p, JSON.stringify(afterRun(readJson(p, {}), readJson(file, {}), asked, HANDLED ? readJson(HANDLED, {}) : {}), null, 2) + '\n');
+    // --note: what the parent must know about the release (poll.sh release_check), after each fix with a version.
+    const result = readJson(file, {});
+    if (values.note) result.fixes = (result.fixes ?? []).map((f) => (f?.state === 'fixed' && f.version ? { ...f, message: `${f.message ?? ''} ${values.note}`.trim() } : f));
+    writeFileSync(p, JSON.stringify(afterRun(readJson(p, {}), result, asked, HANDLED ? readJson(HANDLED, {}) : {}), null, 2) + '\n');
     console.log('recorded');
   } else {
-    console.error('usage: problems.mjs new --data DIR --state DIR | mark FILE --state DIR [--result RESULT] | working FILE --data DIR | record RESULT --data DIR [--asked FILE --state DIR]');
+    console.error('usage: problems.mjs new --data DIR --state DIR | mark FILE --state DIR [--result RESULT] | working FILE --data DIR | record RESULT --data DIR [--asked FILE --state DIR] [--note TEXT]');
     process.exit(2);
   }
 }

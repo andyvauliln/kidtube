@@ -4,7 +4,7 @@ This document tells how a change goes from the code to the tablet, step by step.
 Apps: KidTube, Instagram), the server's agents, the rules that change without a release, and how the git
 repositories merge the changes of several writers (section 9).
 
-Kind: reference (kept current). As of 0.12.10, 2026-10-13.
+Kind: reference (kept current). As of 0.12.11, 2026-10-13.
 
 ## 1. Branches
 
@@ -16,8 +16,8 @@ Kind: reference (kept current). As of 0.12.10, 2026-10-13.
 
 - There are no release branches and no tags. A version is a commit on `main` with a new number in
   `extension/manifest.json`.
-- Three writers push to `main`: a person in a chat session, the fix agent, and the notes agent. They do not lock each
-  other. Section 9 tells how their changes merge.
+- Three writers push to `main`: a person in a chat session, the fix agent, and the notes agent. They push with one
+  command, `npm run ship` (`build/ship.mjs`), which makes them take turns. Section 9 tells how their changes merge.
 
 ## 2. The parts of a release
 
@@ -38,37 +38,49 @@ keep an old file for up to 10 minutes.
 
 ## 3. Make a release
 
-### 3.1 Version
+### 3.1 With one command (every writer)
 
-1. Change the code in `extension/`.
-2. Increase the last number of `version` in `extension/manifest.json` (0.12.9 → 0.12.10).
-3. Run `npm test`. All tests must pass.
-4. Commit as `<version>: <what changed>`.
-5. Push to `main`. The workflow `.github/workflows/test.yml` runs the tests again on GitHub.
+1. Change the code in `extension/`. Do not change `version` in `extension/manifest.json`.
+2. Commit as `<what changed>`. The message ends with the `Co-Authored-By` line.
+3. Run `npm run ship -- -m "<what changed>"`. The script `build/ship.mjs` does these steps:
+   1. It takes the lock `~/.local/share/kidtube/state/push.lock`. Another writer that ships now makes it wait (at
+      most 20 minutes).
+   2. It runs `git fetch` and `git rebase origin/main`.
+   3. If `extension/` changed after the newest release, it sets the next free version (one patch above the newest
+      release and `main`'s manifest) and commits `<version>: <what changed>`.
+   4. It runs `npm test`. A failed test stops it. Nothing is pushed.
+   5. It pushes the code to `main`.
+   6. It runs `build/pack.mjs` (the Quetta release, 3.2), `git add -A site`, and commits `quetta <version>: release`.
+   7. With `--orion`, it also runs `build/orion-check.mjs` and `build/build-orion.mjs`, adds the summary to
+      `site/orion/CHANGES.md`, and commits `orion <version>: <what changed>`.
+   8. It pushes the release. If that push is refused, it resets to `origin/main` (the code is there already) and
+      makes the release again with the next number.
+4. The last line is `ship: released <version>`. GitHub Pages publishes it in about 1 minute.
+5. Check: `curl -s https://andyvauliln.github.io/kidtube/latest.json` shows the new version.
+
+A change outside `extension/` (the agents, the docs, a test) gets no release: `ship` only rebases, tests and pushes
+it. `npm run ship:verify` says whether the newest release on `main` has `main`'s code.
 
 One version number is one set of files. Quetta and Orion use the same number. A version can be released for Quetta
 only, for Orion only, or for both.
 
-### 3.2 Quetta (Android)
+### 3.2 What the Quetta release does (`build/pack.mjs`)
 
-1. Run `npm run release:quetta`. This is `node build/pack.mjs extension --key ~/kidtube-key.pem`.
-2. The script signs the `.crx` with the key. The key keeps the extension id the same
+1. It signs the `.crx` with the key `~/kidtube-key.pem`. The key keeps the extension id the same
    (`mpgpgldgfogdipaaaobleoppocmhlidp`), so a new version installs over the old one and the settings stay.
-3. The script writes `site/custom-apps-<version>.crx`, `.zip`, `site/updates.xml` and `site/latest.json`.
-4. The script deletes the old `.crx` and `.zip`. Run `git add -A site` so that git records it.
-5. Commit as `quetta <version>: release`, then push.
-6. Wait for GitHub Pages. Check: `curl -s https://andyvauliln.github.io/kidtube/latest.json` shows the new version.
+2. It writes `site/custom-apps-<version>.crx`, `.zip`, `site/updates.xml` and `site/latest.json`. `latest.json` has
+   `sourceCommit`: the commit the release was made from.
+3. It deletes the old `.crx` and `.zip`.
 
-The key `~/kidtube-key.pem` is on the server only. Never commit it.
+The key is on the server only. Never commit it. Run `pack.mjs` alone only to test: the release files go to `main`
+through `ship`.
 
 ### 3.3 Orion (iPad, iPhone, Mac)
 
-1. Follow the skill `update-orion` (`.claude/skills/update-orion/SKILL.md`).
-2. `node build/orion-check.mjs` finds browser functions that Orion does not have.
-3. `node build/build-orion.mjs` makes the Orion build: `TARGET = 'orion'`, no `update_url`, no
-   `declarativeNetRequest`. It writes `site/orion/`.
-4. Add a section to `site/orion/CHANGES.md`.
-5. Commit as `orion <version>: <what changed>`, then push.
+Only when the parent asks. Use `npm run ship -- -m "<what changed>" --orion`, and the skill `update-orion`
+(`.claude/skills/update-orion/SKILL.md`) for what to check: `build/orion-check.mjs` finds browser functions that
+Orion does not have; `build/build-orion.mjs` makes the build (`TARGET = 'orion'`, no `update_url`, no
+`declarativeNetRequest`) in `site/orion/`. Write the `site/orion/CHANGES.md` section in words the parent understands.
 
 ## 4. The tablet gets the new version
 
@@ -137,12 +149,14 @@ The header compares the version with `extension/manifest.json` on GitHub's `main
 
 | Who | When | What it releases |
 | --- | --- | --- |
-| A person in a chat session | On request. Standing rule since 2026-10-13 (kept in the chat assistant's memory, not in this repo): every change set is also released for Quetta. | Quetta; Orion only on request |
-| The fix agent (`agent/FIX.md`) | A tablet sent a problem report (`problems/<day>.json` in the data repo). `agent/poll.sh` starts it within 1 minute. At most 6 runs a day. | Quetta and Orion |
-| The notes agent (`agent/NOTES.md`) | The parent sent a note that asks for an app change. At most 10 runs a day. | Quetta and Orion |
+| A person in a chat session | On request. Standing rule since 2026-10-13 (`CLAUDE.md`): every change set to `extension/` is also released for Quetta. | Quetta; Orion only on request |
+| The fix agent (`agent/FIX.md`) | A tablet sent a problem report (`problems/<day>.json` in the data repo). `agent/poll.sh` starts it within 1 minute. At most 6 runs a day. | Quetta |
+| The notes agent (`agent/NOTES.md`) | The parent sent a note that asks for an app change. At most 10 runs a day. | Quetta; Orion only when a note asks |
+| The server (`agent/poll.sh` `release_check`) | After each agent run, when `main`'s code is not released (an agent stopped before its release). | Quetta |
 
-The fix agent and the notes agent work in their own checkout (`~/.local/share/kidtube/app`). `poll.sh` resets it to
-`origin/main` before each run. Only one agent runs at a time (`run.lock`). A chat session does not use this lock.
+All of them use `npm run ship`. The fix agent and the notes agent work in their own checkout
+(`~/.local/share/kidtube/app`). `poll.sh` resets it to `origin/main` before each run. Only one agent runs at a time
+(`run.lock`). Every writer that pushes takes `push.lock` (in `ship`), so two releases never overlap.
 
 Before it changes code, the fix agent reads the recent commits and the newest release. A report from a version that
 a newer release already fixed gets the answer "fixed in X". It does not get a second fix.
@@ -159,8 +173,11 @@ a newer release already fixed gets the answer "fixed in X". It does not get a se
 
 - The cron runs `agent/poll.sh` from the main checkout `~/youtube-wraper`. A change to `poll.sh` is live when this
   checkout has it.
+- After an agent run, `poll.sh` checks the release (`release_check`: `build/ship.mjs verify`). If `main` has code
+  that is not released, it releases it with `ship`. If that fails too, the parent reads it in the fix's message or
+  the notes run's summary. Work an agent left unpushed is kept on a local branch `leftover/<time>` in its checkout.
 - After an agent run, `poll.sh` does `git pull --ff-only` in the main checkout, but only when the checkout has no
-  local changes.
+  local changes (untracked files that git ignores do not count).
 - The agents read `agent/FIX.md` and `agent/NOTES.md` from their own checkout. That checkout is reset to `origin/main`
   before each run, so a pushed change to these files is live at the next run.
 - The nightly helper (`agent/daily.sh`, 03:30 UTC) runs from the main checkout.
@@ -192,40 +209,41 @@ writes one file with a check that nobody wrote it first. Nobody force-pushes or 
 
 | Writer | Its copy of the code | Before it starts |
 | --- | --- | --- |
-| A person in a chat session | `~/youtube-wraper` (the main checkout, branch `main`) | `git fetch`, then `git pull --rebase` |
+| A person in a chat session | `~/youtube-wraper` (the main checkout, branch `main`) | Nothing: `ship` fetches and rebases |
 | The fix agent, the notes agent | `~/.local/share/kidtube/app` (their own clone) | `poll.sh` does `git fetch`, `git reset --hard origin/main` and `git clean -fd`. Old local changes are dropped. |
 | The nightly helper, the cron | `~/youtube-wraper` (the main checkout) | Nothing: they run the files as they are in the working tree |
 
-**Push a change (every writer, every time).** Written for the agents in `agent/NOTES.md` → "Releasing a change to
-the app" (the fix agent follows it too, `agent/FIX.md`), and for a chat session in `CLAUDE.md` at the top of the repo:
-
-1. Commit the change. The message ends with the `Co-Authored-By` line.
-2. Run `git fetch origin`.
-3. Run `git rebase origin/main`. Your commit now sits on top of the other writers' commits.
-4. If there is a conflict, solve it (below). Then `git add` the file and `git rebase --continue`.
-5. Run `npm test` again. A rebase can change what your code meets.
-6. Run `git push origin main`.
-7. If the push is refused ("fetch first"), another writer pushed in the meantime. Go back to step 2.
+**Push a change (every writer, every time):** commit, then `npm run ship -- -m "<what changed>"` (section 3.1).
+Written for the agents in `agent/NOTES.md` → "Releasing a change to the app" (the fix agent follows it too,
+`agent/FIX.md`), and for a chat session in `CLAUDE.md` at the top of the repo. Never force-push.
 
 **Solve the usual conflicts:**
 
 | Conflict | What to do |
 | --- | --- |
-| `extension/manifest.json` → `"version"` (two writers raised the same number) | Take the next free number above the newest released one (`site/latest.json`). Example: the remote has 0.12.6, yours had 0.12.6 too → yours becomes 0.12.7. Change the first line of your commit message to the same number. |
-| A shared list or table in the code (example: `WAIT` in `extension/core/lib/ask.js`) | Keep the entries of both writers. |
-| A function that both writers changed (example: `extension/core/background/updates.js`) | Read the other writer's commit (`git show <commit>`). Keep its purpose (example: a time limit) inside your version of the function. Then run its tests too. |
-| A test that the other writer's change breaks | Fix the test's precondition, not the behaviour. Say so in the commit message. |
-| Release files in `site/` (`.crx`, `.zip`, `latest.json`, `updates.xml`, `orion/`) | Never solve them by hand. They are made by a script. Finish the rebase of the code first, then run `npm run release:quetta` (and the Orion build) again, then commit the release. |
+| `extension/manifest.json` → `"version"` (two writers raised the number) | Nothing. `ship` takes `main`'s line and sets the next free number itself. |
+| Release files in `site/` (`.crx`, `.zip`, `latest.json`, `updates.xml`, `orion/`) | Cannot happen: only `ship` makes them, as the last commit, under the lock. `ship` refuses your own commits that change them. |
+| A shared list or table in the code (example: `WAIT` in `extension/core/lib/ask.js`) | `ship` stops. Keep the entries of both writers, `git add`, `git rebase --continue`, `ship` again. |
+| A function that both writers changed (example: `extension/core/background/updates.js`) | `ship` stops. Read the other writer's commit (`git show <commit>`). Keep its purpose (example: a time limit) inside your version of the function. Run its tests too. Then `ship` again. |
+| A test that the other writer's change breaks | `ship` stops at `npm test`. Fix the test's precondition, not the behaviour. Say so in the commit message. |
 
-**Make the release after the rebase, not before.** The release commit must come last, on top of the newest code.
-Otherwise `latest.json` names a version whose code is not all on `main`.
+**What enforces the rules** (they are code, not only instructions):
+
+| Rule | Where |
+| --- | --- |
+| One writer at a time from the fetch to the last push | `build/ship.mjs` (flock on `~/.local/share/kidtube/state/push.lock`; all writers run on this server) |
+| Rebase first, version next, tests, code pushed, release last | `build/ship.mjs` |
+| A push to `main` that sets the version back, changes `extension/` with a released number, or brings a release whose `sourceCommit` is not on `main` (made before a rebase) or is older than `main`'s code, is refused | `.githooks/pre-push` → `build/ship.mjs pre-push`; turned on by `npm install` (`prepare`), by `ship`, and by `poll.sh` in the agents' checkout. `git push --no-verify` skips it. |
+| `main`'s newest release has `main`'s code | `poll.sh` `release_check` after each agent run; by hand: `npm run ship:verify` |
+| These steps work with two writers at the same time | `tests/build/ship.test.mjs` (a fake GitHub, two clones); `tests/agent/notes.test.mjs` (the server's release check) |
 
 **The server's main checkout follows `main`:**
 
 - After an agent run, `poll.sh` runs `git pull --ff-only origin main` in `~/youtube-wraper`, but only when that
   checkout has no local changes.
 - So while a chat session has changes that are not committed there, the server's checkout stays behind. Commit and
-  push soon.
+  push soon. Local files that are not in git must be in `.gitignore` (example: `.claude/change-actions.json`), or the
+  pull never runs.
 - The cron runs `agent/poll.sh` from this working tree. An edit to `poll.sh` is live at once, even before it is
   committed. Test it before you save it.
 

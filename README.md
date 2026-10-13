@@ -50,7 +50,9 @@ npm install
 npm test                              # all tests
 npm run validate -- tests/fixtures/good/data
 npm run orion:check                   # chrome.* APIs the Orion build can't use
-npm run release:quetta                # sign and pack into site/ (needs ~/kidtube-key.pem)
+npm run ship -- -m "summary"         # after a commit: rebase, version, test, push, Quetta release (--orion: Orion too)
+npm run ship:verify                   # is main's newest release made from main's code?
+npm run release:quetta                # only the Quetta files into site/ (ship runs it; needs ~/kidtube-key.pem)
 npm run orion:build                   # the Orion release into site/orion/ (Claude skill: update-orion)
 ```
 

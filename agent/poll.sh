@@ -38,11 +38,29 @@ echo "$remote" > "$SROOT/poll-head"
 prepare_app() {
   [ -d "$APP/.git" ] || git clone --quiet "$(git -C "$ROOT" remote get-url origin)" "$APP" >> "$1" 2>&1
   git -C "$APP" fetch --quiet origin && git -C "$APP" checkout --quiet main && git -C "$APP" reset --quiet --hard origin/main && git -C "$APP" clean --quiet -fd
+  git -C "$APP" config core.hooksPath .githooks   # the push rules (build/ship.mjs pre-push)
   local lock
   lock=$(sha1sum "$APP/package-lock.json" 2>/dev/null | cut -c1-40)
   if [ -n "$lock" ] && { [ ! -d "$APP/node_modules" ] || [ "$lock" != "$(cat "$SROOT/app-npm" 2>/dev/null)" ]; }; then
     (cd "$APP" && npm ci --silent) >> "$1" 2>&1 && echo "$lock" > "$SROOT/app-npm"
   fi
+}
+
+# After an agent run: is main's newest Quetta release made from main's code (build/ship.mjs verify)? If not (the
+# agent pushed code and stopped before its release, or made it before a rebase), the server releases it now with
+# `npm run ship` (the same push lock as every writer). Work the agent left unpushed is kept on a local branch
+# leftover/<time> in its checkout, not pushed. $1: the log. Prints a sentence for the parent when that failed too.
+release_check() {
+  [ -f "$APP/build/ship.mjs" ] || return 0
+  (cd "$APP" && node build/ship.mjs verify) >> "$1" 2>&1 && return 0
+  echo "=== $(date -u +%FT%TZ) release check: main's code is not released; the server releases it" >> "$1"
+  if [ -n "$(git -C "$APP" status --porcelain --untracked-files=no)" ] || [ -n "$(git -C "$APP" log --format=%h origin/main..HEAD 2>/dev/null)" ]; then
+    git -C "$APP" add -A && git -C "$APP" commit --quiet -m "left by the agent" >> "$1" 2>&1
+    git -C "$APP" branch "leftover/$(date -u +%Y%m%dT%H%M%SZ)" && echo "the agent's unpushed work: branch leftover/… in $APP" >> "$1"
+  fi
+  git -C "$APP" checkout --quiet main && git -C "$APP" reset --quiet --hard origin/main
+  (cd "$APP" && node build/ship.mjs -m "release of main's code (the server's check after an agent run)" && node build/ship.mjs verify) >> "$1" 2>&1 && return 0
+  echo "The new version could not be published yet (the server's log says why)."
 }
 
 # --- the fix lane: problems the tablets' checks reported (problems/<day>.json) → the fix agent (agent/FIX.md) ----
@@ -92,11 +110,13 @@ $problems
       --permission-mode dontAsk --allowedTools "Bash" "Read" "Edit" "Write" "Glob" "Grep" "Skill" "Agent" "Task" \
       --add-dir "$SROOT" "$CLONE" --output-format json < /dev/null) > "$SROOT/fix-runs/$(date -u +%Y%m%dT%H%M%SZ).json" 2>> "$log"
   echo "=== claude exit $?" >> "$log"
+  local note
+  note=$(release_check "$log")
   # Handled when the agent answered it. One with no answer (the agent stopped, a usage limit) is tried again in
   # 2 hours, at most 3 times; never every minute.
   node agent/problems.mjs mark "$SROOT/problems-in.json" --state "$SROOT" --result "$result" >> "$log"
   [ -f "$result" ] || printf '{"fixes":[]}' > "$result"
-  node agent/problems.mjs record "$result" --data "$CLONE" --asked "$SROOT/problems-in.json" --state "$SROOT" >> "$log"
+  node agent/problems.mjs record "$result" --data "$CLONE" --asked "$SROOT/problems-in.json" --state "$SROOT" ${note:+--note "$note"} >> "$log"
   push_fixes "helper: fixes ($count problem(s))" || return 0
   if [ -z "$(git -C "$ROOT" status --porcelain)" ]; then git -C "$ROOT" pull --quiet --ff-only origin main >> "$log" 2>&1; fi
 }
@@ -215,10 +235,12 @@ $notes
       --permission-mode dontAsk --allowedTools "Bash" "Read" "Edit" "Write" "Glob" "Grep" "Skill" "Agent" "Task" \
       --add-dir "$STATE" "$DATA" --output-format json < /dev/null) > "$STATE/notes-runs/$(date -u +%Y%m%dT%H%M%SZ).json" 2>> "$log"
   echo "=== claude exit $?" >> "$log"
+  release=$(release_check "$log")
   # Handled either way: a note that failed is not tried again every minute (the summary says what happened).
   node agent/notes.mjs mark "$STATE/notes-in.json" --state "$STATE" >> "$log"
 
   summary=$(node -e "try{const r=require('$RESULT');process.stdout.write(String(r.summary??'').slice(0,600))}catch{}")
+  [ -n "$summary" ] && [ -n "$release" ] && summary="$summary $release"
   helper=$(node -e "try{process.stdout.write(require('$RESULT').runHelper===true?'yes':'')}catch{}")
   # The main checkout follows when nobody is working in it (the nightly helper runs from there).
   if [ -z "$(git -C "$ROOT" status --porcelain)" ]; then git -C "$ROOT" pull --quiet --ff-only origin main >> "$log" 2>&1; fi

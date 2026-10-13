@@ -38,27 +38,24 @@ The published files are in `site/orion/`: `kidtube-orion-<version>.zip`, the sam
 
 4. **Test.** Run `npm test`. It includes `tests/orion-build.test.mjs`, which builds Orion into a temp dir and runs its service worker. `tests/agent.test.mjs` "quiz from the model" is known to fail now and then (random sums can repeat); rerun once before treating it as real.
 
-5. **Version.**
-   - A version number means one set of files, whichever browser it was released for.
-   - If the build says `bump "version"`, raise the patch number in `extension/manifest.json` (0.6.2 → 0.6.3). Commit it as `<version>: version for the Orion build`.
-   - That version is also used by the next Quetta release.
+5. **Build, record, push: one command.** Commit any source fixes from step 3 (not the version, not `site/`), then
+   `npm run ship -- --orion -m "<bullet 1>" -m "<bullet 2>"`, one `-m` per plain bullet the parent understands, from
+   step 2. `build/ship.mjs` rebases, sets the next free version when `extension/` changed since the last release
+   (that release is then Quetta and Orion together), runs `npm test`, pushes the code, runs `orion-check` and
+   `build-orion`, writes the `## <version> (date)` section of `site/orion/CHANGES.md` from the `-m` lines, commits
+   `orion <version>: …` and pushes. Never make or push `site/orion/` by hand.
 
-6. **Build.** Run `node build/build-orion.mjs`. It prints the new `latest.json`; check `version` and `zipUrl`.
+6. **Check it.** The last line says `ship: released <version>: … Orion`. GitHub Pages publishes `site/` (workflow
+   `.github/workflows/pages.yml`). Within a few minutes, `curl -s https://andyvauliln.github.io/kidtube/orion/latest.json`
+   should show the new version; check it.
 
-7. **Record it.** Add a section to the top of `site/orion/CHANGES.md`: `## <version> (YYYY-MM-DD)`, then plain bullets the parent understands, from step 2.
-
-8. **Commit and push.**
-   - Commit `site/orion/` and any source fixes as `orion <version>: <short summary>`.
-   - Push to `origin main` over HTTPS (see the GitHub access memory).
-   - GitHub Pages publishes `site/` (workflow `.github/workflows/pages.yml`). Within a few minutes, `curl -s https://andyvauliln.github.io/kidtube/orion/latest.json` should show the new version; check it.
-
-9. **Tell the user:**
+7. **Tell the user:**
    - the version, and what changed (step 2);
    - any compatibility notes (step 3) and anything to test on the iPad;
    - on the iPad: open the install page → **Download for Orion (.zip)** → Orion → Extensions → **+** → install from file; then check that the PIN and GitHub key are still set.
 
 ## Don't
 
-- Don't release Quetta from this skill. `site/latest.json`, `updates.xml` and the `.crx` are the Quetta release (`build/pack.mjs` with the signing key).
+- Don't make the Quetta files by hand. `ship` releases Quetta itself when `extension/` changed since the last Quetta release.
 - Don't copy Orion-only changes into a separate source tree. All differences live in `extension/` behind `TARGET`, or in `orionManifest()` in `build/build-orion.mjs`.
 - Don't refresh `build/orion-apis.json` without saying so. It is a dated snapshot of Kagi's table. When updating it, regenerate from the sheet and change `snapshot`.
