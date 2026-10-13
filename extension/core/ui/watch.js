@@ -150,8 +150,11 @@
     finish({ id: `rule.pageError.${slug(at.replace(':', '_'))}`, kind: 'rule', area: ownPage ? 'page' : 'youtube', expect: 'no uncaught error in KidTube’s code',
       code: [file ? file.replace(base, '') : frame(stack)] }, t, 0);
   }
+  // "Script error." with no file and no error: the browser hides an error of a script from another origin (2026-10-13:
+  // Quetta's own script when 🔳 One box makes the page full screen). KidTube's scripts on its pages are never one.
+  const muted = (e) => !e.filename && !e.error && /^Script error\.?$/.test(e.message ?? '');
   addEventListener('error', (e) => {
-    if (!(e instanceof ErrorEvent) || !String(e.filename ?? '').startsWith(base) && !ours(e.error?.stack)) return;
+    if (!(e instanceof ErrorEvent) || muted(e) || !String(e.filename ?? '').startsWith(base) && !ours(e.error?.stack)) return;
     pageError(e.message, e.filename, e.lineno, e.error?.stack);
   });
   addEventListener('unhandledrejection', (e) => {

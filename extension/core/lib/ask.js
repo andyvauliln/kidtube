@@ -6,7 +6,9 @@
 // sync (the parent page every 30 s while a run works, Settings → Update now) took 7–10.5 s there too (0.12.2).
 // core/checks/runner.js waitOf reads the same table.
 // inbox: the header's Send on a note does the same as ↻ Update (core/background/inbox.js); the header's own ask too.
-export const WAIT = { runHelper: 60000, sync: 60000, inbox: 60000 };
+// updateApp: asked by the device tools' device_update (agent/devices/mcp.mjs, 60 s), not a page; the browser's own
+// update check took 10.5 s on a tablet (0.12.21).
+export const WAIT = { runHelper: 60000, sync: 60000, inbox: 60000, updateApp: 60000 };
 export function ask(msg, ms = WAIT[msg?.type] ?? 8000) {
   return new Promise((resolve) => {
     const timer = setTimeout(() => { globalThis.KidTubeWatch?.noAnswer(msg, ms); resolve(undefined); }, ms);

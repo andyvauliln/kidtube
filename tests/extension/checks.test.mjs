@@ -413,6 +413,27 @@ test('a sync may take as long as its page waits (60 s): 10.5 s is not slow, more
   } finally { Date.now = realNow; globalThis.fetch = realFetch; await fromPage({ type: 'clearChecks' }); }
 });
 
+// Report rule.slowAnswer.updateApp|quetta (0.12.21): the device tools' device_update asks "updateApp" and waits 60 s;
+// the browser's own update check took 10.5 s on the tablet. No page asks it with 8 s.
+test('updateApp may take as long as its asker waits (60 s): 10.8 s is not slow, more than 60 s still is (0.12.21)', async () => {
+  const realNow = Date.now, realCheck = fake.runtime.requestUpdateCheck;
+  let late = 0;
+  fake.runtime.requestUpdateCheck = (cb) => { Date.now = () => realNow() + late; cb({ status: 'no_update' }); };   // the browser answers slowly
+  try {
+    await fromPage({ type: 'clearChecks' });
+    late = 10846;
+    await fromPage({ type: 'updateApp' });
+    await wait(50);
+    assert.equal(await result('rule.slowAnswer.updateApp'), undefined, '10846 ms in the report: the asker still waits');
+    Date.now = realNow; late = 61000;
+    await fromPage({ type: 'updateApp' });
+    await wait(50);
+    const r = await result('rule.slowAnswer.updateApp');
+    assert.ok(r, 'longer than the asker waits: still a slow answer');
+    assert.match(r.saw, /expected under 60000 ms/);
+  } finally { Date.now = realNow; fake.runtime.requestUpdateCheck = realCheck; await fromPage({ type: 'clearChecks' }); }
+});
+
 test('a new version on Quetta: the browser is asked once, then at most every 30 min; the header sees where it is', async () => {
   const { autoUpdate, phaseOf } = await import('../../extension/core/background/updates.js');
   const realCheck = fake.runtime.requestUpdateCheck;

@@ -8,7 +8,7 @@ const SRC = readFileSync(new URL('../../extension/core/ui/watch.js', import.meta
 const BASE = 'chrome-extension://kt/';
 
 // watch.js on an Instagram page: the timers run when the test says, the background's messages are kept.
-function load() {
+function load(href = 'https://www.instagram.com/an_dreidel/saved/all-posts/') {
   const timers = [], sent = [];
   class Element {
     constructor(tag) { this.tagName = tag.toUpperCase(); this.attrs = {}; this.textContent = ''; this.className = ''; this.disabled = false; this.isConnected = true; this.rects = 1; }
@@ -20,7 +20,8 @@ function load() {
   const listeners = {}, win = {};
   const ctx = {
     Element,
-    location: { href: 'https://www.instagram.com/an_dreidel/saved/all-posts/', pathname: '/an_dreidel/saved/all-posts/', hash: '' },
+    location: { href, pathname: new URL(href).pathname, hash: '' },
+    ErrorEvent: class { constructor(o) { Object.assign(this, o); } },
     document: { visibilityState: 'visible', title: 'Instagram', documentElement: {} },
     innerWidth: 1788, innerHeight: 833,
     performance: { now: () => 0 },
@@ -38,8 +39,9 @@ function load() {
   const tap = (b) => listeners.click({ composedPath: () => [b, root] });
   const later = () => { while (timers.length) timers.shift()(); };
   const dead = () => sent.filter((m) => m.result?.id?.startsWith('rule.deadButton.'));
-  const fire = (type) => { for (const fn of win[type] ?? []) fn({ type }); };
-  return { ctx, tap, later, dead, fire, button: (label) => Object.assign(new ctx.Element('button'), { textContent: label }) };
+  const fire = (type, e = { type }) => { for (const fn of win[type] ?? []) fn(e); };
+  const errors = () => sent.filter((m) => m.result?.id?.startsWith('rule.pageError.'));
+  return { ctx, tap, later, dead, fire, errors, button: (label) => Object.assign(new ctx.Element('button'), { textContent: label }) };
 }
 
 // Report rule.deadButton.Instagram|quetta (0.12.0): in the Instagram app's view the header's App | Instagram
@@ -70,4 +72,22 @@ test('a tap that scrolls the page is not a dead button', () => {
   w.fire('scroll');
   w.later();
   assert.deepEqual(w.dead(), []);
+});
+
+// Report rule.pageError.unknown|quetta (0.12.21, 0.12.23): the tap on Settings' 🔳 One box makes the browser go full
+// screen, and Quetta's own script then throws. The browser hides an error of a script from another origin: the page
+// sees only "Script error.", no file, no line, no stack. KidTube's scripts on its own pages are never from another
+// origin, so this is not KidTube's error.
+test('a muted error from another origin on KidTube’s page is not KidTube’s', () => {
+  const w = load(BASE + 'apps/kidtube/parent/parent.html');
+  w.fire('error', new w.ctx.ErrorEvent({ message: 'Script error.', filename: '', lineno: 0, error: null }));
+  assert.deepEqual(w.errors(), []);
+});
+
+test('an error in KidTube’s own script on its page is still reported', () => {
+  const w = load(BASE + 'apps/kidtube/parent/parent.html');
+  w.fire('error', new w.ctx.ErrorEvent({ message: 'x is undefined', filename: BASE + 'apps/kidtube/parent/kit.js', lineno: 84,
+    error: { stack: `TypeError: x is undefined\n    at holdPage (${BASE}apps/kidtube/parent/kit.js:84:5)` } }));
+  assert.equal(w.errors().length, 1);
+  assert.equal(w.errors()[0].result.id, 'rule.pageError.kit-js-84');
 });
