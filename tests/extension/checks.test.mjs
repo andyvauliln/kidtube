@@ -302,6 +302,8 @@ test('the problems: one per check with its counter, and where each is from the s
   assert.match(ps.find((p) => p.check === 'g').label, /back after the fix in 0\.11\.3/, 'it failed again on the fixed version');
   assert.deepEqual(ps.slice(0, 3).map((p) => p.state), ['working', 'needs-you', 'reload'], 'what needs a look first');
   assert.equal(problemsOf([rep('e', '0.11.3', 1)], [], '0.11.3', Date.parse(at(40)))[0].state, 'late', 'no answer in 30 minutes');
+  // One try per version: the same problem on a new version was sent again (try 2); on the same version only counted.
+  assert.deepEqual([a.tries, ps.find((p) => p.check === 'b').tries], [2, 1]);
 
   // The tablet reads fixes.json (only when a report was sent), and the header shows each problem once.
   const realFetch = globalThis.fetch;
@@ -318,8 +320,12 @@ test('the problems: one per check with its counter, and where each is from the s
     assert.deepEqual(await fromPage({ type: 'readFixes' }), { ok: true, error: null });
     const p = (await view()).problems.find((x) => x.check === 'parent.loads');
     assert.deepEqual([p.state, p.count], ['working', 3]);
-    const ai = (await fromPage({ type: 'header' })).ai;
-    assert.ok(ai.problems.some((x) => x.check === 'parent.loads' && x.state === 'working' && x.label === 'The AI is working on it now'));
+    // The header's notifications: one row, [type] [status] the message [Details] [×count].
+    const row = (await fromPage({ type: 'header' })).inbox.find((x) => x.id === 'problem:parent.loads|quetta');
+    assert.deepEqual([row.type, row.status.text, row.count, row.tries], ['validation', 'Handling', 3, 1]);
+    assert.match(row.title, /^A self-check failed .*: /);
+    assert.match(row.state, /^The AI is working on it now\./);
+    assert.deepEqual(row.actions.map((a) => a.label), ['Details']);
     const n = reads;
     await view();
     await wait(20);
@@ -349,4 +355,17 @@ test('parent mode sees which reports are new; Clear empties them', async () => {
   assert.equal((await view()).unseen, 0);
   await fromPage({ type: 'clearChecks' });
   assert.equal((await view()).reports.length, 0);
+});
+
+test('a problem in plain words: what went wrong, where, and what was expected', async () => {
+  const { wordsOf } = await import('../../extension/core/checks/runner.js');
+  const dead = wordsOf({ check: 'rule.deadButton.Instagram', area: 'header', expect: '“Instagram” does something',
+    first: { what: 'the tap on “Instagram”', expected: 'something on the screen changes within 5 s', actual: 'nothing changed' } });
+  assert.deepEqual([dead.kind, dead.title], ['error', 'Tapping “Instagram” in the header did nothing']);
+  const err = wordsOf({ check: 'rule.pageError.render-js_172', area: 'page', expect: 'no uncaught error', first: { what: 'an uncaught error', expected: 'none', actual: 'x is undefined' } });
+  assert.deepEqual([err.kind, err.title, err.detail], ['error', 'A script error on an extension page (render-js:172)', 'The error: x is undefined']);
+  const slow = wordsOf({ check: 'rule.slowAnswer.connect', area: 'header', first: { what: 'time', expected: 'under 15000 ms', actual: '21000 ms' } });
+  assert.equal(slow.detail, 'It took 21000 ms; the page waits 15000 ms.');
+  const v = wordsOf({ check: 'parent.dock', area: 'parent', expect: 'The bottom bar has ↻ Update', first: { what: '↻ Update', expected: 'the Update button', actual: '' } });
+  assert.deepEqual([v.kind, v.title, v.detail], ['validation', 'A self-check failed on the parent screens: The bottom bar has ↻ Update', '↻ Update: expected the Update button, but it was nothing.']);
 });

@@ -371,9 +371,20 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
     assert.equal((await fromPage({ type: 'note', videoId: ids[1], liked: true })).ok, true);   // a 👍 is not a note: it goes at once
     assert.equal((await fromPage({ type: 'parentData' })).lists.settings.at(-1).text, 'Open parent mode on the Planned tab');
     assert.equal((await fromPage({ type: 'runStatus' })).held, 2);
-    // The header's AI line: the notes not sent yet, and where to send them.
-    let ai = (await fromPage({ type: 'header' })).ai;
-    assert.deepEqual([ai.held, ai.page, ai.send], [2, 'parent', '↻ Update']);
+    // The header's notifications: each note not sent yet, with Edit, Delete and Send.
+    const noteRows = async () => (await fromPage({ type: 'header' })).inbox.filter((r) => r.type === 'note');
+    let rows = await noteRows();
+    assert.deepEqual(rows.map((r) => [r.title, r.status.text, r.actions.map((a) => a.label).join()]),
+      [['Open parent mode on the Planned tab', 'Not sent', 'Edit,Delete,Send'], ['Too fast', 'Not sent', 'Edit,Delete,Send']]);
+    assert.match(rows[0].detail, /^Your note about the settings\. It waits on this tablet/);
+    assert.match(rows[1].detail, /^Your note about the video “/);
+    // Edit from the header on YouTube (the parent is there): the outbox and the tab's list change.
+    assert.equal((await send({ type: 'inbox', do: 'note.edit', id: rows[1].note, text: 'Too fast for him' })).ok, true);
+    assert.equal(fake.store.outbox.find((e) => e.eventId === rows[1].note).comment, 'Too fast for him');
+    assert.equal(fake.store.notes.videos[ids[0]].at(-1).text, 'Too fast for him', 'the video’s own list too');
+    assert.equal((await send({ type: 'inbox', do: 'note.edit', id: rows[1].note, text: '  ' })).ok, false, 'an empty note is refused');
+    assert.equal((await send({ type: 'inbox', do: 'note.edit', id: rows[1].note, text: 'Too fast' })).ok, true);
+    assert.equal((await send({ type: 'inbox', do: 'nope' })).ok, false);
     assert.match((await fromPage({ type: 'openAiPage', page: 'parent' })).url, /apps\/kidtube\/parent\/parent\.html$/);
     // The notes card lists them with where they were made; ✕ deletes one, Clear all the rest.
     const extra = await fromPage({ type: 'wish', list: 'today', text: 'scrap this' });
@@ -410,10 +421,13 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
     assert.equal(puts.at(-1), 'requests/run.json');    // the request goes after the notes
     assert.equal((await fromPage({ type: 'runStatus' })).held, 0);
     assert.equal((await fromPage({ type: 'runStatus' })).state, 'queued');
-    ai = (await fromPage({ type: 'header' })).ai;
-    assert.deepEqual([ai.held, ai.run], [0, 'queued'], 'sent: the line says the AI starts soon');
+    const inbox = (await fromPage({ type: 'header' })).inbox;
+    assert.deepEqual(inbox.filter((r) => r.type === 'note'), [], 'sent: no note waits');
+    const run = inbox.find((r) => r.id === 'run');
+    assert.deepEqual([run.type, run.status.text], ['data', 'Sent'], 'sent: the AI starts soon');
     await fromPage({ type: 'setMode', mode: 'kid' });
-    assert.equal((await send({ type: 'header' })).ai, null, 'kid mode: no AI line');
+    assert.equal((await send({ type: 'header' })).inbox, null, 'kid mode: no notifications');
+    assert.equal((await send({ type: 'inbox', do: 'note.drop', id: 'x' })).ok, false, 'kid mode: no buttons either');
     assert.equal((await send({ type: 'openAiPage', page: 'parent' })).ok, false);
     await fromPage({ type: 'setMode', mode: 'parent' });
     // Not started in 10 minutes (the server missed it): the tablet stops waiting and ↻ Update can ask again.
@@ -425,6 +439,21 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
     files['run-status.json'] = { json: { schemaVersion: 1, requestId: 'notes-x', state: 'done', message: 'ok', startedAt: new Date(Date.now() + 1000).toISOString(), finishedAt: new Date(Date.now() + 2000).toISOString() } };
     await fromPage({ type: 'sync' });
     assert.equal((await fromPage({ type: 'runStatus' })).state, 'done');
+
+    // The header's Send on one note: that note goes (and a run is asked for); the other one keeps waiting.
+    await fromPage({ type: 'wish', list: 'today', text: 'One more cartoon' });
+    await fromPage({ type: 'wish', list: 'planned', text: 'Keep this one' });
+    rows = await noteRows();
+    const one = rows.find((r) => r.title === 'One more cartoon');
+    assert.equal((await send({ type: 'inbox', do: 'note.send', id: one.note })).ok, true);
+    assert.ok(sent().some((e) => e.text === 'One more cartoon'));
+    assert.ok(!sent().some((e) => e.text === 'Keep this one'));
+    assert.deepEqual((await noteRows()).map((r) => r.title), ['Keep this one']);
+    assert.equal(puts.at(-1), 'requests/run.json');
+    // Delete from the header.
+    assert.equal((await send({ type: 'inbox', do: 'note.drop', id: (await noteRows())[0].note })).ok, true);
+    assert.deepEqual(await noteRows(), []);
+    assert.equal((await send({ type: 'inbox', do: 'note.drop', id: one.note })).ok, false, 'a sent note can’t be deleted');
 
     // Settings → Update now (sync with notes: true) also sends them.
     await fromPage({ type: 'wish', text: 'More Russian' });

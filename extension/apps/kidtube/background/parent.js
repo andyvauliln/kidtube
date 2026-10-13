@@ -44,6 +44,18 @@ export async function heldNotes(s) {
   return { ok: true, notes };
 }
 
+// Changes the words of a note not sent yet (the header's Edit): in the outbox and in the tabs' lists.
+export function editHeld(s, id, text) {
+  const words = String(text ?? '').trim().slice(0, 2000);
+  const ev = s.outbox.find((e) => e.held && e.eventId === id && (e.comment || e.text));
+  if (!ev || !words) return { ok: false, error: ev ? 'The note is empty: type something, or delete it.' : 'This note was sent already: it can’t be changed now.' };
+  if (ev.comment) ev.comment = words; else ev.text = words;
+  const n = s.notes ?? {};
+  for (const box of [n.lists, n.videos]) for (const list of Object.values(box ?? {})) for (const x of list) if (x.id === id) x.text = words;
+  for (const x of [...(n.contextNotes ?? []), ...(n.promptOps ?? [])]) if (x.eventId === id) x.text = words;
+  return { ok: true };
+}
+
 // Deletes notes that were not sent yet (id, or all of them when id is null): from the outbox and the tabs' lists.
 export function dropHeld(s, id) {
   const gone = new Set(s.outbox.filter((e) => e.held && (id == null || e.eventId === id)).map((e) => e.eventId));

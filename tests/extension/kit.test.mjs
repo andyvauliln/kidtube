@@ -110,9 +110,11 @@ test('the notes card: every waiting note with where it was made, ✕, Clear all 
   assert.deepEqual(sent.at(-2), { type: 'dropNote', id: 'n2' });
   assert.ok(!text(card).includes('too fast'));
 
+  answers.runHelper = () => ({ ok: false, error: 'offline' });   // not sent: the card stays, with its notes
   button(card, 'Apply notes (2)').click();
   await tick();
   assert.ok(sent.some((m) => m.type === 'runHelper'), 'Apply notes sends them and runs the AI');
+  assert.equal(card.hidden, false);
 
   button(card, 'Clear all').click();
   await tick();

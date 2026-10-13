@@ -167,22 +167,28 @@ async function pullPlan(loc, token, acct) {
 }
 
 // Notes for the AI wait on the tablet (held) until the parent taps ↻ Update; then they all go together,
-// and the server's notes agent (agent/notes.sh) reads them within a minute.
-export async function releaseNotes() {
-  await withState((s) => { for (const e of s.outbox) delete e.held; });
+// and the server's notes agent (agent/notes.sh) reads them within a minute. ids: only these notes (the header's Send).
+export async function releaseNotes(ids = null) {
+  await withState((s) => { for (const e of s.outbox) if (!ids || ids.includes(e.eventId)) delete e.held; });
 }
 
 // Parent mode → Update. Sends what is waiting (notes, what he watched), then writes requests/run.json;
 // the server checks every minute and runs the helper (agent/poll.sh), at most a few times a day.
-export async function requestRun() {
+// ids: send only these notes (the header's Send on one note); the other notes keep waiting.
+export async function requestRun({ ids = null } = {}) {
   const { settings = {} } = await chrome.storage.local.get('settings');
   if (!settings.token) return { ok: false, error: 'Needs the GitHub token (the header’s account menu → GitHub connection).' };
   const loc = await dataLocation(settings);
   if (!loc.base) return { ok: false, error: 'No profile yet: open YouTube once, signed in.' };
-  await releaseNotes();
-  await sync();
-  const left = await withState((s) => s.outbox.length);
-  if (left) return { ok: false, error: 'Could not send your notes to GitHub yet. Check the connection and try again.' };
+  await releaseNotes(ids);
+  const st = await sync();
+  // Not sent: the notes wait again (they stay in the header's list, with the reason).
+  const left = await withState((s) => {
+    const out = s.outbox.filter((e) => !e.held);
+    for (const e of out) if ((e.comment || e.text) && ['wish', 'parentNote', 'context', 'prompt'].includes(e.type) && (!ids || ids.includes(e.eventId))) e.held = true;
+    return out.length;
+  });
+  if (left) return { ok: false, error: `Your notes are not sent: GitHub did not take them${st?.errors?.[0] ? ` (${st.errors[0]})` : ''}. They wait on this tablet: try again later.` };
   const req = { schemaVersion: 1, id: crypto.randomUUID(), at: new Date().toISOString() };
   try {
     for (let i = 0; i < 3; i++) {

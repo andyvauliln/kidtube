@@ -20,56 +20,33 @@ const dayLabel = (date) => {
   return diff === 0 ? 'Today' : diff === 1 ? 'Yesterday' : d.toLocaleDateString([], { weekday: 'long', day: 'numeric', month: 'long' });
 };
 
-// --- the bar at the bottom: Update and the problems (left), Parent | Kid (middle), the 🎤 (right) ----------------
-// Update sends the notes and asks the helper for new data (the AI run). The app's own new version is in the header,
-// above the version next to the logo (core/ui/header.js).
+// --- the bar at the bottom: ↻ Update (left), Parent | Kid (middle), the 🎤 (right) ------------------------------
+// No notifications here (2026-10-13, the parent's request): the notes, the run's state and the problems are in the
+// header's list (core/ui/header.js, core/background/inbox.js). ↻ Update sends all the notes and asks the helper for
+// new data (the AI run); it rests while a run waits or works. The app's own new version is in the header too.
 let runTimer = null;
 async function showDock(fresh = false) {
   if (fresh) await ask({ type: 'sync' });
   const r = await ask({ type: 'runStatus' });
-  showProblems();
   if (!r?.ok) return;
   const working = r.state === 'queued' || r.state === 'running';
-  const label = working ? (r.state === 'queued' ? 'Waiting for the server…' : 'AI is working…') : `↻ Update${r.held ? ` (${r.held})` : ''}`;
-  const b = btn(label, async () => {
+  const b = btn('↻ Update', async () => {
     b.disabled = true;
     const ok = await runNow();
     if (!ok) b.disabled = false;
   }, 'small');
   b.disabled = working;
-  b.classList.toggle('working', working);
-  b.title = [r.held ? `Sends your ${r.held} note${r.held === 1 ? '' : 's'} to the AI` : 'Asks the AI for new data with what he watched',
-    r.message ? `\nLast run: ${r.message}` : ''].filter(Boolean).join(' ');
+  b.title = working ? 'The AI run is on its way: the header’s 🔔 list shows where it is'
+    : r.held ? `Sends your ${r.held} note${r.held === 1 ? '' : 's'} to the AI and asks it for new data` : 'Asks the AI for new data with what he watched';
   $('run').replaceChildren(b);
   clearTimeout(runTimer);
+  // While the run waits or works: look again every 30 s; when it is done, the lists are drawn again.
   if (working) runTimer = setTimeout(async () => {
-    const before = r.state;
     await showDock(true);
     const now = await ask({ type: 'runStatus' });
-    if (now?.state === 'done' && before !== 'done') { toast(now.message || 'Done: the lists are updated.'); refresh(); }
-    if (now?.state === 'failed' && before !== 'failed') toast(`The AI run failed${now.message ? `: ${now.message}` : '.'}`);
-    if (now?.state === 'late' && before !== 'late') toast(now.message);
+    if (now?.state === 'done') refresh();
   }, 30000);
 }
-// The checks' problems (core/checks/): the ones that wait for something, each with where it is (sent, the AI works on
-// it, fixed in a newer version). A tap opens the details.
-async function showProblems() {
-  const c = await ask({ type: 'checks' });
-  const open = (c?.problems ?? []).filter((p) => !p.done);
-  const box = $('probs');
-  if (!open.length) return box.replaceChildren();
-  const b = btn(open.length === 1 ? `⚠ ${open[0].check}: ${open[0].label}` : `⚠ ${open.length} problems: ${[...new Set(open.map((p) => p.label))].slice(0, 2).join(' · ')}`,
-    () => { window.open(chrome.runtime.getURL('core/pages/check.html#problems'), '_blank'); }, 'small');
-  b.title = open.map((p) => `${p.check}${p.count > 1 ? ` ×${p.count}` : ''}: ${p.label}`).join('\n').slice(0, 600);
-  box.replaceChildren(b);
-}
-// A new report, or one sent: at most once every 2 s (the results are written often).
-let problemsTimer = null;
-chrome.storage.onChanged.addListener((ch) => {
-  if (!ch.checkAlert && !ch.checks) return;
-  clearTimeout(problemsTimer);
-  problemsTimer = setTimeout(showProblems, 2000);
-});
 
 hooks.afterUndo = () => refresh();
 hooks.afterRun = () => showDock();

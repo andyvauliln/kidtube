@@ -14,7 +14,7 @@ import { stateKeys, serial, withState, shellOf, headerOpen, parentMode, live } f
 import { applySiteRules } from './sites.js';
 import { sync } from './sync.js';
 import { partOf, allParts } from './apps.js';
-import { checksView } from '../checks/runner.js';
+import { inboxOf, inboxAct } from './inbox.js';
 
 // Everything kept per profile: the state keys and the apps' other keys.
 const accountKeys = () => [...stateKeys(), ...allParts().flatMap((p) => p.profileKeys ?? [])];
@@ -207,8 +207,8 @@ export async function headerView(force, host) {
   const out = { ok: true, shell: sh, open: await headerOpen(g), mode: parentMode(g) ? 'parent' : 'kid', running,
     site: site?.id ?? null, here: site ? seenOn(site, g) : null,
     connected: cur ? { app: appOf(cur).id, label: shortLabel(appOf(cur)), who: whoOf(cur) ?? 'a YouTube account without an email', site: siteOfApp(appOf(cur)).label } : null,
-    github, switch: switchOf(running, site), apps: [], error: null, ai: null };
-  if (out.open) out.ai = await aiNow(running ? cur : null);
+    github, switch: switchOf(running, site), apps: [], error: null, inbox: null };
+  if (out.open) out.inbox = await inboxOf(running ? cur : null);
   if (!github.connected) return out;
   const remote = await repoProfiles(force);
   out.error = remote.error;
@@ -237,19 +237,7 @@ function switchOf(running, site) {
     on: running && (ownScreen || site?.id !== its.id) ? 'app' : 'site' };
 }
 
-// What waits for the AI, under the header's bar where the parent is: the running app's own (its part's aiView) and
-// the checks' reports (core/checks/runner.js), which go to the server's fix agent.
-async function aiNow(cur) {
-  const app = cur ? await withState((s) => partOf(cur).aiView?.(s) ?? null) : null;
-  const { problems } = await checksView();
-  // Each problem that waits for something, and the ones fixed or checked in the last 30 minutes.
-  const recent = (p) => p.fix?.at && Date.now() - Date.parse(p.fix.at) < 30 * 60000;
-  const shown = problems.filter((p) => !p.done || recent(p))
-    .map(({ key, check, expect, count, versions, state, label, done, fix }) => ({ key, check, expect, count, versions, state, label, done, message: fix?.message ?? '' }));
-  return { ...(app ?? {}), problems: shown };
-}
-
-// The header's AI line: the page where the parent acts on it (the app's parent screens, or Check this browser).
+// A notification's Open or Details: the page where the parent acts on it (the app's parent screens, or Check this browser).
 export async function openAiPage(msg, tabId) {
   const g = await chrome.storage.local.get(['shell', 'account', 'settings']);
   if (!(await headerOpen(g))) return { ok: false, error: 'Unlock with the PIN first.' };
@@ -258,6 +246,12 @@ export async function openAiPage(msg, tabId) {
   const url = chrome.runtime.getURL(page);
   if (tabId != null) await chrome.tabs.update(tabId, { url }); else await chrome.tabs.create({ url });
   return { ok: true, url };
+}
+
+// A notification's button (core/background/inbox.js inboxAct): only where the parent is.
+export async function inboxButton(msg) {
+  if (!(await headerOpen())) return { ok: false, error: 'Unlock with the PIN first.' };
+  return inboxAct(msg);
 }
 
 // The header's app tiles (mode: 'parent' unless asked, so the parent sees the app first) and Connect (create).

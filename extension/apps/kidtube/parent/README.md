@@ -11,4 +11,6 @@ Parent mode: KidTube's parent screens (`parent.html`, opened after the PIN). The
 | `parent.css` | Styles of the parent screens; `settings.css` adds the settings view |
 
 Changes go to the background (`plan`, `saveRules`, `note`...). They work on this tablet at once and reach the
-helper through the data repo. Notes for the AI wait on the tablet until **↻ Update** in the bottom bar.
+helper through the data repo. Notes for the AI wait on the tablet until **↻ Update** in the bottom bar, or **Send** on the note in the header's 🔔
+list (there also **Edit** and **Delete**). The bottom bar shows no notifications: the run's state and the problems are
+in the header's list.

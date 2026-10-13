@@ -6,7 +6,8 @@
 //   watchTaps(root, where)     the rule "no dead buttons": after a tap, something on the page must change within 5 s
 //   noAnswer(msg, ms)          the rule "the background answers": an ask that got nothing back
 //   step(s)                    something the parent or he did (a tap, a page shown), sent with a failure
-//   banner(alert)              a new report, for 15 s (pulled from the background where the parent is)
+//   banner(alert)              a new report, for 15 s (pulled from the background where the parent is, on a page
+//                              without the apps header: the header opens its 🔔 list instead)
 // Uncaught errors in KidTube's own code are reported by themselves (the rule "no silent errors").
 (() => {
   if (globalThis.KidTubeWatch) return;
@@ -193,8 +194,9 @@
     (document.body || document.documentElement).append(host);
   }
   let asking = false;
+  // A page with the apps header shows a new report in the header's 🔔 list instead (core/ui/header.js).
   function pullAlert() {
-    if (asking || location.href.startsWith(`${base}core/pages/check.html`)) return;
+    if (asking || globalThis.KidTubeHeaderShown || location.href.startsWith(`${base}core/pages/check.html`)) return;
     asking = true;
     try {
       chrome.runtime.sendMessage({ type: 'checkAlert' }, (r) => { void chrome.runtime.lastError; asking = false; if (r?.alert) banner(r.alert); });

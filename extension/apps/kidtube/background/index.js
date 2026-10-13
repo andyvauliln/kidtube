@@ -3,9 +3,15 @@ import { nowIso } from '../../../core/lib/time.js';
 import { effective } from './config.js';
 import { guard, viewState, leaveSession } from './rules.js';
 import { HANDLERS, PAGE_ONLY } from './handlers.js';
-import { syncKidTube, releaseNotes } from './sync.js';
+import { syncKidTube, releaseNotes, requestRun } from './sync.js';
 import { KIDTUBE_CHECKS } from './checks.js';
-import { runView } from './parent.js';
+import { runView, heldNotes, editHeld, dropHeld } from './parent.js';
+
+// What a note is about, in the header's list (the parent screens' tabs and context documents).
+const LISTS = { today: 'the Today list', planned: 'the Planned list', history: 'the History list', settings: 'the settings' };
+const DOCS = { kid: 'About him', strategy: 'Strategy', math: 'Math', letters: 'Letters', world: 'World' };
+const aboutOf = (n) => (n.videoId ? `the video “${n.title || n.videoId}”` : n.doc ? `the context document “${DOCS[n.doc] ?? n.doc}”`
+  : n.type === 'prompt' ? 'the helper’s prompt' : LISTS[n.list] ?? 'KidTube');
 
 export default {
   id: 'kidtube',
@@ -28,10 +34,17 @@ export default {
   handlers: HANDLERS,
   pageOnly: PAGE_ONLY,
   checks: KIDTUBE_CHECKS,
-  // The header's AI line: the notes ↻ Update has not sent yet, and the notes agent's latest run.
+  // The header's notifications: the notes ↻ Update has not sent yet, and the notes agent's latest run.
   aiView(s) {
     const r = runView(s);
     return { held: r.held, run: r.state, message: r.message ?? '', at: r.at ?? null, page: 'parent', send: '↻ Update' };
+  },
+  // The parent's notes not sent yet, each with Edit, Delete and Send in the header's list.
+  notes: {
+    list: async (s) => (await heldNotes(s)).notes.map((n) => ({ ...n, about: aboutOf(n) })),
+    edit: (s, id, text) => editHeld(s, id, text),
+    drop: (s, id) => dropHeld(s, id),
+    send: (ids) => requestRun({ ids }),
   },
   sync: syncKidTube,
   beforeSync: (msg) => (msg.notes ? releaseNotes() : undefined),

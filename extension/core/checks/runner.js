@@ -240,10 +240,10 @@ export function runStartChecks(reason) {
 const QUIET = new Set(['state', 'tick', 'header', 'ping', 'frameReady', 'runStatus', 'version', 'heldNotes', 'getRules', 'status',
   'parentData', 'videoDetail', 'helperData', 'contextData', 'talk', 'apps', 'checks', 'checkResult', 'details']);
 // How long the asking page waits (core/lib/ask.js 8 s; the apps header 15 s). An answer later than that never arrives.
-const HEADER_TYPES = new Set(['header', 'openApp', 'connect', 'plainSite', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings']);
+const HEADER_TYPES = new Set(['header', 'inbox', 'openApp', 'connect', 'plainSite', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings']);
 const waitOf = (type) => (HEADER_TYPES.has(type) ? 15000 : 8000);
 // Answers the page shows as they are: { ok: false } must say why, or the parent sees "That didn't work".
-const SAYS_WHY = new Set(['openApp', 'connect', 'plainSite', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings', 'runHelper', 'updateApp', 'setMode']);
+const SAYS_WHY = new Set(['inbox', 'openApp', 'connect', 'plainSite', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings', 'runHelper', 'updateApp', 'setMode']);
 // When a content script last spoke, per tab (the start check "the YouTube tab answers").
 export const heardFrom = new Map();
 
@@ -388,17 +388,48 @@ export function problemsOf(reports, fixes, installed, now = Date.now()) {
     if (r.lastAt >= g.lastAt) { g.lastAt = r.lastAt; g.saw = r.saw; g.expect = r.expect; }
     if (!r.sentAt) g.unsent++;
     else if (!g.sentAt || r.sentAt > g.sentAt) g.sentAt = r.sentAt;
+    if (r.lastAt >= g.lastAt || !g.first) g.first = r.mismatch?.[0] ?? null;
     g.reportIds.push(r.reportId);
     groups.set(key, g);
   }
   const out = [...groups.values()].map((g) => {
     g.versions.sort(cmpVersion);
     const fix = (fixes ?? []).find((f) => f?.key === g.key) ?? null;
-    return { ...g, fix: fix && { state: fix.state, version: fix.version ?? null, message: fix.message ?? '', at: fix.at ?? null }, ...stateOf(g, fix, installed, now) };
+    const { first, ...rest } = g;
+    // tries: each version it was reported on is one request to the AI (the same version again only counts up).
+    return { ...rest, ...wordsOf(g), tries: Math.max(1, g.versions.length),
+      fix: fix && { state: fix.state, version: fix.version ?? null, message: fix.message ?? '', at: fix.at ?? null }, ...stateOf(g, fix, installed, now) };
   });
   const order = ['working', 'needs-you', 'reload', 'unsent', 'late', 'retry', 'gave-up', 'waiting', 'fixed', 'checked'];
   return out.sort((a, x) => (order.indexOf(a.state) - order.indexOf(x.state)) || x.lastAt.localeCompare(a.lastAt));
 }
+
+// A problem in plain words, for the header's list and Check this browser: kind (error: the code broke; validation:
+// a self-check found something not as it should be), title (what went wrong, where) and detail (what was expected
+// and what was there). The check id stays in the details for the AI.
+const WHERE = { header: 'in the header', parent: 'on the parent screens', youtube: 'on YouTube', page: 'on an extension page',
+  background: 'in the background', notes: 'with the notes', rules: 'with the rules', instagram: 'in the Instagram app', kid: 'on the kid’s screen' };
+const quote = (s) => `“${String(s ?? '').slice(0, 60)}”`;
+export function wordsOf({ check, area, expect, first, saw }) {
+  const [, rule, arg = ''] = String(check).match(/^rule\.(\w+)\.?(.*)$/) ?? [];
+  const where = WHERE[area] ? ` ${WHERE[area]}` : '';
+  const got = first?.actual != null ? String(typeof first.actual === 'string' ? first.actual : JSON.stringify(first.actual)).slice(0, 160) : '';
+  const wanted = first?.expected != null ? String(typeof first.expected === 'string' ? first.expected : JSON.stringify(first.expected)).slice(0, 160) : '';
+  const label = String(expect ?? '').match(/“(.+)”/)?.[1] ?? arg;
+  switch (rule) {
+    case 'deadButton': return { kind: 'error', title: `Tapping ${quote(label)}${where} did nothing`, detail: 'Nothing on the screen changed within 5 seconds after the tap.' };
+    case 'noAnswer': return { kind: 'error', title: `A request (${quote(arg)}) got no answer${where}`, detail: `The page asked the extension and waited ${wanted.replace(/^within /, '') || '15 s'}: no answer came.` };
+    case 'pageError': return { kind: 'error', title: `A script error${where} (${arg.replace(/_(\d+)$/, ':$1')})`, detail: got ? `The error: ${got}` : '' };
+    case 'handlerError': return { kind: 'error', title: `The extension failed while doing ${quote(arg)}`, detail: got ? `The error: ${got.replace(/^threw: /, '')}` : '' };
+    case 'slowAnswer': return { kind: 'error', title: `${quote(arg)} was too slow${where}`, detail: got ? `It took ${got}; the page waits ${wanted.replace(/^under /, '')}.` : '' };
+    case 'noReason': return { kind: 'error', title: `${quote(arg)} failed and did not say why`, detail: 'You would only see “That didn’t work”.' };
+    default: break;
+  }
+  const what = first?.what ? `${first.what}: ` : '';
+  return { kind: 'validation', title: `A self-check failed${where}: ${String(expect || check).slice(0, 160)}`,
+    detail: first ? `${what}expected ${wanted || '?'}, but it was ${got || 'nothing'}.` : String(saw ?? '').slice(0, 200) };
+}
+
 function stateOf(g, fix, installed, now) {
   const newest = g.versions.at(-1) ?? null;
   const fixAt = fix?.at ? Date.parse(fix.at) : 0;

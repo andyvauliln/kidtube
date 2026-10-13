@@ -47,11 +47,10 @@ export function toast(text, undo) {
 // --- Update: run the helper now ---------------------------------------------------------------------
 // Your notes go to GitHub first; the server starts the helper within a minute or two (agent/poll.sh).
 // Sends every note waiting on any tab, then runs the helper. Returns false when it could not ask.
+// Where the run is (sent, working, done) shows in the header's notifications, not in a toast at the bottom.
 export async function runNow() {
-  toast('Sending your notes and asking the helper to run…');
   const res = await ask({ type: 'runHelper' });
-  if (!res?.ok) { toast(res?.error ?? 'Could not ask for a run.'); return false; }
-  toast('Asked. The helper starts within a minute or two, reads all your notes and takes about 10–30 minutes.');
+  if (!res?.ok) { toast(res?.error ?? 'Could not send your notes: the extension did not answer. Try again.'); return false; }
   hooks.afterRun();
   return true;
 }
@@ -60,6 +59,7 @@ export async function runNow() {
 // The 🎤 records a note about what is on the screen (where()): a tab, a video, a context document or the prompt.
 // Pauses don't end it: it records until ⏹. Then the words join the card, which lists every note still on this
 // tablet, from every tab, with ✕ and Clear all. Apply notes sends them all to the AI (the same as ↻ Update).
+// The header's notifications list the same notes with Edit, Delete and Send (core/background/inbox.js).
 // The words are written down by Groq's Whisper, Gemini (gemini-3.5-transcribe first) or OpenRouter (Settings → keys). Only without either key
 // the browser's own speech recognition writes them, and the card says so.
 // Two switches in the card attach context to the next notes, so the AI on the server sees what the parent means:
@@ -94,7 +94,7 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabH
   let writing = false;       // the recording is being written down
   let started = 0, clock = null, notice = '', cloud = false;
   let notes = [];
-  // On a fresh page the waiting notes fold into one line; a recording, a typed note or Show open the list.
+  // On a fresh page the card is closed (the waiting notes are in the header's 🔔 list); a recording opens it.
   let expanded = false;
   const attach = loadAttach();   // { screen, app }: what goes with the next notes
 
@@ -147,25 +147,16 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabH
     const r = await ask({ type: 'heldNotes' });
     notes = r?.ok ? r.notes ?? [] : notes;
     const busy = rec || writing;
-    card.hidden = !busy && !notes.length && !card.classList.contains('open');
+    // The waiting notes are in the header's notifications (Edit, Delete, Send): the card opens only to add one.
+    card.hidden = !busy && !retry && !notice && !expanded && !card.classList.contains('open');
     fab.textContent = rec ? '⏹' : writing ? '…' : '🎤';
     fab.classList.toggle('on', !!rec);
     if (card.hidden) return;
-    const folded = !expanded && !busy && !retry && !notice && !card.classList.contains('open') && notes.length > 0;
-    card.classList.toggle('compact', folded);
-    if (folded) {
-      const sum = el('div', 'ncsum', `${notes.length} note${notes.length === 1 ? '' : 's'} waiting for the AI`);
-      sum.append(el('small', '', notes.map((n) => `${label(n)}: ${n.text}`).join(' · ')));
-      card.replaceChildren(sum,
-        btn('Show', async () => { expanded = true; await draw(); }, 'small'),
-        btn(`Apply notes (${notes.length})`, async () => { if (await runNow()) await draw(); }, 'small primary'));
-      return;
-    }
     const head = el('div', 'nchead');
     head.append(el('h2', '', notes.length ? `Notes for the AI · ${notes.length}` : 'Notes for the AI'));
-    const close = el('button', 'ghost small nclose', notes.length ? 'Fold' : '✕');
-    close.title = 'Hide (the notes stay)';
-    close.addEventListener('click', () => { expanded = false; notice = ''; card.classList.remove('open'); if (!notes.length && !busy) card.hidden = true; else draw(); });
+    const close = el('button', 'ghost small nclose', '✕');
+    close.title = 'Close (the notes stay: they are in the header’s 🔔 list)';
+    close.addEventListener('click', () => { expanded = false; notice = ''; card.classList.remove('open'); if (!busy) card.hidden = true; else draw(); });
     if (!busy) head.append(close);
     const parts = [head];
     if (rec) {
@@ -205,11 +196,12 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabH
         btn('Clear all', async () => {
           if (!confirm(`Delete all ${notes.length} notes? They were not sent.`)) return;
           await ask({ type: 'dropNote', all: true });
+          expanded = false;
           card.classList.remove('open');
           await draw();
           hooks.afterRun();
         }, 'small'),
-        btn(`Apply notes (${notes.length})`, async () => { if (rec) rec.stop(); if (await runNow()) await draw(); }, 'small primary'));
+        btn(`Apply notes (${notes.length})`, async () => { if (rec) rec.stop(); if (await runNow()) { expanded = false; card.classList.remove('open'); await draw(); } }, 'small primary'));
       parts.push(acts);
     }
     card.replaceChildren(...parts);

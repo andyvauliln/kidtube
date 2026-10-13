@@ -73,9 +73,15 @@ If the problem is still there in the new version, that is a new report (the serv
    No GitHub token: it waits on the tablet. The server reads these files (`docs/plans/FAST-FIX.md`, F4).
 2. **A banner for 15 seconds** (`core/ui/watch.js`), on the first page where the parent is: parent mode, or the
    unlocked apps header. Never in kid mode: he does not see it, the parent sees it the next time.
-3. **The header's AI line** (`core/ui/header.js`, every page where the parent is) and **the parent page's bottom
-   bar**: each problem once, with its counter and its state; a tap opens **Check this browser → Problems** with each
-   problem, the AI's message, its reports, **Ask the server now**, **Send the reports now**, **Copy** and **Clear**.
+3. **The header's notifications** (the 🔔 list, `core/ui/header.js` and `core/background/inbox.js`, every page where
+   the parent is; a new report opens the list, and a page without the header shows the banner instead): each problem
+   once, as `[Error | Validation] [status · try N] what went wrong in plain words [Details] [×count]`. The words come
+   from `runner.js wordsOf` (a dead button, a script error, no answer, a failed self-check: what was expected and what
+   was there). **Details** opens **Check this browser → Problems** with each problem, the AI's message, its reports,
+   **Ask the server now**, **Send the reports now**, **Copy** and **Clear**. The bottom bar shows no problems (2026-10-13).
+
+The count is how many times it happened. The try is how many versions sent it: the same problem on the same version
+only counts up; on a new version it is sent once more (try 2, 3, …), and its repeats count up again.
 
 ## A problem's state
 

@@ -6,7 +6,8 @@
 // Connect on a site's own page (YouTube, Instagram): the account signed in there becomes the profile
 // (core/background/profiles.js connect). Signing in and switching accounts happen with the site's own buttons. Below:
 // the GitHub connection (first time), or the apps row: each app (KidTube, Instagram), dimmed while its site's account
-// has no profile in it. Hidden in kid mode (shell.js and the pages decide).
+// has no profile in it; and the notifications (the 🔔: notes, the AI run, problems, a new version; inboxList).
+// Hidden in kid mode (shell.js and the pages decide).
 // A plain script, not a module, so the YouTube content script can use it too: it sets globalThis.KidTubeHeader.
 // No innerHTML anywhere: YouTube's Trusted Types policy refuses it.
 (() => {
@@ -98,17 +99,50 @@
     .sep { height: 1px; background: var(--line); margin: 8px 0; }
     .app.none .icon { opacity: .45; }
     .here { font-size: 12px; color: var(--muted); padding: 0 16px 8px; margin-top: -4px; }
-    .ai { display: flex; flex-wrap: wrap; gap: 6px; padding: 0 12px 8px 16px; }
-    .ai > * { display: inline-block; max-width: 100%; height: 28px; line-height: 28px; padding: 0 12px; border-radius: 14px; text-align: left;
-      background: var(--blue-soft); color: var(--ink); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-    .ai > button:hover { background: var(--hover); }
-    .ai .warn { background: var(--soft); color: var(--bad); }
+    .bell { position: relative; }
+    .badge { position: absolute; top: 2px; right: 0; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: var(--accent);
+      color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; text-align: center; box-shadow: 0 0 0 2px var(--bg); }
+    .badge.calm { background: var(--blue); }
+    .inbox { margin: 0 12px 10px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+    .nrow { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto; gap: 4px 10px; align-items: center; padding: 8px 12px;
+      border-top: 1px solid var(--line); }
+    .nrow:first-child { border-top: 0; }
+    .nrow.done { opacity: .7; }
+    .chip { display: inline-block; height: 22px; line-height: 22px; padding: 0 8px; border-radius: 11px; font-size: 12px; font-weight: 600;
+      white-space: nowrap; background: var(--soft); color: var(--muted); }
+    .chip.error { background: color-mix(in srgb, var(--bad) 14%, var(--bg)); color: var(--bad); }
+    .chip.validation { background: color-mix(in srgb, #e37400 16%, var(--bg)); color: #b06000; }
+    .chip.data, .chip.update { background: var(--blue-soft); color: var(--blue); }
+    .chip.note { background: color-mix(in srgb, #8430ce 14%, var(--bg)); color: #8430ce; }
+    :host(.dark) .chip.validation { color: #fdd663; } :host(.dark) .chip.note { color: #d7aefb; }
+    .st { font-size: 12px; font-weight: 600; white-space: nowrap; }
+    .st::before { content: ''; display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 5px; vertical-align: 0; background: var(--muted); }
+    .st.bad { color: var(--bad); } .st.bad::before { background: var(--bad); }
+    .st.wait { color: var(--blue); } .st.wait::before { background: var(--blue); }
+    .st.ok { color: var(--ok); } .st.ok::before { background: var(--ok); }
+    .msg { min-width: 0; display: grid; gap: 1px; }
+    .msg b { font-weight: 500; overflow-wrap: anywhere; }
+    .msg span { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+    .msg textarea { font: inherit; font-size: 14px; width: 100%; min-height: 60px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line);
+      background: var(--bg); color: var(--ink); resize: vertical; }
+    .acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+    .acts button { height: 28px; padding: 0 10px; border-radius: 14px; background: var(--soft); font-size: 13px; font-weight: 500; white-space: nowrap; }
+    .acts button:not(:disabled):hover { background: var(--hover); }
+    .acts button.go { background: var(--ink); color: var(--bg); }
+    .acts button.sure { background: var(--bad); color: #fff; }
+    .count { min-width: 28px; text-align: right; font-size: 13px; font-weight: 700; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .nmore { display: block; width: 100%; padding: 8px 12px; border-top: 1px solid var(--line); color: var(--blue); font-size: 13px; font-weight: 500; text-align: left; }
+    .nnone { padding: 10px 12px; color: var(--muted); font-size: 13px; }
     @media (max-width: 600px) {
       .who .email, .brand .name, .who > svg, .bar > .btn.primary span { display: none; }
       .bar { gap: 6px; padding: 0 8px 0 12px; }
       .bar > .btn.primary { padding: 0 10px; }
       .seg button { padding: 0 10px; }
       .card { grid-template-columns: 1fr; }
+      .nrow { grid-template-columns: auto minmax(0, 1fr) auto; }
+      .nrow .msg { grid-column: 1 / -1; grid-row: 2; }
+      .nrow .acts { grid-column: 1 / -1; grid-row: 3; justify-content: flex-start; }
+      .nrow .count { grid-column: 3; grid-row: 1; }
       .side { flex-direction: row; flex-wrap: wrap; min-width: 0; }
       .side .btn { flex: 1 1 auto; }
     }
@@ -144,6 +178,7 @@
     upload: 'M5 20h14v-2H5v2zm4-4h6v-6h4l-7-7-7 7h4v6z',
     caret: 'M7 10l5 5 5-5z',
     grid: 'M4 4h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 10h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 16h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4z',
+    bell: 'M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2zm6-6V11c0-3.07-1.64-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z',
   };
   // The logo: four tiles, one per app and more to come.
   function logo() {
@@ -219,7 +254,16 @@
     W?.watchTaps(root, 'header');
 
     let data = null, alive = true, busy = '', loading = false, again = null, ver = null;
-    const ui = { menu: false, github: false, repo: null, token: '', note: '', noteKind: '', apps: false };
+    const ui = { menu: false, github: false, repo: null, token: '', note: '', noteKind: '', apps: false,
+      inbox: true, all: false, edit: null, sure: null };
+    // The notifications list starts open; the bell closes it, and it stays closed on every page (storage headerUi).
+    // A new problem report opens it again (instead of core/ui/watch.js's banner on a page without the header).
+    globalThis.KidTubeHeaderShown = true;
+    chrome.storage.local.get('headerUi').then((g) => { if (g.headerUi?.inboxClosed && alive) { ui.inbox = false; draw(); } }).catch(() => {});
+    async function newReport() {
+      const r = await ask({ type: 'checkAlert' });
+      if (r?.alert && alive && !ui.inbox) { ui.inbox = true; draw(); }
+    }
     // The round apps button shows or hides the apps row. It starts closed on every page and every reload.
     const say = (text, kind = '') => { ui.note = text; ui.noteKind = kind; draw(); };
 
@@ -239,8 +283,8 @@
         readVersion();
         if (!alive || !h?.ok) return;
         data = { github: {}, apps: [], ...h };
-        // Typing in the GitHub form: don't redraw under the cursor.
-        if (!root.activeElement || root.activeElement.tagName !== 'INPUT') draw();
+        // Typing in the GitHub form or in a note: don't redraw under the cursor.
+        if (!root.activeElement || !['INPUT', 'TEXTAREA'].includes(root.activeElement.tagName)) draw();
       } finally {
         loading = false;
         if (again !== null) { const f = again; again = null; refresh(f); }
@@ -422,45 +466,95 @@
       return card;
     }
 
-    // What waits for the AI (only where the parent is; core/background/profiles.js aiNow): the notes the parent
-    // added that are not sent yet, the server's run on them, posts in an app's list, and the checks' reports.
-    // A tap opens the page to act on (the app's parent screens with ↻ Update, or Check this browser).
-    const PROBLEM_ICON = { unsent: '⚠', waiting: '⏳', late: '⚠', working: '🔧', reload: '⟳', fixed: '✓', checked: '✓', 'needs-you': '✋', retry: '⚠', 'gave-up': '⚠' };
-    function aiLine(a) {
-      if (!a) return null;
-      const n = (k, one, many = `${one}s`) => `${k} ${k === 1 ? one : many}`;
-      const recent = a.at && Date.now() - Date.parse(a.at) < 30 * 60000;
-      const items = [];
-      if (a.held) items.push({ text: `📝 ${n(a.held, 'note')} for the AI, not sent yet: tap ${a.send ?? 'Update'}`, page: a.page });
-      if (a.run === 'queued' || a.run === 'running') items.push({ text: `🤖 ${a.run === 'running' ? 'The AI is working on your notes' : 'Notes sent: the AI starts soon'}`, title: a.message, page: a.page });
-      else if (a.run === 'late') items.push({ text: `⚠ ${a.message}`, page: a.page, warn: true });
-      else if (recent && a.run === 'done') items.push({ text: `✓ AI: ${a.message}`, title: a.message, page: a.page });
-      else if (recent && a.run === 'failed') items.push({ text: `⚠ AI: ${a.message}`, title: a.message, page: a.page, warn: true });
-      if (a.queued) items.push({ text: `🤖 ${n(a.queued, 'post')} in the list ${a.queued === 1 ? 'waits' : 'wait'} for the AI` });
-      // The checks' problems, one each (the same problem again is its counter): what it is and where it is.
-      const probs = a.problems ?? [];
-      for (const p of probs.slice(0, 4)) {
-        const what = p.check + (p.count > 1 ? ` ×${p.count}` : '');
-        items.push({ text: `${PROBLEM_ICON[p.state] ?? '⚠'} ${what}: ${p.label}`, page: 'checks', warn: !p.done && p.state !== 'working' && p.state !== 'waiting',
-          title: `${p.check}${p.count > 1 ? ` (${p.count} times)` : ''} on ${p.versions.join(', ')}\n${p.expect}\n${p.label}${p.message ? `\nAI: ${p.message}` : ''}` });
+    // The notifications (core/background/inbox.js, only where the parent is), one row each:
+    // [type] [status] the message [its buttons] [how many times]. The header adds two kinds of its own: a newer
+    // version (App update) and what its last action said (System, with ✕).
+    const TYPE = { error: 'Error', validation: 'Validation', data: 'Data update', note: 'My note', update: 'App update', system: 'System' };
+    const SHOWN = 5;
+    function rowsNow(h) {
+      const rows = [...(h.inbox ?? [])];
+      if (ver?.newer) {
+        rows.unshift({ id: 'update', type: 'update', status: { text: 'New', tone: 'wait' }, title: `Custom Apps ${ver.latest} is ready (this browser has ${ver.installed})`,
+          detail: NEWER[ver.kind]?.(ver.latest) ?? '', actions: [{ do: 'update', label: ver.kind === 'quetta' ? 'Install' : 'Get it' }] });
       }
-      if (probs.length > 4) items.push({ text: `+ ${probs.length - 4} more`, page: 'checks' });
-      if (!items.length) return null;
-      const line = el('div', 'ai');
-      line.setAttribute('role', 'status');
-      for (const it of items) {
-        const b = el(it.page ? 'button' : 'span', it.warn ? 'warn' : '', it.text);
-        b.title = it.title || it.text;
-        if (it.page) {
-          b.type = 'button';
-          b.addEventListener('click', async () => {
-            const r = await ask({ type: 'openAiPage', page: it.page });
-            if (!r?.ok) say(r?.error ?? 'That didn’t work. Try again.', 'err');
-          });
+      const note = ui.github ? '' : ui.note || h.error;
+      if (note) {
+        const tone = ui.note ? ui.noteKind : 'err';
+        rows.unshift({ id: 'system', type: 'system', status: { text: tone === 'err' ? 'Failed' : tone === 'ok' ? 'Done' : 'Info', tone: tone === 'err' ? 'bad' : tone === 'ok' ? 'ok' : '' },
+          title: note, detail: ui.note ? '' : 'The apps list could not be read from GitHub.', actions: ui.note ? [{ do: 'dismiss', label: '✕' }] : [] });
+      }
+      return rows;
+    }
+    const waiting = (rows) => rows.filter((r) => !r.done && r.type !== 'system').length;
+
+    async function tapRow(r, a) {
+      if (a.do === 'dismiss') { ui.note = ''; return draw(); }
+      if (a.do === 'update') return getUpdate();
+      if (a.do === 'open') {
+        const o = await ask({ type: 'openAiPage', page: a.page });
+        if (!o?.ok) say(o?.error ?? 'That didn’t work. Try again.', 'err');
+        return;
+      }
+      if (a.do === 'note.edit') { ui.edit = { id: r.note, text: r.title }; ui.sure = null; draw(); root.querySelector('textarea')?.focus(); return; }
+      // Delete asks once more on the same button: a dictated note can be long.
+      if (a.do === 'note.drop' && ui.sure !== r.id) { ui.sure = r.id; return draw(); }
+      ui.sure = null;
+      const busyText = { 'note.drop': 'Deleting…', 'note.send': 'Sending…', run: 'Asking…', 'problems.send': 'Sending…', sync: 'Saving…' }[a.do] ?? 'Working…';
+      const res = await act(busyText, { type: 'inbox', do: a.do, id: r.note });
+      if (res?.ok && res.message) say(res.message, 'ok');
+      refresh(true);
+    }
+    async function saveEdit() {
+      const e = ui.edit;
+      if (!e) return;
+      const res = await act('Saving…', { type: 'inbox', do: 'note.edit', id: e.id, text: e.text });
+      if (res?.ok) { ui.edit = null; refresh(true); }
+    }
+
+    function inboxRow(r) {
+      const row = el('div', `nrow${r.done ? ' done' : ''}`);
+      row.dataset.id = r.id;
+      const st = el('span', `st ${r.status?.tone ?? ''}`, `${r.status?.text ?? ''}${r.tries > 1 ? ` · try ${r.tries}` : ''}`);
+      if (r.tries > 1) st.title = `Sent to the AI ${r.tries} times: once for each version that still had it`;
+      const msg = el('div', 'msg');
+      const editing = r.type === 'note' && ui.edit?.id === r.note;
+      const acts = el('div', 'acts');
+      if (editing) {
+        const box = Object.assign(el('textarea'), { value: ui.edit.text, maxLength: 2000 });
+        box.addEventListener('input', () => { ui.edit.text = box.value; save.disabled = !box.value.trim() || !!busy; });
+        box.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); ui.edit = null; draw(); } });
+        msg.append(box);
+        const save = button('go', 'Save', saveEdit);
+        save.disabled = !ui.edit.text.trim() || !!busy;
+        acts.append(save, button('', 'Cancel', () => { ui.edit = null; draw(); }));
+      } else {
+        msg.append(el('b', '', r.title));
+        if (r.detail) msg.append(el('span', '', r.detail));
+        if (r.state) msg.append(el('span', '', r.state));
+        for (const a of r.actions ?? []) {
+          const sure = a.do === 'note.drop' && ui.sure === r.id;
+          const b = button(sure ? 'sure' : a.do === 'note.send' ? 'go' : '', sure ? 'Sure? Delete' : a.label, () => tapRow(r, a));
+          b.disabled = !!busy;
+          if (a.do === 'note.send') b.title = 'Send this note to the AI now (the other notes keep waiting)';
+          if (a.do === 'dismiss') b.title = 'Hide this message';
+          acts.append(b);
         }
-        line.append(b);
       }
-      return line;
+      if (r.more) row.title = r.more;   // the check's id and versions, for when the parent asks the AI about it
+      const count = el('span', 'count', r.count != null ? `×${r.count}` : '');
+      if (r.count != null) count.title = `It happened ${r.count} time${r.count === 1 ? '' : 's'}. The same problem again only counts up: it is not sent again.`;
+      row.append(el('span', `chip ${r.type}`, TYPE[r.type] ?? r.type), st, msg, acts, count);
+      return row;
+    }
+    function inboxList(rows) {
+      const box = el('div', 'inbox');
+      box.setAttribute('role', 'list');
+      box.setAttribute('aria-label', 'Notifications');
+      if (!rows.length) { box.append(el('div', 'nnone', 'No notifications: nothing waits for you or for the AI.')); return box; }
+      const shown = ui.all ? rows : rows.slice(0, SHOWN);
+      for (const r of shown) box.append(inboxRow(r));
+      if (rows.length > SHOWN) box.append(button('nmore', ui.all ? 'Show fewer' : `Show all ${rows.length}`, () => { ui.all = !ui.all; draw(); }));
+      return box;
     }
 
     function draw() {
@@ -495,6 +589,22 @@
         grid.setAttribute('aria-label', grid.title);
         grid.setAttribute('aria-pressed', String(ui.apps));
         if (h.switch) bar.append(siteSwitch(h.switch));
+        // The bell: shows or hides the notifications; its number is what still waits (red: something needs you).
+        const rows = rowsNow(h);
+        const shownInbox = h.inbox != null || rows.length > 0;
+        if (shownInbox) {
+          const n = waiting(rows);
+          const bell = button('round bell', '', () => {
+            ui.inbox = !ui.inbox;
+            chrome.storage.local.set({ headerUi: { inboxClosed: !ui.inbox } }).catch(() => {});
+            draw();
+          }, PATH.bell);
+          bell.title = `${ui.inbox ? 'Hide' : 'Show'} the notifications${n ? ` (${n} waiting)` : ''}`;
+          bell.setAttribute('aria-label', bell.title);
+          bell.setAttribute('aria-pressed', String(ui.inbox));
+          if (n) bell.append(el('span', `badge${rows.some((r) => !r.done && r.status?.tone === 'bad') ? '' : ' calm'}`, n > 99 ? '99+' : String(n)));
+          bar.append(bell);
+        }
         if (h.github.connected) bar.append(grid);
         bar.append(who);
         // Connect only on a site's own page (an extension page has no signed-in account to take).
@@ -529,10 +639,9 @@
               : `${a.label}: sign in on ${a.site}, then press Connect there.`)).join(' ')));
           }
         }
-        const note = ui.note || h.error;
-        if (note && h.github.connected && !ui.github) kids.push(el('p', `note ${ui.note ? ui.noteKind : 'err'}`, note));
-        const ai = aiLine(h.ai);
-        if (ai) kids.push(ai);
+        if (shownInbox && ui.inbox && h.github.connected && !ui.github) kids.push(inboxList(rows));
+        else if (!h.github.connected || ui.github) { /* the GitHub card shows its own message */ }
+        else if (ui.note || h.error) kids.push(el('p', `note ${ui.note ? ui.noteKind : 'err'}`, ui.note || h.error));
         if (ui.menu) kids.push(accountMenu());
       }
       if (ui.menu) {
@@ -543,17 +652,19 @@
       box.replaceChildren(...kids);
     }
 
-    // The AI line's sources change often (the checks after every message): at most one refresh a second for them.
+    // The notifications' sources change often (the checks after every message): at most one refresh a second for them.
     let aiTimer = null;
     const onStorage = (ch) => {
+      if (ch.checkAlert?.newValue && !ch.checkAlert.newValue.shown) newReport();
       if (ch.ytAccount || ch.igAccount || ch.settings || ch.accounts || ch.repoProfiles || ch.account || ch.shell) refresh();
-      else if (ch.outbox || ch.data || ch.ig || ch.checks) { clearTimeout(aiTimer); aiTimer = setTimeout(() => refresh(), 1000); }
+      else if (ch.outbox || ch.data || ch.ig || ch.checks || ch.notes || ch.syncStatus) { clearTimeout(aiTimer); aiTimer = setTimeout(() => refresh(), 1000); }
     };
     chrome.storage.onChanged.addListener(onStorage);
     const onKey = (e) => { if (e.key === 'Escape' && ui.menu) { ui.menu = false; draw(); } };
     root.addEventListener('keydown', onKey);
     draw();
     refresh();
+    newReport();
     return {
       refresh,
       setDark(on) { host.classList.toggle('dark', on); },
