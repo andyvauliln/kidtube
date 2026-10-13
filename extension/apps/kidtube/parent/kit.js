@@ -71,7 +71,8 @@ const TYPE_LABEL = { today: 'Today', planned: 'Planned', history: 'History', set
 // The screen as the parent sees it now, for a note's This screen. at: where() when the note started.
 function snapshot(at) {
   const view = document.getElementById('view') ?? document.querySelector('main') ?? document.body;
-  const where = at.videoId ? `video ${at.videoId}` : at.doc ? `context document ${at.doc}` : at.prompt ? 'the Prompt tab' : `the ${TYPE_LABEL[at.list] ?? 'Settings'} tab`;
+  const where = at.videoId ? `video ${at.videoId}` : at.doc ? `context document ${at.doc}` : at.prompt ? 'the Prompt tab'
+    : `the ${TYPE_LABEL[at.list] ?? 'Settings'} tab${at.section ? `, box “${at.section}”` : ''}`;
   return {
     where, title: document.title, path: `${location.pathname.replace(/^\/+/, '')}${location.hash}`,
     text: (view.innerText ?? '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 8000),
@@ -82,7 +83,7 @@ function snapshot(at) {
 // A page that can't be read (no view) sends the note without its screen.
 const shot = (at) => { try { return snapshot(at); } catch { return null; } };
 
-// where(): { list } | { videoId } | { doc, docName } | { prompt: true } — what the screen shows now.
+// where(): { list, section? } | { videoId } | { doc, docName } | { prompt: true } — what the screen shows now.
 // fabHost: where the 🎤 goes (the parent page's bottom bar); without one it floats bottom right.
 export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
   const fab = el('button', `notefab${fabHost ? ' docked' : ''}`, '🎤');
@@ -103,7 +104,7 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
     const r = at.videoId ? await ask({ type: 'note', videoId: at.videoId, comment: text, ...extra })
       : at.doc ? await ask({ type: 'contextNote', doc: at.doc, text, ...extra })
       : at.prompt ? await ask({ type: 'promptNote', action: 'add', text, ...extra })
-      : await ask({ type: 'wish', list: at.list ?? 'settings', text, ...extra });
+      : await ask({ type: 'wish', list: at.list ?? 'settings', ...(at.section ? { section: at.section } : {}), text, ...extra });
     if (!r?.ok) { toast('Could not save the note. Is parent mode still on?'); return false; }
     notice = '';
     expanded = false;

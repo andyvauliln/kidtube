@@ -35,7 +35,7 @@ export function noteOf(e) {
   return n && e.ask === true ? { ...n, question: true } : n;
 }
 function noteKind(e) {
-  if (e.type === 'wish' && e.text) return { where: e.list ? `note about ${e.list === 'settings' ? 'the app (Settings)' : `the ${e.list} list`}` : 'message to the helper', text: e.text };
+  if (e.type === 'wish' && e.text) return { where: e.list ? `note about ${e.list === 'settings' ? `the app (Settings${e.section ? `, the box “${e.section}”` : ''})` : `the ${e.list} list`}` : 'message to the helper', text: e.text };
   if (e.type === 'parentNote' && e.comment) return { where: 'note about a video', text: e.comment, videoId: e.videoId };
   if (e.type === 'prompt' && e.action === 'add' && e.text) return { where: 'standing change to the helper’s prompt', text: e.text };
   if (e.type === 'context' && e.text) return { where: `note on the context document “${e.doc}”`, text: e.text };

@@ -12,7 +12,7 @@ import { voicePending, dropRecording } from './voice.js';
 const LISTS = { today: 'the Today list', planned: 'the Planned list', history: 'the History list', settings: 'the settings' };
 const DOCS = { kid: 'About him', strategy: 'Strategy', math: 'Math', letters: 'Letters', world: 'World' };
 const aboutOf = (n) => (n.videoId ? `the video “${n.title || n.videoId}”` : n.doc ? `the context document “${DOCS[n.doc] ?? n.doc}”`
-  : n.type === 'prompt' ? 'the helper’s prompt' : LISTS[n.list] ?? 'KidTube');
+  : n.type === 'prompt' ? 'the helper’s prompt' : n.section ? `the settings box “${n.section}”` : LISTS[n.list] ?? 'KidTube');
 
 export default {
   id: 'kidtube',

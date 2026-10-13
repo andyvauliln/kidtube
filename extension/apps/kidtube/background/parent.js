@@ -24,7 +24,7 @@ function trackQuestion(s, ev) {
   if (!ev.held || !(ev.comment ?? ev.text)) return;
   const qs = ((s.notes ??= {}).questions ??= []);
   qs.push({ id: ev.eventId, at: ev.at, type: ev.type, text: ev.comment ?? ev.text, ask: !!ev.ask,
-    ...(ev.list ? { list: ev.list } : {}), ...(ev.videoId ? { videoId: ev.videoId } : {}), ...(ev.doc ? { doc: ev.doc } : {}) });
+    ...(ev.list ? { list: ev.list } : {}), ...(ev.section ? { section: ev.section } : {}), ...(ev.videoId ? { videoId: ev.videoId } : {}), ...(ev.doc ? { doc: ev.doc } : {}) });
   s.notes.questions = qs.slice(-30);
 }
 // Saved before 0.12.16, only questions were followed (no ask field).
@@ -57,7 +57,7 @@ export async function heldNotes(s) {
   const titleOf = (id) => cardOf(id, queue.videos.find((v) => v.videoId === id) ?? {}, recs[id] ?? {}, s).title ?? '';
   const notes = s.outbox.filter((e) => e.held && (e.comment || e.text)).map((e) => ({
     id: e.eventId, at: e.at, type: e.type, text: e.comment ?? e.text,
-    ...(e.list ? { list: e.list } : {}), ...(e.doc ? { doc: e.doc } : {}),
+    ...(e.list ? { list: e.list } : {}), ...(e.section ? { section: e.section } : {}), ...(e.doc ? { doc: e.doc } : {}),
     ...(e.videoId ? { videoId: e.videoId, title: titleOf(e.videoId) } : {}),
     ...(e.context ? { attached: Object.keys(e.context) } : {}), ...(e.offer ? { offered: Object.keys(e.offer) } : {}), ...(e.ask ? { ask: true } : {}), ...(e.voice ? { voice: e.voice } : {}),
   }));
@@ -219,11 +219,13 @@ export function noteVideo(s, msg, ctx = null) {
 }
 
 // A message to the helper, or a note for the AI about a whole list (list: today | planned | history | settings).
+// section: the Settings box it is about (⛶ One box), its title.
 export function wish(s, msg, ctx = null) {
   const text = String(msg.text ?? '').trim().slice(0, 2000);
   if (!text) return { ok: false };
   const list = ['today', 'planned', 'history', 'settings'].includes(msg.list) ? msg.list : null;
-  const ev = { ...newEvent('wish', { text, ...(list ? { list } : {}), ...(ctx ? { context: ctx } : {}), ...(isQuestion(msg, text) ? { ask: true } : {}) }), held: true, ...voiceOf(msg) };
+  const section = list === 'settings' && typeof msg.section === 'string' ? msg.section.trim().slice(0, 60) : '';
+  const ev = { ...newEvent('wish', { text, ...(list ? { list } : {}), ...(section ? { section } : {}), ...(ctx ? { context: ctx } : {}), ...(isQuestion(msg, text) ? { ask: true } : {}) }), held: true, ...voiceOf(msg) };
   s.outbox.push(ev);
   trackQuestion(s, ev);
   if (list) addNote((((s.notes ??= {}).lists ??= {})[list] ??= []), ev);

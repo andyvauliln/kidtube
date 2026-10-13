@@ -967,3 +967,28 @@ test('a note carries what the parent attached: the screen (cut to the schema siz
   writeFileSync(file, JSON.stringify({ schemaVersion: 1, date, device: { deviceId: 'tab-test', extensionVersion: '0.1.0', quizTypes: ['text'], lastSyncAt: ev.at }, events: [sent] }));
   assert.deepEqual(validateFile(file).errors, []);
 });
+
+// The parent's note (2026-10-13): Settings in 🔳 One box, a 🎤 note is about the box on the screen (parent.js noteTarget).
+test('a note made in a Settings box names the box: in the event, the header’s list and the schema', async () => {
+  const { mkdtempSync, mkdirSync, writeFileSync } = await import('node:fs');
+  const { join } = await import('node:path');
+  const { tmpdir } = await import('node:os');
+  const { validateFile } = await import('../../tools/validate.mjs');
+  assert.equal((await fromPage({ type: 'wish', list: 'settings', section: 'Talking friend', text: 'A bigger picture' })).ok, true);
+  const ev = fake.store.outbox.at(-1);
+  assert.equal(ev.section, 'Talking friend');
+  const note = (await fromPage({ type: 'heldNotes' })).notes.find((n) => n.id === ev.eventId);
+  assert.equal(note.section, 'Talking friend');
+  const row = (await fromPage({ type: 'header' })).inbox.find((r) => r.note === ev.eventId || r.id === `note:${ev.eventId}`);
+  assert.match(row.detail, /the settings box “Talking friend”/);
+  // Only Settings has boxes.
+  await fromPage({ type: 'wish', list: 'today', section: 'Talking friend', text: 'x' });
+  assert.equal(fake.store.outbox.at(-1).section, undefined);
+  const dir = mkdtempSync(join(tmpdir(), 'kt-sec-'));
+  mkdirSync(join(dir, 'activity'));
+  const date = ev.at.slice(0, 10);
+  const { held, ...sent } = ev;
+  const file = join(dir, 'activity', `${date}.json`);
+  writeFileSync(file, JSON.stringify({ schemaVersion: 1, date, device: { deviceId: 'tab-test', extensionVersion: '0.1.0', quizTypes: ['text'], lastSyncAt: ev.at }, events: [sent] }));
+  assert.deepEqual(validateFile(file).errors, []);
+});

@@ -4,7 +4,7 @@ import { ask } from '../../../core/lib/ask.js';
 import { APPS } from '../../registry.js';
 import { say, listen, recordedUrl } from '../lib/voice.js';
 import { el, btn, toast, runNow, notesDock, promptNotesBox, hooks } from './kit.js';
-import { mountSettings } from './settings.js';
+import { mountSettings, settingsBox } from './settings.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { renderMarkdown, promptSteps } from './markdown.js';
 
@@ -642,6 +642,8 @@ function noteTarget() {
   if (r.video) return { videoId: r.video };
   if (r.tab === 'context') return { doc: contextDoc };
   if (r.tab === 'prompt') return { prompt: true };
+  // Settings in 🔳 One box: the note is about the box on the screen when it starts.
+  if (r.tab === 'settings' && settingsBox()) return { list: 'settings', section: settingsBox() };
   return { list: r.tab };   // today | planned | history | settings
 }
 notesDock({ card: $('notesCard'), fabHost: $('mic'), where: noteTarget,

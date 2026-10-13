@@ -16,6 +16,7 @@ const ev = (id, at, type, extra) => ({ eventId: id, at, type, ...extra });
 test('which events are notes', () => {
   assert.equal(noteOf(ev('a', 't', 'wish', { text: 'More animals' })).where, 'message to the helper');
   assert.match(noteOf(ev('a', 't', 'wish', { text: 'x', list: 'settings' })).where, /the app/);
+  assert.equal(noteOf(ev('a', 't', 'wish', { text: 'x', list: 'settings', section: 'Talking friend' })).where, 'note about the app (Settings, the box “Talking friend”)');
   assert.equal(noteOf(ev('a', 't', 'parentNote', { videoId: 'v', comment: 'Too fast' })).text, 'Too fast');
   assert.equal(noteOf(ev('a', 't', 'parentNote', { videoId: 'v', liked: true })), null);   // a 👍 alone is not a note
   assert.ok(noteOf(ev('a', 't', 'prompt', { action: 'add', text: 'x', noteId: 'a' })));

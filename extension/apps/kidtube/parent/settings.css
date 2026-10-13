@@ -21,6 +21,26 @@
 .settings .secnav::-webkit-scrollbar { display: none; }
 .settings .secnav button { flex: none; padding: 6px 12px; font-size: 14px; border-radius: 16px; }
 
+/* the folding boxes: the title opens and closes its box */
+.settings section > h2 { margin: 0; cursor: pointer; display: flex; justify-content: space-between; align-items: center; gap: 8px; user-select: none; }
+.settings section > h2::after { content: '▾'; color: var(--muted); font-size: 18px; transition: transform .2s; }
+.settings section.closed > h2::after { transform: rotate(-90deg); }
+.settings section:not(.closed) > h2 { margin-bottom: 12px; }
+.settings section.closed > :not(h2) { display: none !important; }
+.settings section > h2:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
+
+/* 🔳 One box: one box on the whole screen, a swipe or ‹ › goes to the next one */
+.settings .secnav .slidebtn { font-weight: 600; }
+.settings .pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 10px; }
+.settings .pager[hidden] { display: none; }
+.settings .pager span { flex: 1; text-align: center; color: var(--muted); font-size: 14px; }
+.settings .pager button { margin: 0; min-width: 48px; font-size: 20px; padding: 4px 12px; }
+.settings.slides { display: flex; flex-direction: column; }
+.settings.slides section { min-height: calc(100vh - 260px); margin-bottom: 12px; }
+.settings.slides section > h2 { cursor: default; }
+.settings.slides section > h2::after { content: none; }
+.settings.slides .savebar { order: 1; }
+
 /* on / off rows: the words on the left, a switch on the right */
 .settings label.check { display: flex; align-items: center; justify-content: space-between; gap: 14px; color: var(--ink); font-size: 16px;
   margin: 10px 0 0; padding: 10px 0; border-top: 1px solid var(--line); }

@@ -8,6 +8,7 @@ import { el as make } from './kit.js';
 
 const MARKUP = `
   <nav class="secnav noswipe" aria-label="Settings sections">
+    <button type="button" id="slideMode" class="slidebtn" title="One box at a time, full screen: swipe to the next box">🔳 One box</button>
     <button type="button" data-sec="sec-status">Status</button>
     <button type="button" data-sec="sec-time">Time and list</button>
     <button type="button" data-sec="sec-sites">Websites</button>
@@ -15,6 +16,11 @@ const MARKUP = `
     <button type="button" data-sec="sec-hearing">Hearing</button>
     <button type="button" data-sec="sec-pin">PIN</button>
   </nav>
+  <div class="pager" id="pager" hidden>
+    <button type="button" id="prevBox" aria-label="The box before">‹</button>
+    <span id="boxOf"></span>
+    <button type="button" id="nextBox" aria-label="The next box">›</button>
+  </div>
 
   <section id="sec-status" data-bridge="no">
     <h2>Status</h2>
@@ -157,6 +163,13 @@ async function patchSettings(patch) {
 }
 const el = (tag, text, cls) => make(tag, cls, text);
 
+// The boxes fold (2026-10-13, the parent's wish): only the first one (Status) is open at first. 🔳 One box shows one box
+// at a time on the whole screen; a swipe (or ‹ ›) goes to the next one, and a 🎤 note started there is about that box.
+// Kept while the parent page is open, so coming back to the tab finds it as it was left.
+const shown = { open: new Set(['sec-status']), slides: false, at: 0, title: null };
+// The box a note is about: its title while 🔳 One box is on, else null (parent.js noteTarget).
+export const settingsBox = () => (shown.slides ? shown.title : null);
+
 export function mountSettings(root) {
   root.classList.add('settings');
   root.innerHTML = MARKUP;
@@ -240,12 +253,97 @@ export function mountSettings(root) {
   for (const sec of root.querySelectorAll('section.rules')) {
     for (const t of ['input', 'change']) sec.addEventListener(t, () => { if (!drawing) sayRules('Unsaved changes'); });
   }
-  // The chip tapped stays marked: a sign the tap worked even when the page is already at that section.
-  const chips = [...root.querySelectorAll('.secnav button')];
+  // --- the boxes: folded, or one at a time (🔳 One box) ---------------------------------------------
+  const secs = [...root.querySelectorAll(':scope > section')];
+  const chips = [...root.querySelectorAll('.secnav button[data-sec]')];
+  const titleOf = (sec) => sec.querySelector('h2').textContent;
+  function drawBoxes() {
+    root.classList.toggle('slides', shown.slides);
+    // In 🔳 One box a swipe goes to the next box, not to the next tab (parent.js skips .noswipe).
+    root.classList.toggle('noswipe', shown.slides);
+    $('slideMode').classList.toggle('on', shown.slides);
+    $('slideMode').textContent = shown.slides ? '✕ All boxes' : '🔳 One box';
+    $('pager').hidden = !shown.slides;
+    shown.at = Math.max(0, Math.min(secs.length - 1, shown.at));
+    shown.title = titleOf(secs[shown.at]);
+    secs.forEach((sec, i) => {
+      const open = shown.slides || shown.open.has(sec.id);
+      sec.classList.toggle('closed', !open);
+      sec.hidden = shown.slides && i !== shown.at;
+      sec.querySelector('h2').setAttribute('aria-expanded', String(open));
+    });
+    if (shown.slides) {
+      $('boxOf').textContent = `${shown.at + 1} of ${secs.length} · ${shown.title}`;
+      $('prevBox').disabled = shown.at === 0;
+      $('nextBox').disabled = shown.at === secs.length - 1;
+      for (const c of chips) c.classList.toggle('on', c.dataset.sec === secs[shown.at].id);
+    }
+  }
+  for (const sec of secs) {
+    const h = sec.querySelector('h2');
+    h.setAttribute('role', 'button');
+    h.tabIndex = 0;
+    const fold = () => {
+      if (shown.slides) return;
+      if (shown.open.has(sec.id)) shown.open.delete(sec.id); else shown.open.add(sec.id);
+      drawBoxes();
+    };
+    h.addEventListener('click', fold);
+    h.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); fold(); } });
+  }
+  function goBox(i) {
+    shown.at = i;
+    drawBoxes();
+    scrollTo(0, 0);
+    checkSlides();
+  }
+  $('slideMode').addEventListener('click', () => {
+    shown.slides = !shown.slides;
+    // Back to all boxes: the one just seen stays open there.
+    if (!shown.slides) shown.open.add(secs[shown.at].id);
+    goBox(shown.at);
+    if (!shown.slides) secs[shown.at].scrollIntoView({ block: 'start' });
+  });
+  $('prevBox').addEventListener('click', () => goBox(shown.at - 1));
+  $('nextBox').addEventListener('click', () => goBox(shown.at + 1));
+  // A swipe left: the next box; right: the one before. Not on a field, so text can still be selected.
+  let touch = null;
+  root.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    touch = shown.slides && e.touches.length === 1 && !e.target.closest?.('textarea, input, select, .secnav') ? { x: t.clientX, y: t.clientY } : null;
+  }, { passive: true });
+  root.addEventListener('touchend', (e) => {
+    if (!touch) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touch.x, dy = t.clientY - touch.y;
+    touch = null;
+    if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
+    const i = shown.at + (dx < 0 ? 1 : -1);
+    if (i >= 0 && i < secs.length) goBox(i);
+  }, { passive: true });
+  // 🔳 One box: one box on the screen, the one its chip and the 🎤 note name.
+  function checkSlides() {
+    if (!shown.slides) return;
+    globalThis.KidTubeWatch?.check({ id: 'parent.settings.oneBox', area: 'parent', expect: '🔳 One box shows one open box, the one marked and named for a note',
+      code: ['apps/kidtube/parent/settings.js drawBoxes', 'apps/kidtube/parent/parent.js noteTarget'] }, (t) => {
+      if (!root.isConnected || !shown.slides) return t.skip('left the mode');
+      const seen = secs.filter((sec) => !sec.hidden);
+      t.eq('boxes on the screen', 1, seen.length);
+      t.eq('the box', secs[shown.at].id, seen[0]?.id ?? null);
+      t.ok('it is open', !seen[0]?.classList.contains('closed'), 'folded', 'open');
+      t.eq('the marked chip', secs[shown.at].id, root.querySelector('.secnav button[data-sec].on')?.dataset.sec ?? null);
+      t.eq('the box a note is about', titleOf(secs[shown.at]), settingsBox());
+    }, 1500);
+  }
+  // The chip tapped stays marked: a sign the tap worked even when the page is already at that section. Its box opens.
   chips.forEach((b) => b.addEventListener('click', () => {
+    if (shown.slides) { goBox(secs.findIndex((sec) => sec.id === b.dataset.sec)); return; }
     for (const c of chips) c.classList.toggle('on', c === b);
+    shown.open.add(b.dataset.sec);
+    drawBoxes();
     $(b.dataset.sec).scrollIntoView({ behavior: 'smooth', block: 'start' });
   }));
+  drawBoxes();
 
   async function renderRules() {
     drawing = true;

@@ -335,6 +335,12 @@
                   ],
                   "description": "a parent's note for the AI about this list (parent mode)"
                 },
+                "section": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 60,
+                  "description": "list settings: the Settings box the note is about (its title, from One box mode)"
+                },
                 "context": {
                   "$ref": "#/$defs/noteContext"
                 },
