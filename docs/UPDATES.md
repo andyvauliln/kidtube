@@ -1,7 +1,8 @@
 # How an update gets to the tablet
 
 This document tells how a change goes from the code to the tablet, step by step. It covers the extension (Custom
-Apps: KidTube, Instagram), the server's agents, and the rules that change without a release.
+Apps: KidTube, Instagram), the server's agents, the rules that change without a release, and how the git
+repositories merge the changes of several writers (section 9).
 
 Kind: reference (kept current). As of 0.12.10, 2026-10-13.
 
@@ -16,8 +17,7 @@ Kind: reference (kept current). As of 0.12.10, 2026-10-13.
 - There are no release branches and no tags. A version is a commit on `main` with a new number in
   `extension/manifest.json`.
 - Three writers push to `main`: a person in a chat session, the fix agent, and the notes agent. They do not lock each
-  other. Each one must do `git pull --rebase origin main` before `git push`. A conflict means that two writers changed
-  the same lines: keep both changes, test again, then push.
+  other. Section 9 tells how their changes merge.
 
 ## 2. The parts of a release
 
@@ -173,3 +173,102 @@ a newer release already fixed gets the answer "fixed in X". It does not get a se
 3. If the version is old, look at `context.app.update.status`:
    - `throttled` or `no_update` for a long time: install by hand.
    - `installType: development`: install the `.crx` by hand once.
+
+## 9. Git: who writes, and how the changes merge
+
+There are two repositories:
+
+| Repository | Visibility | What it holds | Branch |
+| --- | --- | --- | --- |
+| `andyvauliln/kidtube` (the code repo) | Public | The extension, the agents, the docs, the releases in `site/` | `main` |
+| `kidtube-data` (the data repo) | Private | Each profile's lists, rules, notes, the problem reports, the answers | its default branch |
+
+Nobody merges with merge commits. Every writer puts its commit on top of the newest remote commit (a rebase), or
+writes one file with a check that nobody wrote it first. Nobody force-pushes or rewrites history.
+
+### 9.1 The code repo
+
+**The writers and their copies:**
+
+| Writer | Its copy of the code | Before it starts |
+| --- | --- | --- |
+| A person in a chat session | `~/youtube-wraper` (the main checkout, branch `main`) | `git fetch`, then `git pull --rebase` |
+| The fix agent, the notes agent | `~/.local/share/kidtube/app` (their own clone) | `poll.sh` does `git fetch`, `git reset --hard origin/main` and `git clean -fd`. Old local changes are dropped. |
+| The nightly helper, the cron | `~/youtube-wraper` (the main checkout) | Nothing: they run the files as they are in the working tree |
+
+**Push a change (every writer, every time):**
+
+1. Commit the change. The message ends with the `Co-Authored-By` line.
+2. Run `git fetch origin`.
+3. Run `git rebase origin/main`. Your commit now sits on top of the other writers' commits.
+4. If there is a conflict, solve it (below). Then `git add` the file and `git rebase --continue`.
+5. Run `npm test` again. A rebase can change what your code meets.
+6. Run `git push origin main`.
+7. If the push is refused ("fetch first"), another writer pushed in the meantime. Go back to step 2.
+
+**Solve the usual conflicts:**
+
+| Conflict | What to do |
+| --- | --- |
+| `extension/manifest.json` → `"version"` (two writers raised the same number) | Take the next free number above the newest released one (`site/latest.json`). Example: the remote has 0.12.6, yours had 0.12.6 too → yours becomes 0.12.7. Change the first line of your commit message to the same number. |
+| A shared list or table in the code (example: `WAIT` in `extension/core/lib/ask.js`) | Keep the entries of both writers. |
+| A function that both writers changed (example: `extension/core/background/updates.js`) | Read the other writer's commit (`git show <commit>`). Keep its purpose (example: a time limit) inside your version of the function. Then run its tests too. |
+| A test that the other writer's change breaks | Fix the test's precondition, not the behaviour. Say so in the commit message. |
+| Release files in `site/` (`.crx`, `.zip`, `latest.json`, `updates.xml`, `orion/`) | Never solve them by hand. They are made by a script. Finish the rebase of the code first, then run `npm run release:quetta` (and the Orion build) again, then commit the release. |
+
+**Make the release after the rebase, not before.** The release commit must come last, on top of the newest code.
+Otherwise `latest.json` names a version whose code is not all on `main`.
+
+**The server's main checkout follows `main`:**
+
+- After an agent run, `poll.sh` runs `git pull --ff-only origin main` in `~/youtube-wraper`, but only when that
+  checkout has no local changes.
+- So while a chat session has changes that are not committed there, the server's checkout stays behind. Commit and
+  push soon.
+- The cron runs `agent/poll.sh` from this working tree. An edit to `poll.sh` is live at once, even before it is
+  committed. Test it before you save it.
+
+**Old local branches:** `refactor` (worktree `~/youtube-wraper-refactor`) and `mesh-avatar` (worktree
+`~/youtube-wraper-mesh`) are merged into `main`. Nobody pushes them. Do not work in them.
+
+### 9.2 The data repo
+
+The tablet does not use git. It uses GitHub's contents API: it reads one file and its `sha` (the file's version id),
+changes it, and writes it back with that `sha`. If another writer changed the file in the meantime, GitHub refuses the
+write (status 409 or 422). Then the tablet reads the file again, merges its change into the new content, and writes
+again. It tries 3 times (`extension/core/lib/github.js putRepoFile`).
+
+The server uses a git clone (`~/.local/share/kidtube/kidtube-data`):
+
+1. Before it reads, it runs `git fetch` and `git reset --hard` to the remote (`agent/lib/data.mjs syncClone`).
+   Local leftovers are dropped.
+2. After it writes, it runs `git add -A`, `git commit` and `git push`.
+3. If the push is refused (the tablet wrote a file in the meantime), it runs `git pull --rebase` and pushes again. It
+   tries 3 times (`agent/lib/data.mjs commitAndPush`; the same loop is in `agent/poll.sh` for `run-status.json` and
+   `fixes.json`).
+4. `poll.sh` sees new work with `git ls-remote`, once a minute. It pulls only when the remote changed.
+
+**Each file has one owner, so the two sides rarely meet in the same file:**
+
+| File (in the profile's folder, `<app>/<folder>/`, unless it says "top") | Written by | How a second writer merges |
+| --- | --- | --- |
+| `activity/<day>.json` (what he watched, the parent's notes, plan changes) | Tablet | Adds its events; an event with the same `eventId` is not added twice |
+| `parent-config.json` (rules changed on the tablet) | Tablet (the helper reads it) | The tablet's changes are merged over the newest file: objects merge, lists and values replace (`core/lib/merge.js mergeConfig`) |
+| `requests/run.json` (↻ Update) | Tablet | Replaced: the newest request wins |
+| `profile.json`, `transcripts/<id>.json` | Tablet | Written once |
+| `posts.json`, `posts/<id>.json`, `notes/<id>.wav` (Instagram) | Tablet | One file per post |
+| `problems/<day>.json` (top) | Tablet | One entry per `reportId`: the tablet replaces its own entry, keeps the others |
+| `queue.json`, `memory.json`, `helper.json`, `context/*.md` | Server (the helper) | A git rebase over the tablet's commits |
+| `run-status.json`, `notes-done.json`, `answers.json` | Server (`poll.sh`) | A git rebase over the tablet's commits |
+| `handled.json` (Instagram) | Server (the posts agent) | A git rebase |
+| `fixes.json` (top) | Server (`poll.sh`, from the fix agent's result) | A git rebase |
+
+Because the tablet and the server write different files, a git rebase on the server does not stop on a conflict.
+If two tablets write the same file at the same time, the `sha` check makes the second one read again and merge.
+
+### 9.3 What the tablet reads
+
+The tablet reads the data repo's files with an ETag: GitHub answers "not changed" when the file is the same, and that
+costs almost nothing. It reads them at each sync: every 15 minutes, every minute while a question or a run waits,
+and when a KidTube screen opens and the last sync is older than 2 minutes. The tablet never reads the code repo with
+git: a new version comes only as a release (sections 3 and 4).
