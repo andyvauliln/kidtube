@@ -34,6 +34,7 @@ Changed in parent mode → Settings (the extension's options page leads there af
 | `presenter.voice.lang`, `rate`, `pitch`               | en-US, 1.1, 2                      | Tablet's own voice (used when there is no recording).                                        |
 | `presenter.voice.listen`                              | device                             | How his spoken answers are heard.                                                            |
 | `presenter.phrases`                                   | (helper writes)                    | Recorded praise / retry / hello / bye lines.                                                 |
+| `agents.notesPerDay`, `helperPerDay`, `fixPerDay`     | (agent/config.json: 10, 6, 6)      | Settings → AI on the server: the server's AI runs a day. Notes and helper: this profile; fix: all profiles (the newest file wins). `agent/limits.mjs` keeps them inside 30, 12 and 20; 0 = no runs. |
 
 
 
@@ -63,6 +64,7 @@ A profile = one account with one app: a YouTube (Google) account email for `kidt
 - `queue.json` — today's 10 videos **plus up to 10 spares** (intro/outro text + recordings, quiz ids), and `upcoming` (planned list).
 - `memory.json` — the helper's record of every video (parent mode Planned / History).
 - `audio/*.mp3`, `transcripts/*.json`, `characters/`.
+- `server.json` — written by the server (`agent/limits.mjs`, from `agent/poll.sh`) when it changes: the AI runs a day in force, today's runs (a UTC day), the defaults and limits, and the e-mail address of the Claude account the agents use. Settings → AI on the server shows it.
 - It writes `activity/` (watches, answers, thumbs, comments, wishes, parent-mode plan changes).
 - Beside the profile folders: `<app>/keys.json` (0.9.15, optional) — `{ "schemaVersion": 1, "groqKey": "gsk_…", "geminiKey": "AIza…", "openrouterKey": "sk-or-…" }` (0.9.18: groqKey), the listening keys for every tablet and profile of the app. A key typed in Settings → Talking friend wins. The data repo must stay private.
 
@@ -88,9 +90,9 @@ A profile = one account with one app: a YouTube (Google) account email for `kidt
 
 - Notes for the AI (the 🎤 bottom right on every parent screen, about that screen; ⏹ adds the note at once; or typed in the card) wait on the tablet: the header's 🔔 list shows each one with **Edit**, **Delete** and **Send** (that note only), **Send all**, and checkboxes for what goes with it: 📄 This screen and ⚙️ App data (kept with the note when it is made, sent only when ticked) and ❓ Question. A question (❓ or a "?") gets its answer from the notes agent in `answers.json` (beside `notes-done.json`), shown under it; any other note gets what the agent did about it there too, shown in its row's **Details**. **Send all** or **↻ Update** sends them all to `activity/` and writes `requests/run.json` (a new id) to kidtube-data.
 - Crontab runs `agent/poll.sh` every minute. It does one `git ls-remote`; only when kidtube-data changed does it pull and look for a new request id and new notes (`agent/notes.mjs`, no AI; handled ones are listed in `state/notes-handled.json`).
-- **New notes → the notes agent**: Claude Code runs `agent/NOTES.md` in its own checkout (`notesAgent.workDir`, reset to `origin/main` each time) with the notes. For each note it decides: change the app (then `npm run ship`: a new version for Quetta; Orion only when a note asks), change the helper (`DAILY.md`, `SYSTEM.md`, skills, config), or have the helper update the lists. It writes a summary (shown in parent mode as the status) and whether the helper should run; at most `notesAgent.perDay` (10) runs a day. Log: `state/notes.log`.
+- **New notes → the notes agent**: Claude Code runs `agent/NOTES.md` in its own checkout (`notesAgent.workDir`, reset to `origin/main` each time) with the notes. For each note it decides: change the app (then `npm run ship`: a new version for Quetta; Orion only when a note asks), change the helper (`DAILY.md`, `SYSTEM.md`, skills, config), or have the helper update the lists. It writes a summary (shown in parent mode as the status) and whether the helper should run; at most `notesAgent.perDay` (10) runs a day, or the number in Settings → AI on the server (`agent/limits.mjs`). Log: `state/notes.log`.
 - **No new notes** (↻ Update data only) → the helper runs, as before. Either way it runs `agent/daily.sh` under the same `flock` lock as the nightly run (one run at a time).
-- At most `orchestrator.onDemandPerDay` (6) runs a day. After that the status says it was not run; the nightly run still happens.
+- At most `orchestrator.onDemandPerDay` (6) runs a day, or the number in Settings → AI on the server. After that the status says it was not run; the nightly run still happens.
 - Status goes to `run-status.json` (`running`, `done`, `failed`, with a message). Parent mode shows it in the header. `done` means the run pushed a new `helper:` commit.
 
 ### 2.2 Parameters — `agent/config.json`

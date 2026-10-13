@@ -101,7 +101,9 @@ fix_lane() {
   problems=$(node agent/problems.mjs new --data "$CLONE" --state "$SROOT") || return 0
   count=$(printf '%s' "$problems" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(String(JSON.parse(s).length))}catch{process.stdout.write('0')}})")
   [ "${count:-0}" -gt 0 ] || return 0
-  max=$(cfg "c.fixAgent?.perDay??6")
+  # The parent can change it in Settings (agent/limits.mjs: parent-config.json `agents`, kept inside safe numbers).
+  max=$(node agent/limits.mjs get fix --data "$CLONE" 2>/dev/null)
+  [ -n "$max" ] || max=$(cfg "c.fixAgent?.perDay??6")
   ran=$(grep -c "^$(date -u +%F) " "$SROOT/fix-runs.log" 2>/dev/null || true)
   [ "${ran:-0}" -lt "$max" ] || return 0   # the reports wait for tomorrow (they stay new)
   log="$SROOT/fix.log"
@@ -161,6 +163,9 @@ if [ "$PROFILE" = "-" ]; then PROFILE=""; DATA=$CLONE; STATE=$SROOT
 else DATA="$CLONE/$PROFILE"; STATE="$SROOT/$PROFILE"; fi
 [ -d "$DATA" ] || exit 0
 mkdir -p "$STATE"
+# This profile's numbers of runs a day: the parent's from Settings (agent/limits.mjs), else config.json's.
+n=$(node agent/limits.mjs get notes --data "$DATA" 2>/dev/null) && [ -n "$n" ] && NOTES_MAX=$n
+n=$(node agent/limits.mjs get helper --data "$DATA" 2>/dev/null) && [ -n "$n" ] && MAX=$n
 # A new profile (the tablet wrote its profile.json): its starter files now, no AI (kt.mjs init-profile),
 # so the tablet gets a list and rules on its next sync instead of waiting for the night.
 if [ -n "$PROFILE" ] && [ -f "$DATA/profile.json" ] && [ ! -f "$DATA/queue.json" ]; then
@@ -212,7 +217,7 @@ run_helper() { # code checkout to run it from, text to put before the result
   local n
   n=$(grep -c "^$TODAY " "$STATE/on-demand" 2>/dev/null || true)
   if [ "${n:-0}" -ge "$MAX" ]; then
-    status done "${before_text}The helper already ran $MAX times on request today; it updates the lists in its nightly run."
+    status done "${before_text}The helper already ran $MAX times on request today; it updates the lists in its nightly run. Settings → AI on the server changes this number."
     return
   fi
   echo "$TODAY $statusId" >> "$STATE/on-demand"
@@ -235,7 +240,7 @@ if [ "$count" -gt 0 ]; then
     # Over the day's limit: the notes stay new and are read tomorrow. Said once a day.
     if [ "$(cat "$STATE/notes-limit" 2>/dev/null)" != "$TODAY" ]; then
       echo "$TODAY" > "$STATE/notes-limit"
-      status failed "Your notes arrived. The AI already worked on notes $NOTES_MAX times today, so it reads these tomorrow."
+      status failed "Your notes arrived. The AI already worked on notes $NOTES_MAX times today, so it reads these tomorrow. Settings → AI on the server changes this number."
     fi
     [ -n "$id" ] && run_helper "$ROOT"
     exit 0
@@ -298,3 +303,12 @@ fi
 )
 
 for P in $PROFILES; do poll_profile "$P"; done
+
+# server.json in each profile folder: the runs a day and today's runs, for Settings → AI on the server. Only a change
+# is pushed.
+if [ "$(node agent/limits.mjs status --data "$CLONE" --state "$SROOT" 2>/dev/null)" -gt 0 ] 2>/dev/null; then
+  git -C "$CLONE" add -A -- '*server.json'
+  if git -C "$CLONE" -c user.name="KidTube helper" commit --quiet -m "helper: server status"; then
+    for i in 1 2 3; do git -C "$CLONE" push --quiet origin HEAD && break; git -C "$CLONE" pull --quiet --rebase origin HEAD; done
+  fi
+fi

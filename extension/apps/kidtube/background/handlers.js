@@ -258,7 +258,7 @@ export const HANDLERS = {
   // Deletes one note (id), or all of them (all: true); only notes not sent yet.
   dropNote: (msg) => withState((s) => dropHeld(s, msg.all ? null : String(msg.id ?? ''))),
   plan: (msg) => withState((s) => planChange(s, msg)).then((r) => { if (r?.ok) sync(); return r; }),
-  getRules: () => withState(async (s) => ({ config: (await effective(s)).config, pending: !!s.localConfig, repoAvatars: s.repoAvatars ?? [] })),
+  getRules: () => withState(async (s) => ({ config: (await effective(s)).config, pending: !!s.localConfig, repoAvatars: s.repoAvatars ?? [], server: s.data.server ?? null })),
   saveRules: (msg) => saveRules(msg.patch),
   resetToday: () => withState((s) => { s.today = null; return { ok: true }; }),
 

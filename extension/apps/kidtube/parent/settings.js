@@ -1,4 +1,4 @@
-// The settings view (the parent screens' Settings tab): status, rules, the talking friend and the PIN. Everything
+// The settings view (the parent screens' Settings tab): status, rules, the talking friend, the server’s AI runs a day and the PIN. Everything
 // else has one place only: the account, the GitHub connection, the settings file, a new version and the notes for the
 // AI (🔔) are in the apps header, Parent | Kid in the bottom bar, the helper's prompt in the Prompt tab.
 import { hashPin } from '../../../core/lib/pin.js';
@@ -14,6 +14,7 @@ const MARKUP = `
     <button type="button" data-sec="sec-sites">Websites</button>
     <button type="button" data-sec="sec-friend">Talking friend</button>
     <button type="button" data-sec="sec-hearing">Hearing</button>
+    <button type="button" data-sec="sec-server">AI server</button>
     <button type="button" data-sec="sec-pin">PIN</button>
   </nav>
   <div class="pager" id="pager" hidden><span id="boxOf"></span></div>
@@ -128,6 +129,22 @@ const MARKUP = `
     </div>
     <button id="tryMic">🎤 Try the microphone</button>
     <p id="micOut" class="hint">Press “Try the microphone” once and allow it, so the questions can hear him.</p>
+  </section>
+
+  <section id="sec-server" class="rules" data-bridge="no">
+    <h2>AI on the server</h2>
+    <p class="muted">How many times a day the server’s AI may work for this profile. Each run uses the Claude account below. 0 = no runs. The server keeps each number inside its limit.</p>
+    <dl id="serverRuns"></dl>
+    <div class="two">
+      <div><label for="notesPerDay">Runs on your notes per day</label><input id="notesPerDay" type="number" min="0" max="30" inputmode="numeric">
+        <p class="hint">One run takes all the notes that wait. Up to 30.</p></div>
+      <div><label for="helperPerDay">Helper runs per day (↻ Update)</label><input id="helperPerDay" type="number" min="0" max="12" inputmode="numeric">
+        <p class="hint">New lists on request. The nightly run always happens. Up to 12.</p></div>
+    </div>
+    <div class="two">
+      <div><label for="fixPerDay">Fix runs per day (problems the checks found)</label><input id="fixPerDay" type="number" min="0" max="20" inputmode="numeric">
+        <p class="hint">For all profiles: the number saved last counts. Up to 20.</p></div>
+    </div>
   </section>
 
   <div class="savebar" id="savebar" hidden>
@@ -337,7 +354,7 @@ export function mountSettings(root) {
 
   async function renderRules() {
     drawing = true;
-    const { config: c, pending, repoAvatars = [] } = await send({ type: 'getRules' });
+    const { config: c, pending, repoAvatars = [], server = null } = await send({ type: 'getRules' });
     const pick = $('friendAvatar');
     pick.querySelectorAll('option[data-repo]').forEach((o) => o.remove());
     for (const n of new Set([...repoAvatars, ...(String(c.presenter?.avatar ?? '').startsWith('repo:') ? [c.presenter.avatar.slice(5)] : [])])) {
@@ -383,8 +400,22 @@ export function mountSettings(root) {
       if (repoKeys.openrouter) $('voiceKey').placeholder = 'Empty: the key from the data repo is used';
     });
     voiceLang = p.voice?.lang || 'en-US';
+    drawServer(c.agents ?? {}, server);
     if (pending) sayRules('Some rules are saved on this tablet only and will go to GitHub on the next sync.'); else savebar.hidden = true;
     drawing = false;
+  }
+
+  // AI on the server: server.json (agent/limits.mjs) says the numbers in force and today's runs (a UTC day).
+  const SERVER_RUNS = [['notes', 'notesPerDay', 'Runs on your notes', 10], ['helper', 'helperPerDay', 'Helper runs', 6], ['fix', 'fixPerDay', 'Fix runs (all profiles)', 6]];
+  function drawServer(agents, server) {
+    const today = server?.day === new Date().toISOString().slice(0, 10);
+    const rows = server ? [
+      ...SERVER_RUNS.map(([kind, , label]) => [`${label} today`, `${today ? server.runs?.[kind]?.used ?? 0 : 0} of ${server.runs?.[kind]?.perDay ?? '?'}`]),
+      ['Claude account', server.account ?? 'not known'],
+      ['The server’s numbers', server.updatedAt ? new Date(server.updatedAt).toLocaleString() : '—'],
+    ] : [['The server', 'has not sent its numbers yet. It does after its next run.']];
+    $('serverRuns').replaceChildren(...rows.flatMap(([k, v]) => [el('dt', k), el('dd', v)]));
+    for (const [kind, key, , fallback] of SERVER_RUNS) $(key).value = agents[key] ?? server?.runs?.[kind]?.default ?? fallback;
   }
 
   $('addWindow').addEventListener('click', () => { $('windows').append(windowEditor()); sayRules('Unsaved changes'); });
@@ -432,6 +463,7 @@ export function mountSettings(root) {
           listen: { provider: $('listenProvider').value, freeModels: freeModels(), models: listenModels() } },
       },
       quiz: { enabled: $('quizOn').checked, onFail: $('onFail').value, maxAttempts: int('maxAttempts', 1, 10) },
+      agents: { notesPerDay: int('notesPerDay', 0, 30), helperPerDay: int('helperPerDay', 0, 12), fixPerDay: int('fixPerDay', 0, 20) },
     };
     if (patch.presenter.imageUrl && !/^(https:\/\/\S+|repo:[A-Za-z0-9_./-]+\.(svg|png|jpg|jpeg|webp|gif))$/.test(patch.presenter.imageUrl)) {
       errors.push('The picture must be a link starting with https:// or a repo file like repo:characters/friend.svg');

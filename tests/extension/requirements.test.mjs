@@ -406,3 +406,20 @@ test('R027 “ok add pikachu now”, then “Should Settings offer Pikachu?” �
     delete globalThis.caches;
   }
 });
+
+test('R105 “can i see this configuration in a settings”, then “show and change”: the server’s AI runs a day in Settings', async () => {
+  for (const k of Object.keys(repo)) delete repo[k];
+  repo['kidtube/kid/profile.json'] = { schemaVersion: 1, email: EMAIL };
+  const server = { schemaVersion: 1, day: '2026-10-13', account: 'parent@example.com', updatedAt: '2026-10-13T16:00:00Z',
+    runs: { notes: { used: 4, perDay: 10, default: 10, max: 30 }, helper: { used: 1, perDay: 6, default: 6, max: 12 }, fix: { used: 0, perDay: 6, default: 6, max: 20 } } };
+  repo['kidtube/kid/server.json'] = server;
+  kidDay();
+  Object.assign(fake.store, { settings: { ...fake.store.settings, mode: 'parent' } });
+  await fromPage({ type: 'sync' });
+  assert.deepEqual((await fromPage({ type: 'getRules' })).server, server, 'Settings gets the server’s numbers');
+  await fromPage({ type: 'saveRules', patch: { agents: { notesPerDay: 15, helperPerDay: 2, fixPerDay: 4 } } });
+  assert.deepEqual(repo['kidtube/kid/parent-config.json'].agents, { notesPerDay: 15, helperPerDay: 2, fixPerDay: 4 }, 'saved where the server reads it (agent/limits.mjs)');
+  assert.deepEqual((await fromPage({ type: 'getRules' })).config.agents, { notesPerDay: 15, helperPerDay: 2, fixPerDay: 4 });
+  // The card is out of the bridge's reach (dev mode), as the other rules.
+  assert.match(readFileSync('extension/apps/kidtube/parent/settings.js', 'utf8'), /<section id="sec-server" class="rules" data-bridge="no">/);
+});

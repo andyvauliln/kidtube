@@ -101,6 +101,16 @@
       "minimum": 1,
       "maximum": 30
     },
+    "agents": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Settings → AI on the server: AI runs a day (agent/limits.mjs keeps each one inside its limit; missing = agent/config.json)",
+      "properties": {
+        "notesPerDay": { "type": "integer", "minimum": 0, "maximum": 30, "description": "notes agent runs a day, this profile" },
+        "helperPerDay": { "type": "integer", "minimum": 0, "maximum": 12, "description": "helper runs on request (↻ Update) a day, this profile" },
+        "fixPerDay": { "type": "integer", "minimum": 0, "maximum": 20, "description": "fix agent runs a day, all profiles: the newest file wins" }
+      }
+    },
     "requiredFirst": {
       "type": [
         "string",

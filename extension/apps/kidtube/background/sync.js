@@ -102,6 +102,8 @@ export async function syncKidTube({ loc, token, data, status, acct }) {
     await optional('answers.json', 'answers', (j) => Array.isArray(j?.answers) && (update.answers = j.answers.slice(-50)));
     // runs.json: time, turns and cost of the latest runs (agent/runlog.mjs).
     await optional('runs.json', 'runs', (j) => Array.isArray(j?.runs) && (update.runs = j.runs.slice(-10)));
+    // server.json: the server's AI runs a day and today's runs (agent/limits.mjs), for Settings → AI on the server.
+    await optional('server.json', 'server', (j) => j?.schemaVersion === 1 && !!j.runs && (update.server = j));
     try { await pullKeys(loc, token, etags); } catch {}
     try { await pullContext(loc, token, etags); } catch (e) { status.errors.push('Context documents: ' + String(e.message ?? e)); }
   }
