@@ -42,6 +42,18 @@ Changed in parent mode → Settings (the extension's options page leads there af
 
 `token` (GitHub token for kidtube-data), `repo`, `deviceId`, the PIN, parent mode (`mode`; it stays on until the parent switches back — `parentUntil` is only left from versions before 0.8.9, which had a timer). Since 0.9.0 these belong to the tablet and are the same for every profile; everything else (rules, lists, history, notes) belongs to the profile.
 
+**Dev mode** (`docs/plans/DEVICE-BRIDGE.md`; the apps header → account menu → **Dev mode**, where the header can act:
+the unlocked header or parent mode). Also the tablet's, the same for every profile:
+
+| Setting | Default | What it does |
+| --- | --- | --- |
+| `devMode` | off | On: the server's AI agents can test this tablet (`core/background/bridge.js`). Off: no connection, nothing changes |
+| `devUntil` | never | **Stays on**: 1 hour, 1 day, or until the parent turns it off |
+| `bridgeUrl` | empty = `BRIDGE_URL` (`core/background/constants.js`): this server, `wss://68-183-124-79.sslip.io/bridge` | **Bridge server**: another one, if the parent types it |
+| `devKey` | — | Made at each turn-on; its SHA-256 goes to `devices/<device>/bridge.json` in the data repo |
+| `readOnly` | off | Only the lab browser on the server sets it (`agent/lab/lab.mjs`): the app writes nothing to GitHub |
+| screen pictures | not allowed | **Allow screen pictures** in the Dev mode card: the optional `<all_urls>` permission; given back when dev mode turns off |
+
 ### 1.2a Profiles (0.9.0)
 
 A profile = one account with one app: a YouTube (Google) account email for `kidtube`, an Instagram username for `instagram`. Its files are in its own folder of the data repo, `<app>/<folder>/`, where the folder is the email's name part (`johnnypitt.ind@gmail.com` → `kidtube/johnnypitt.ind/`) or the username (`instagram/ann.cooks/`), given once and never changed. Since 0.11.1 the header's **Connect**, pressed on the site's own page, picks the profile of the account signed in there (see docs/PLAN-PROFILES.md). On its first sync a profile writes `profile.json` into its folder; the server then adds the default `parent-config.json` and an empty `queue.json`. App registry: `extension/apps/registry.js` (tablet), `apps` in `agent/config.json` (server). Apps: `kidtube`, and `instagram` (the saved posts of the Instagram account, drawn on instagram.com; no parent or kid mode; files `posts.json`, `handled.json`, `posts/<id>.json`, `notes/<id>.wav`, see `extension/apps/instagram/README.md`). The `blank` test app became `instagram` in 0.11.0. Since 0.11.1 Blank profiles and Instagram profiles named by an email are dropped by themselves; `profile.json` of an Instagram profile has `username`.
@@ -109,6 +121,9 @@ Nothing is substituted into the prompt text itself; these numbers reach Claude t
 | `voices.speak.maxMinutes`                          | 8                            | Recording budget per run; the tablet records the rest itself (its Groq key, then its Gemini key). It never uses its own device voice. |
 | `voices.speak.lips`                                | {} (on)                      | Mouth shapes for every recording in `audio/lips.json` (Groq's Whisper word times, `GROQ_API_KEY`); `false` turns it off. |
 | `llm.*`, `openrouter.*`                            | free models first            | Text models for the backup script only.                                        |
+| `devices.enabled`                                  | true                         | Dev mode on the server: `agent/poll.sh` keeps the relay running (`agent/devices/relay.mjs`) and gives the fix and notes agents the `device_*` tools. `false`: no relay; the agents start as before. A tablet is reachable only while its own dev mode is on. |
+| `devices.relayUrl` / `port`                        | wss://68-183-124-79.sslip.io/bridge / 8790 | Where tablets connect (nginx, `agent/devices/setup-server.sh`) and the relay's local port. |
+| `devices.lab`                                      | true                         | The agents may use the lab browser (`agent/lab/lab.mjs`, Playwright MCP).     |
 
 
 **New-idea rule:** `allowed = 0` if open videos ≥ 50; else `min(50 − open, max(Gemini videos left today, 10 − open))`. The `add` tool refuses anything beyond it.

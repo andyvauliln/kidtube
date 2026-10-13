@@ -7,7 +7,7 @@
 //   server   it is on GitHub; the server writes it down
 //   failed   the server could not either (ev.voice.error): the parent types the note (Edit) or deletes it
 // Until it has words the note is not sent (releaseNotes), and the core syncs every minute (the part's waiting()).
-import { contentsUrl, ghHeaders, getRepoFile, explainHttp } from '../../../core/lib/github.js';
+import { contentsUrl, ghHeaders, getRepoFile, explainHttp, readOnly } from '../../../core/lib/github.js';
 import { withState } from '../../../core/background/store.js';
 import { setWords } from './parent.js';
 
@@ -23,6 +23,7 @@ export async function keepRecording(id, audio) {
 
 // A new file with base64 content. A file already there (the same recording, a write cut off before) is fine.
 async function putNew(loc, token, path, content, message) {
+  if (await readOnly()) return;
   const r = await fetch(contentsUrl(loc, path), {
     method: 'PUT',
     headers: { ...ghHeaders(token, 'application/vnd.github+json'), 'Content-Type': 'application/json' },

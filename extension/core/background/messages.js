@@ -13,6 +13,7 @@ import { sync, syncIfStale, settingsBackup } from './sync.js';
 import { checkUpdate, appVersion, updateApp, openUpdate } from './updates.js';
 import { partOf, allParts } from './apps.js';
 import { observe, pageResult, checksView, runStartChecks, clearReports, takeAlert, sendReports, readFixes } from '../checks/runner.js';
+import { setDevMode, devView, frameAnswer } from './bridge.js';
 
 const pinPage = (purpose) => chrome.runtime.getURL(`${PIN_PAGE}?for=${purpose}`);
 
@@ -121,6 +122,15 @@ const HANDLERS = {
   readFixes: () => readFixes({ force: true }).then((f) => ({ ok: true, error: f?.error ?? null })),
   // The 15-second banner of a new report (core/ui/watch.js): only where the parent is (not in kid mode, not at a locked header).
   checkAlert: async () => ({ ok: true, alert: (await headerOpen()) ? await takeAlert() : null }),
+  // Dev mode (core/background/bridge.js): the header's card reads it and turns it on (only where the header can act)
+  // or off; the pages' Stop turns it off from anywhere. bridgeFrame: a page's answer to a dev mode request.
+  devMode: async (msg) => {
+    if (msg.get) return { ok: true, dev: await devView() };
+    if (msg.on && !(await headerOpen())) return { ok: false, error: 'Unlock with the PIN first.' };
+    return setDevMode(msg);
+  },
+  devStop: () => setDevMode({ on: false }),
+  bridgeFrame: (msg) => frameAnswer(msg),
   version: (msg) => appVersion({ fresh: !!msg.fresh }),
   updateApp: () => updateApp(),
   openUpdate: (msg) => openUpdate(msg),

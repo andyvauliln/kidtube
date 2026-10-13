@@ -15,6 +15,7 @@ background parts (`apps/backgrounds.js`) and wires the browser's events to the m
 | `sync.js` | When a sync runs (one at a time, soon after activity, when stale), `profile.json`, then the app's `sync`. Also the install page's backup of the connection |
 | `messages.js` | The core's message types (header, PIN page, modes, sync, updates), the route to the apps' handlers, and the check that some types come only from extension pages |
 | `updates.js` | New versions: `latest.json`, the update check, the "Update" button |
+| `bridge.js` | Dev mode (off by default; the header's card turns it on): a WebSocket to the bridge server (`BRIDGE_URL`, this server: `agent/devices/relay.mjs`) and its commands: state, storage, tabs, a message as the pages send it, navigate, a screen picture, the page's part (`core/ui/bridge.js`). Refuses the PIN, the rules, the minutes, the GitHub connection, the settings file, the reports and dev mode itself |
 | `remote.js` | `site/remote.json` from GitHub Pages: data an app reads without a new version (Instagram's reader rules), every 30 minutes |
 | `../checks/` | The checks: what must be true after a start and after each message, and the reports of failures (`core/checks/README.md`) |
 | `constants.js` | Names shared by these modules: the repo, the Pages address, the PIN page, settings that belong to the tablet |

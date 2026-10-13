@@ -13,7 +13,12 @@
     "prepare": "git config core.hooksPath .githooks || true"
   },
   "devDependencies": {
+    "@playwright/mcp": "^0.0.83",
     "ajv": "^8.17.1",
     "ajv-formats": "^3.0.1"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.32.1",
+    "ws": "^8.22.0"
   }
 }

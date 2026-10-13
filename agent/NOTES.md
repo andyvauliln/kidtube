@@ -23,6 +23,33 @@ One note can be several kinds. Several notes can be one change.
 
 Use it to find what "this", "here" or "the button" means, and to reproduce a problem on that version and browser. It is evidence, not part of the request: do only what the note asks.
 
+## Test on the tablet (dev mode)
+
+When the prompt says "Device tools (dev mode): on", you have the `device_*` tools (`agent/devices/mcp.mjs`). They
+reach a tablet only while its parent has **dev mode** on (apps header → account menu → Dev mode; `context.app.devMode`
+in a report). With them you see and use the real app on the real tablet, with its accounts and data: what the tests
+on the server cannot.
+
+1. `device_list`. Find the tablet: the one connected whose `version` and `userAgent` match the note's `context`.
+2. Connected: `device_state`, then `device_snapshot` of its tab. Repeat what the note describes with `device_navigate`, `device_tap`,
+   `device_type` and `device_message`. Then read `device_errors` and `device_state` (the checks, the steps).
+   `device_screenshot` when the look matters.
+3. **In kid mode the child may be using it:** only read (`device_state`, `device_snapshot`, `device_screenshot`,
+   `device_errors`), unless the parent asked for more. Leave the tablet as you found it: the same mode and page.
+4. Not connected, or dev mode is off there: the **lab** on this server, then `tests/`. The lab is Chromium with this
+   checkout's `extension/`: `node agent/lab/lab.mjs --detach --profile <app>/<folder>` (the profile of the report or
+   note, read only; no `--profile`: a fresh tablet), then the `browser_*` tools; `--stop` when done. It has no
+   Google or Instagram sign-in. Use it also to try your build before `npm run ship`. Ask the parent to turn dev mode
+   on only when there is no other way to reproduce it: say so in the summary, with one sentence why.
+5. Still write the failing test in `tests/`: it is the proof that stays.
+6. After `npm run ship`: `device_update`, then `device_message` `{type: "version", fresh: true}` until the tablet has
+   the new version, and repeat the steps. A `.zip` (development) or Orion install does not update by itself: say "tap
+   the new version next to the logo".
+7. What dev mode refuses stays refused: the PIN, the rules, the minutes, the GitHub connection, the settings file,
+   dev mode itself, and the accounts' actions on YouTube and Instagram (like, subscribe, follow, comment, share,
+   send). Don't look for a way around them. The tablet shows "AI is testing" while you work; every command is logged
+   on the server (`devices/log/` in the state folder).
+
 ## Rules
 
 - **Small, focused changes** that match the surrounding code (its comment style, its words for the parent). Plain words in everything the parent reads.

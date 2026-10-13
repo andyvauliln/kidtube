@@ -3,7 +3,7 @@
 //   notes/<id>.wav  written here: a note recording no model on the tablet could write down
 //   handled.json    written by the posts agent (agent/instagram.mjs): what it did for each post
 //   posts/<id>.json written by the agent: a post's transcript and the notes it read (the screen asks for one: igResult)
-import { ghHeaders, contentsUrl, explainHttp, bytesToBase64 } from '../../../core/lib/github.js';
+import { ghHeaders, contentsUrl, explainHttp, bytesToBase64, readOnly } from '../../../core/lib/github.js';
 import { withState } from '../../../core/background/store.js';
 import { fetchDataFile } from '../../../core/background/sync.js';
 import { repoPost, restoreFromRepo } from '../lib/posts.js';
@@ -20,6 +20,7 @@ async function shaOf(loc, token, path) {
 
 // Writes a file (content: base64). The tablet is the only writer of these files, so a stale sha is read again once.
 async function putFile(loc, token, path, content, sha, message) {
+  if (await readOnly()) return sha ?? null;
   for (let i = 0; i < 2; i++) {
     const r = await fetch(contentsUrl(loc, path), {
       method: 'PUT',

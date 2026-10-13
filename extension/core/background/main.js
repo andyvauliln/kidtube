@@ -10,6 +10,7 @@ import { applySiteRules } from './sites.js';
 import { sync } from './sync.js';
 import { latestRelease, autoUpdate } from './updates.js';
 import { handle } from './messages.js';
+import { startBridge, bridgeUp, BRIDGE_ALARM } from './bridge.js';
 import { keepOneTab } from './tabs.js';
 import { registerChecks, runStartChecks } from '../checks/runner.js';
 import { CORE_START } from '../checks/start.js';
@@ -19,6 +20,8 @@ import APP_BACKGROUNDS from '../../apps/backgrounds.js';
 registerApps(APP_BACKGROUNDS);
 registerChecks({ start: CORE_START, actions: CORE_ACTIONS });
 for (const p of APP_BACKGROUNDS) if (p.checks) registerChecks(p.checks);
+// Dev mode: the socket to the bridge server, whenever the worker starts and dev mode is on (core/background/bridge.js).
+startBridge(handle);
 // The start checks, once the start is done and the reloaded YouTube tabs had time to ask (core/checks/start.js).
 const checkStart = (reason) => setTimeout(() => runStartChecks(reason).catch(() => {}), 5000);
 
@@ -71,6 +74,7 @@ chrome.runtime.onInstalled.addListener(async ({ reason } = {}) => {
 chrome.runtime.onStartup.addListener(async () => { await start(); checkStart('startup'); });
 chrome.alarms.onAlarm.addListener(async (a) => {
   if (a.name === SOON_ALARM) return sync();   // an answer or a run is on its way (core/background/sync.js)
+  if (a.name === BRIDGE_ALARM) return bridgeUp();
   if (a.name !== 'poll') return;
   sync();
   autoUpdate(await latestRelease());

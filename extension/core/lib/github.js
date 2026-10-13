@@ -37,8 +37,15 @@ export async function getRepoFile(loc, token, path) {
   return { json: JSON.parse(text), sha: j.sha };
 }
 
+// The lab browser on the server (agent/lab/lab.mjs) runs a real profile with settings.readOnly: it reads the data
+// repo and never writes it (every write below and in the apps does nothing and says it worked).
+export async function readOnly() {
+  try { return !!(await chrome.storage.local.get('settings')).settings?.readOnly; } catch { return false; }
+}
+
 // Returns true when written, false on a sha conflict (someone else wrote first).
 export async function putRepoFile(loc, token, path, json, sha, message) {
+  if (await readOnly()) return true;
   const r = await fetch(contentsUrl(loc, path), {
     method: 'PUT',
     headers: { ...ghHeaders(token, 'application/vnd.github+json'), 'Content-Type': 'application/json' },

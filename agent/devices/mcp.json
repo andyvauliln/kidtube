@@ -1,0 +1,6 @@
+{
+  "mcpServers": {
+    "device": { "command": "node", "args": ["agent/devices/mcp.mjs"] },
+    "lab": { "command": "node", "args": ["node_modules/@playwright/mcp/cli.js", "--cdp-endpoint", "http://127.0.0.1:9333"] }
+  }
+}

@@ -30,6 +30,7 @@
       ],
       "js": [
         "core/ui/watch.js",
+        "core/ui/bridge.js",
         "core/ui/header.js",
         "core/content/shell.js",
         "apps/kidtube/kid/render.js",
@@ -54,6 +55,7 @@
       ],
       "js": [
         "core/ui/watch.js",
+        "core/ui/bridge.js",
         "core/ui/header.js",
         "apps/instagram/content/api.js",
         "apps/instagram/content/app.js"
@@ -96,6 +98,7 @@
   "options_page": "core/pages/options.html",
   "optional_host_permissions": [
     "https://openrouter.ai/*",
-    "https://generativelanguage.googleapis.com/*"
+    "https://generativelanguage.googleapis.com/*",
+    "<all_urls>"
   ]
 }

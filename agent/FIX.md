@@ -64,6 +64,33 @@ GraphQL `query` name, variable names, status, `posts` found, and for some the `a
 - **Otherwise a code fix** in `lib/reader.js` (a new form of a post, of the position) with a test in
   `tests/extension/igreader.test.mjs` built from the report's `answer`, then a release.
 
+## Test on the tablet (dev mode)
+
+When the prompt says "Device tools (dev mode): on", you have the `device_*` tools (`agent/devices/mcp.mjs`). They
+reach a tablet only while its parent has **dev mode** on (apps header → account menu → Dev mode; `context.app.devMode`
+in a report). With them you see and use the real app on the real tablet, with its accounts and data: what the tests
+on the server cannot.
+
+1. `device_list`. Find the tablet: the report's `deviceId`.
+2. Connected: `device_state`, then `device_snapshot` of its tab. Repeat the report's `steps` with `device_navigate`, `device_tap`,
+   `device_type` and `device_message`. Then read `device_errors` and `device_state` (the checks, the steps).
+   `device_screenshot` when the look matters.
+3. **In kid mode the child may be using it:** only read (`device_state`, `device_snapshot`, `device_screenshot`,
+   `device_errors`), unless the parent asked for more. Leave the tablet as you found it: the same mode and page.
+4. Not connected, or dev mode is off there: the **lab** on this server, then `tests/`. The lab is Chromium with this
+   checkout's `extension/`: `node agent/lab/lab.mjs --detach --profile <app>/<folder>` (the profile of the report or
+   note, read only; no `--profile`: a fresh tablet), then the `browser_*` tools; `--stop` when done. It has no
+   Google or Instagram sign-in. Use it also to try your build before `npm run ship`. Ask the parent to turn dev mode
+   on only when there is no other way to reproduce it: the answer is `needs-you`, with one sentence why.
+5. Still write the failing test in `tests/`: it is the proof that stays.
+6. After `npm run ship`: `device_update`, then `device_message` `{type: "version", fresh: true}` until the tablet has
+   the new version, and repeat the steps. A `.zip` (development) or Orion install does not update by itself: say "tap
+   the new version next to the logo".
+7. What dev mode refuses stays refused: the PIN, the rules, the minutes, the GitHub connection, the settings file,
+   dev mode itself, and the accounts' actions on YouTube and Instagram (like, subscribe, follow, comment, share,
+   send). Don't look for a way around them. The tablet shows "AI is testing" while you work; every command is logged
+   on the server (`devices/log/` in the state folder).
+
 ## Releasing
 
 Commit your changes, then `npm run ship -- -m "<short summary>"`, exactly as `agent/NOTES.md` says under "Releasing a change to the app". It gives `extension/` the next free version, tests, pushes, and makes the Quetta release; its last line `ship: released <version>` is the version for your fixes. Several problems fixed in one run go into one version: one `ship` at the end. A change only to a test or to `agent/` gets no release (`ship` only pushes it). No Orion build: the parent asks for one when they want it.

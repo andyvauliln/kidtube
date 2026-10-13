@@ -79,11 +79,13 @@
     .card .lead a { color: var(--blue); }
     .fields { display: grid; gap: 10px; }
     label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); font-weight: 500; }
-    input { font: inherit; font-size: 15px; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line);
+    input, select { font: inherit; font-size: 15px; height: 40px; padding: 0 12px; border-radius: 8px; border: 1px solid var(--line);
       background: var(--bg); color: var(--ink); width: 100%; margin: 0; }
     .side { display: flex; flex-direction: column; gap: 8px; min-width: 150px; }
     .status { grid-column: 1 / -1; margin: 0; font-size: 13px; color: var(--muted); }
     .err { color: var(--bad) !important; }
+    .dev { height: 26px; padding: 0 9px; border-radius: 13px; background: var(--blue-soft); color: var(--blue); font-size: 11px; font-weight: 700; letter-spacing: .5px; flex: none; }
+    .dev.off { background: var(--soft); color: var(--muted); }
     .ok { color: var(--ok) !important; }
     .note { margin: 0; padding: 0 16px 10px; font-size: 13px; }
     .scrim { position: fixed; inset: 0; z-index: 1; }
@@ -196,6 +198,7 @@
     caret: 'M7 10l5 5 5-5z',
     grid: 'M4 4h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 10h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4zM4 16h4v4H4zm6 0h4v4h-4zm6 0h4v4h-4z',
     bell: 'M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2zm6-6V11c0-3.07-1.64-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z',
+    code: 'M9.4 16.6 4.8 12l4.6-4.6L8 6l-6 6 6 6 1.4-1.4zm5.2 0 4.6-4.6-4.6-4.6L16 6l6 6-6 6-1.4-1.4z',
   };
   // The logo: four tiles, one per app and more to come.
   function logo() {
@@ -279,7 +282,7 @@
 
     let data = null, alive = true, busy = '', loading = false, again = null, ver = null;
     const ui = { menu: false, github: false, repo: null, token: '', note: '', noteKind: '', apps: false,
-      inbox: true, all: false, edit: null, sure: null, open: null };
+      inbox: true, all: false, edit: null, sure: null, open: null, dev: false, devLife: 'never', devUrl: null };
     // The notifications list starts open; the bell closes it, and it stays closed on every page (storage headerUi).
     // A new problem report opens it again (instead of core/ui/watch.js's banner on a page without the header).
     globalThis.KidTubeHeaderShown = true;
@@ -462,15 +465,19 @@
         const at = here.checkedAt ? ` · checked ${new Date(here.checkedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}` : '';
         m.append(el('p', 'here', `${here.label} here: ${here.name ?? (here.signedIn ? 'an account it did not name' : here.seen ? 'nobody signed in' : 'not read yet')}${at}`));
       }
+      const save = item(PATH.download, 'Save settings to a file', exportFile);
+      const load = item(PATH.upload, 'Load settings from a file', () => { ui.menu = false; draw(); picker.click(); });
+      save.dataset.bridge = load.dataset.bridge = 'no';   // dev mode never taps them (core/ui/bridge.js)
       m.append(
         item(PATH.cloud, 'GitHub connection', () => { ui.menu = false; ui.github = true; draw(); }, data.github.connected ? data.github.repo : 'not connected'),
-        item(PATH.download, 'Save settings to a file', exportFile),
-        item(PATH.upload, 'Load settings from a file', () => { ui.menu = false; draw(); picker.click(); }));
+        save, load,
+        item(PATH.code, 'Dev mode', () => { ui.menu = false; ui.dev = true; ui.note = ''; draw(); }, data.dev?.on ? 'on: the AI can test' : 'off'));
       return m;
     }
 
     function githubCard(first) {
       const card = el('div', 'card');
+      card.dataset.bridge = 'no';   // dev mode never taps or types here (core/ui/bridge.js)
       const lead = el('p', 'lead');
       lead.append(first ? 'Every app keeps its lists and rules in one private GitHub repo. Connect it once for this tablet, or load a saved settings file. '
         : 'One repo and token for every account and app on this tablet. ',
@@ -503,6 +510,71 @@
       card.append(el('h2', '', first ? 'Connect your data on GitHub' : 'GitHub connection'), lead, fields);
       if (data.github.connected) card.append(el('p', 'status ok', `Token saved on this tablet: ${data.github.tokenHint ?? '…'}. Type a new one only to change it.`));
       card.append(side);
+      if (ui.note) card.append(el('p', `status ${ui.noteKind}`, ui.note));
+      return card;
+    }
+
+    // Dev mode (core/background/bridge.js): the server's AI may test this tablet. Dev mode itself never taps in here.
+    const hostOf = (url) => { try { return new URL(url).host; } catch { return url; } };
+    const timeOf = (at) => new Date(at).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+    let devTimer = null;
+    async function devTurn(on) {
+      const r = await act(on ? 'Turning on…' : 'Turning off…', { type: 'devMode', on, life: ui.devLife, url: ui.devUrl ?? '' });
+      if (!r?.ok) return;
+      data.dev = r.dev;
+      if (r.warning) say(`Off on this tablet. ${r.warning}`, 'err'); else draw();
+      // The socket opens in a moment: show whether it did.
+      clearTimeout(devTimer);
+      if (on) devTimer = setTimeout(() => refresh(), 3000);
+    }
+    function devCard() {
+      const d = data.dev ?? {};
+      const card = el('div', 'card');
+      card.dataset.bridge = 'no';
+      card.append(el('h2', '', 'Dev mode'), el('p', 'lead', 'The server’s AI can test this tablet while it fixes a problem or works on your note: '
+        + 'it reads what the app shows, taps the app’s buttons, opens its pages and runs the checks. It never sees or types the PIN, '
+        + 'and never changes the rules, the minutes, the GitHub connection or this setting. “AI is testing” shows on the page while it works.'));
+      const fields = el('div', 'fields');
+      const side = el('div', 'side');
+      if (d.on) {
+        fields.append(el('p', `status ${d.connected ? 'ok' : d.error ? 'err' : ''}`, d.connected ? `On · connected to ${hostOf(d.url)}` : d.error ?? `On · connecting to ${hostOf(d.url)}…`),
+          el('p', 'status', d.until ? `Turns off by itself: ${timeOf(d.until)}` : 'Stays on until you turn it off.'),
+          el('p', 'status', d.actions?.n ? `The AI did ${d.actions.n} action${d.actions.n === 1 ? '' : 's'}, the last at ${timeOf(d.actions.at)} (${d.actions.cmd}).` : 'The AI did nothing on this tablet yet.'),
+          el('p', 'status', d.pictures ? 'The AI may take pictures of the screen.' : 'No pictures of the screen: the AI reads it as text.'),
+          el('p', 'status', `This tablet: ${d.device}`));
+        const off = button('btn primary', busy || 'Turn off', () => devTurn(false));
+        off.disabled = !!busy;
+        side.append(off);
+        // Pictures of the screen: the browser asks the parent (only an app's own page can ask: not on YouTube).
+        if (!d.pictures && chrome.permissions?.request) {
+          side.append(button('btn', 'Allow screen pictures', async () => {
+            const ok = await chrome.permissions.request({ origins: ['<all_urls>'] }).catch(() => false);
+            if (!ok) say('Pictures stay off: the AI reads the screen as text only.', 'err');
+            refresh();
+          }));
+        }
+      } else {
+        const life = el('select');
+        for (const [v, label] of [['hour', 'For 1 hour'], ['day', 'For 1 day'], ['never', 'Until I turn it off']]) {
+          const o = el('option', '', label);
+          o.value = v;
+          o.selected = v === ui.devLife;
+          life.append(o);
+        }
+        life.addEventListener('change', () => { ui.devLife = life.value; });
+        const url = Object.assign(el('input'), { placeholder: d.defaultUrl ?? '', value: ui.devUrl ?? (d.url && d.url !== d.defaultUrl ? d.url : ''), autocomplete: 'off', spellcheck: false });
+        url.setAttribute('autocapitalize', 'off');
+        url.addEventListener('input', () => { ui.devUrl = url.value; });
+        const l1 = el('label', '', 'Stays on'), l2 = el('label', '', 'Bridge server (empty: this app’s server)');
+        l1.append(life); l2.append(url);
+        fields.append(l1, l2);
+        const on = button('btn primary', busy || 'Turn on', () => devTurn(true));
+        on.disabled = !!busy || !data.github.connected;
+        side.append(on);
+      }
+      side.append(button('btn', 'Close', () => { ui.dev = false; ui.note = ''; draw(); }));
+      card.append(fields, side);
+      if (!data.github.connected) card.append(el('p', 'status err', 'Connect GitHub first: the server finds this tablet’s key in the data repo.'));
       if (ui.note) card.append(el('p', `status ${ui.noteKind}`, ui.note));
       return card;
     }
@@ -757,6 +829,12 @@
           bar.append(bell);
         }
         if (h.github.connected) bar.append(grid);
+        // Dev mode on: a mark that opens its card (core/background/bridge.js).
+        if (h.dev?.on) {
+          const mark = button(`dev${h.dev.connected ? '' : ' off'}`, 'DEV', () => { ui.dev = !ui.dev; ui.note = ''; draw(); });
+          mark.title = h.dev.connected ? 'Dev mode: the AI can test this tablet' : 'Dev mode is on, not connected to the bridge server';
+          bar.append(mark);
+        }
         bar.append(who);
         // Connect only on a site's own page (an extension page has no signed-in account to take).
         if (h.site && h.open) {
@@ -767,6 +845,7 @@
         }
 
         if (!h.github.connected || ui.github) kids.push(githubCard(!h.github.connected));
+        else if (ui.dev) kids.push(devCard());
         else if (ui.apps) {
           const row = el('div', 'apps');
           const tiles = el('div', 'tiles');
@@ -790,8 +869,8 @@
               : `${a.label}: sign in on ${a.site}, then press Connect there.`)).join(' ')));
           }
         }
-        if (shownInbox && ui.inbox && h.github.connected && !ui.github) kids.push(inboxList(rows));
-        else if (!h.github.connected || ui.github) { /* the GitHub card shows its own message */ }
+        if (shownInbox && ui.inbox && h.github.connected && !ui.github && !ui.dev) kids.push(inboxList(rows));
+        else if (!h.github.connected || ui.github || ui.dev) { /* the card shows its own message */ }
         else if (ui.note || h.error) kids.push(el('p', `note ${ui.note ? ui.noteKind : 'err'}`, ui.note || h.error));
         if (ui.menu) kids.push(accountMenu());
       }
@@ -810,7 +889,7 @@
       if (ch.updateState) readVersion(true);
       if (ch.inboxHidden) { hidden = ch.inboxHidden.newValue ?? {}; draw(); }
       if (ch.ytAccount || ch.igAccount || ch.settings || ch.accounts || ch.repoProfiles || ch.account || ch.shell) refresh();
-      else if (ch.outbox || ch.data || ch.ig || ch.checks || ch.notes || ch.syncStatus) { clearTimeout(aiTimer); aiTimer = setTimeout(() => refresh(), 1000); }
+      else if (ch.outbox || ch.data || ch.ig || ch.checks || ch.notes || ch.syncStatus || ch.bridgeLog) { clearTimeout(aiTimer); aiTimer = setTimeout(() => refresh(), 1000); }
     };
     chrome.storage.onChanged.addListener(onStorage);
     const onKey = (e) => { if (e.key === 'Escape' && ui.menu) { ui.menu = false; draw(); } };
@@ -821,7 +900,7 @@
     return {
       refresh,
       setDark(on) { host.classList.toggle('dark', on); },
-      destroy() { alive = false; clearTimeout(aiTimer); clearTimeout(verTimer); clearTimeout(sayTimer); chrome.storage.onChanged.removeListener(onStorage); },
+      destroy() { alive = false; clearTimeout(aiTimer); clearTimeout(devTimer); clearTimeout(verTimer); clearTimeout(sayTimer); chrome.storage.onChanged.removeListener(onStorage); },
     };
   }
 

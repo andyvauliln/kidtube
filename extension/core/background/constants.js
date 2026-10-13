@@ -19,6 +19,6 @@ export const BRIDGE_URL = 'wss://68-183-124-79.sslip.io/bridge';
 
 // Settings that belong to the tablet, not to a profile: they move along with every profile switch.
 export const DEVICE_SETTINGS = ['pinHash', 'pinSalt', 'pinFails', 'pinLockedUntil', 'deviceId', 'mode', 'repo', 'token',
-  'devMode', 'devKey', 'devUntil', 'bridgeUrl'];
+  'devMode', 'devKey', 'devUntil', 'bridgeUrl', 'readOnly'];
 // The settings file (the header's Save / Load) and the copy on the install page: the connection and the PIN.
 export const BACKUP_KEYS = ['repo', 'token', 'pinSalt', 'pinHash'];

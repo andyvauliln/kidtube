@@ -65,6 +65,13 @@ export function step(s) {
 }
 export const stepsNow = () => steps.map((s) => ({ ...s }));
 
+// This tablet's id in the reports, and in dev mode (core/background/bridge.js): the same one.
+export async function deviceIdNow() {
+  const b = await load();
+  if (!b.device) { b.device = `tab-${crypto.randomUUID().slice(0, 8)}`; save(); }
+  return b.device;
+}
+
 // --- the situation at the moment of a failure ---------------------------------------------------------------------
 const workerStart = new Date().toISOString();
 export async function contextNow(sender) {
@@ -76,7 +83,7 @@ export async function contextNow(sender) {
   return redact({
     app: { version: m.version, versionName: m.version_name ?? null, target: TARGET, workerStartedAt: workerStart,
       installType: await new Promise((r) => { try { chrome.management.getSelf((x) => { void chrome.runtime.lastError; r(x?.installType ?? null); }); } catch { r(null); } }),
-      update: (await chrome.storage.local.get('updateState')).updateState ?? null },
+      update: (await chrome.storage.local.get('updateState')).updateState ?? null, devMode: !!st.devMode },
     browser: { userAgent: globalThis.navigator?.userAgent ?? null, online: globalThis.navigator?.onLine ?? null,
       language: globalThis.navigator?.language ?? null, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
     profile: {
@@ -240,13 +247,13 @@ export function runStartChecks(reason) {
 
 // --- the messages: every answer is checked against what the message should have done ----------------------------
 // Reads answered every second (the state, playback time) are not steps; their failures still count.
-const QUIET = new Set(['state', 'tick', 'header', 'ping', 'frameReady', 'runStatus', 'version', 'heldNotes', 'getRules', 'status',
+const QUIET = new Set(['state', 'tick', 'header', 'ping', 'frameReady', 'bridgeFrame', 'runStatus', 'version', 'heldNotes', 'getRules', 'status',
   'parentData', 'videoDetail', 'helperData', 'contextData', 'talk', 'apps', 'checks', 'checkResult', 'details']);
 // How long the asking page waits (core/lib/ask.js 8 s or its WAIT; the apps header 15 s). An answer later than that never arrives.
-const HEADER_TYPES = new Set(['header', 'inbox', 'openApp', 'connect', 'plainSite', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings']);
+const HEADER_TYPES = new Set(['header', 'inbox', 'openApp', 'connect', 'plainSite', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings', 'devMode']);
 const waitOf = (type) => WAIT[type] ?? (HEADER_TYPES.has(type) ? 15000 : 8000);
 // Answers the page shows as they are: { ok: false } must say why, or the parent sees "That didn't work".
-const SAYS_WHY = new Set(['inbox', 'openApp', 'connect', 'plainSite', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings', 'runHelper', 'updateApp', 'setMode']);
+const SAYS_WHY = new Set(['inbox', 'openApp', 'connect', 'plainSite', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings', 'runHelper', 'updateApp', 'setMode', 'devMode']);
 // When a content script last spoke, per tab (the start check "the YouTube tab answers").
 export const heardFrom = new Map();
 

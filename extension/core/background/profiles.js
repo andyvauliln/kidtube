@@ -15,6 +15,7 @@ import { applySiteRules } from './sites.js';
 import { sync } from './sync.js';
 import { partOf, allParts } from './apps.js';
 import { inboxOf, inboxAct } from './inbox.js';
+import { devView } from './bridge.js';
 
 // Everything kept per profile: the state keys and the apps' other keys.
 const accountKeys = () => [...stateKeys(), ...allParts().flatMap((p) => p.profileKeys ?? [])];
@@ -207,7 +208,7 @@ export async function headerView(force, host) {
   const out = { ok: true, shell: sh, open: await headerOpen(g), mode: parentMode(g) ? 'parent' : 'kid', running,
     site: site?.id ?? null, here: site ? seenOn(site, g) : null,
     connected: cur ? { app: appOf(cur).id, label: shortLabel(appOf(cur)), who: whoOf(cur) ?? 'a YouTube account without an email', site: siteOfApp(appOf(cur)).label } : null,
-    github, switch: switchOf(running, site), apps: [], error: null, inbox: null };
+    github, switch: switchOf(running, site), apps: [], error: null, inbox: null, dev: await devView() };
   if (out.open) out.inbox = await inboxOf(running ? cur : null);
   if (!github.connected) return out;
   const remote = await repoProfiles(force);

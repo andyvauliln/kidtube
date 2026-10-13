@@ -23,6 +23,28 @@ NOTES_MAX=$(cfg "c.notesAgent?.perDay??10")
 APP=${KIDTUBE_APP_DIR:-$(cfg "(c.notesAgent?.workDir??'~/.local/share/kidtube/app').replace(/^~/,process.env.HOME)")}
 mkdir -p "$SROOT"
 
+# Dev mode (docs/plans/DEVICE-BRIDGE.md): with devices.enabled in config.json the relay runs (agent/devices/relay.mjs:
+# the tablets with dev mode on connect to it) and the agents below get the device tools (agent/devices/mcp.json).
+# Off: no relay, and the agents start exactly as before. The relay holds no lock and runs no AI; a newer relay.mjs
+# restarts it.
+DEVICES=$(cfg "c.devices&&c.devices.enabled!==false?'on':''")
+AGENT_MCP=()
+AGENT_TOOLS=()
+if [ -n "$DEVICES" ]; then
+  AGENT_MCP=(--mcp-config agent/devices/mcp.json)
+  AGENT_TOOLS=("mcp__device")
+  [ -n "$(cfg "c.devices.lab!==false?'on':''")" ] && AGENT_TOOLS+=("mcp__lab")
+  pid=$(cat "$SROOT/devices/relay.pid" 2>/dev/null)
+  if [ -n "$pid" ] && grep -q relay.mjs "/proc/$pid/cmdline" 2>/dev/null && [ agent/devices/relay.mjs -nt "$SROOT/devices/relay.pid" ]; then
+    kill "$pid"; pid=
+  fi
+  if [ -z "$pid" ] || ! grep -q relay.mjs "/proc/$pid/cmdline" 2>/dev/null; then
+    mkdir -p "$SROOT/devices"
+    [ -d node_modules/ws ] || npm ci --silent >> "$SROOT/devices/relay.log" 2>&1
+    nohup node agent/devices/relay.mjs >> "$SROOT/devices/relay.log" 2>&1 < /dev/null &
+  fi
+fi
+
 # One run at a time: the 03:30 run holds the same lock.
 exec 9>"$SROOT/run.lock"
 flock -n 9 || exit 0
@@ -105,11 +127,12 @@ $problems
 
 - Result file: $result
 - Data repo (read only): $CLONE
+- Device tools (dev mode): ${DEVICES:-off}
 - Today: $(date -u +%F)"
   (cd "$APP" && CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 BASH_DEFAULT_TIMEOUT_MS=900000 BASH_MAX_TIMEOUT_MS=1800000 \
     claude -p "$prompt" --model "${model:-opus}" ${effort:+--effort "$effort"} \
-      --permission-mode dontAsk --allowedTools "Bash" "Read" "Edit" "Write" "Glob" "Grep" "Skill" "Agent" "Task" \
-      --add-dir "$SROOT" "$CLONE" --output-format json < /dev/null) > "$SROOT/fix-runs/$(date -u +%Y%m%dT%H%M%SZ).json" 2>> "$log"
+      --permission-mode dontAsk --allowedTools "Bash" "Read" "Edit" "Write" "Glob" "Grep" "Skill" "Agent" "Task" ${AGENT_TOOLS[@]+"${AGENT_TOOLS[@]}"} \
+      ${AGENT_MCP[@]+"${AGENT_MCP[@]}"} --add-dir "$SROOT" "$CLONE" --output-format json < /dev/null) > "$SROOT/fix-runs/$(date -u +%Y%m%dT%H%M%SZ).json" 2>> "$log"
   echo "=== claude exit $?" >> "$log"
   local note
   note=$(release_check "$log")
@@ -240,11 +263,12 @@ $notes
 
 - Result file: $RESULT
 - Data repo (read only): $DATA${PROFILE:+ (the folder of profile $PROFILE: one child; the others have their own folders)}
+- Device tools (dev mode): ${DEVICES:-off}
 - Today: $TODAY"
   (cd "$APP" && CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 BASH_DEFAULT_TIMEOUT_MS=900000 BASH_MAX_TIMEOUT_MS=1800000 \
     claude -p "$prompt" --model "${MODEL:-opus}" ${EFFORT:+--effort "$EFFORT"} \
-      --permission-mode dontAsk --allowedTools "Bash" "Read" "Edit" "Write" "Glob" "Grep" "Skill" "Agent" "Task" \
-      --add-dir "$STATE" "$DATA" --output-format json < /dev/null) > "$STATE/notes-runs/$(date -u +%Y%m%dT%H%M%SZ).json" 2>> "$log"
+      --permission-mode dontAsk --allowedTools "Bash" "Read" "Edit" "Write" "Glob" "Grep" "Skill" "Agent" "Task" ${AGENT_TOOLS[@]+"${AGENT_TOOLS[@]}"} \
+      ${AGENT_MCP[@]+"${AGENT_MCP[@]}"} --add-dir "$STATE" "$DATA" --output-format json < /dev/null) > "$STATE/notes-runs/$(date -u +%Y%m%dT%H%M%SZ).json" 2>> "$log"
   echo "=== claude exit $?" >> "$log"
   release=$(release_check "$log")
   # Handled either way: a note that failed is not tried again every minute (the summary says what happened).

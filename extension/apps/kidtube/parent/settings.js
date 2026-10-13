@@ -16,14 +16,14 @@ const MARKUP = `
     <button type="button" data-sec="sec-pin">PIN</button>
   </nav>
 
-  <section id="sec-status">
+  <section id="sec-status" data-bridge="no">
     <h2>Status</h2>
     <dl id="status"></dl>
     <button id="resetToday">Reset today’s minutes</button>
     <p class="hint">Gives back today’s minutes and undoes “no more videos today”.</p>
   </section>
 
-  <section id="sec-time" class="rules">
+  <section id="sec-time" class="rules" data-bridge="no">
     <h2>Time and list</h2>
     <p class="muted">Changes work on this tablet right away and are saved to GitHub, where the helper sees them.</p>
 
@@ -61,7 +61,7 @@ const MARKUP = `
     <label class="check"><span>Hide and skip ads <small>YouTube’s ad boxes are hidden, and a video ad is muted and skipped at once. On Quetta the ad servers are also blocked.</small></span><input type="checkbox" id="blockAds"></label>
   </section>
 
-  <section id="sec-sites" class="rules">
+  <section id="sec-sites" class="rules" data-bridge="no">
     <h2>Websites and channels</h2>
     <label class="check"><span>Block other websites in this browser <small>youtube.com and KidTube’s own pages always stay open.</small></span><input type="checkbox" id="blockSites"></label>
     <label for="sites">Websites that stay open (one per line)</label>
@@ -133,7 +133,7 @@ const MARKUP = `
     <button class="primary" id="saveRules">Save rules</button>
   </div>
 
-  <section id="sec-pin">
+  <section id="sec-pin" data-bridge="no">
     <h2>PIN</h2>
     <p class="muted">The same PIN for every account and app on this tablet. The apps header’s account menu saves it to a file, with the GitHub connection.</p>
     <button id="changePin">Change PIN</button>

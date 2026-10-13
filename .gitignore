@@ -7,3 +7,4 @@ dist/
 !site/orion/*.zip
 .screenshots/
 .claude/change-actions.json
+.playwright-mcp/

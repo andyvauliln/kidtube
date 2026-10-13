@@ -122,6 +122,13 @@
     "effort": "medium",
     "note": "agent/poll.sh: new problem reports from the tablets' checks (problems/<day>.json in the data repo) → Claude Code runs agent/FIX.md in the notes agent's checkout; it reproduces, fixes, tests and releases; its answers go to fixes.json. At most perDay runs a day; enabled: false stops it (the tablets still report)."
   },
+  "devices": {
+    "enabled": true,
+    "relayUrl": "wss://68-183-124-79.sslip.io/bridge",
+    "port": 8790,
+    "lab": true,
+    "note": "Dev mode (docs/plans/DEVICE-BRIDGE.md). enabled: agent/poll.sh keeps the relay running (agent/devices/relay.mjs on 127.0.0.1:port; nginx sends relayUrl to it) and gives the fix and notes agents the device tools (agent/devices/mcp.json). A tablet is reachable only while the parent has dev mode on in its apps header (account menu → Dev mode). false: the agents start as before, no relay. lab: the lab browser on this server (agent/lab/lab.mjs)."
+  },
   "instagram": {
     "enabled": true,
     "perRun": 10,

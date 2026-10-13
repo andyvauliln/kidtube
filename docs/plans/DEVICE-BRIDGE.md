@@ -1,6 +1,17 @@
 # Plan: the fix agent connects to the real tablet (device bridge + MCP), and to a lab browser
 
-*Written 2026-10-13, starting from version 0.12.14. Status: approved; Step 0 done, P1 next. Replaces the `agent/canary.mjs` idea of [FAST-FIX.md](FAST-FIX.md) part 6.*
+*Written 2026-10-13, starting from version 0.12.14. Replaces the `agent/canary.mjs` idea of [FAST-FIX.md](FAST-FIX.md) part 6.*
+
+*Status 2026-10-13: P1–P4 built in one change (the tablet side, the relay, the `device_*` tools, the agents' wiring,
+the lab). Tested: the fake browser (`tests/extension/bridge.test.mjs`), the relay and MCP server
+(`tests/agent/relay.test.mjs`), and end to end in the lab (a tablet in Chromium → a local relay → snapshot, tap,
+refusals, navigate, off). Waiting: nginx and the certificate on this server (`sudo bash agent/devices/setup-server.sh`,
+root), then a first session on the real Quetta tablet; P5 (Orion). Built differently from the plan below:*
+- *The Dev mode card is in the apps header (account menu → Dev mode), for every app, not in KidTube's Settings.*
+- *No systemd unit: `agent/poll.sh` starts the relay every minute when it is not running (and again when `relay.mjs` changed).*
+- *Screen pictures need the optional `<all_urls>` permission (the card's **Allow screen pictures**); a required one would turn the app off on update until the parent accepts.*
+- *The lab is always read only (a real profile, or a fresh tablet with no GitHub): a lab with writes would send reports and start the fix agent on itself.*
+- *No `device_end` and no `device_request`: the pages' "AI is testing · Stop" turns dev mode off; the agents do not ask for a session.*
 
 ## Context
 
