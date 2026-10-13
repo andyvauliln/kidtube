@@ -209,6 +209,44 @@ test('Quetta asks for a newer release itself, and reloads YouTube after the upda
   assert.deepEqual(reloaded, [3, 4]);
 });
 
+// Report rule.slowAnswer.version (0.12.2, Quetta): the header's "version" took 10.4 s on a slow tablet, the page waits 8 s.
+// It waited for the browser's update check and for latest.json, neither with an end.
+test('"version" answers in time when the browser\'s update check or latest.json is slow', async () => {
+  const realFetch = globalThis.fetch, realNow = Date.now, realCheck = fake.runtime.requestUpdateCheck, realManifest = fake.runtime.getManifest;
+  const timed = async (msg) => {
+    const t0 = realNow();
+    const v = await Promise.race([send(msg), new Promise((r) => setTimeout(() => r('no answer'), 9000))]);
+    return { v, ms: realNow() - t0 };
+  };
+  Date.now = () => realNow() + 10 * 60000;   // the last ask was more than 5 minutes ago
+  fake.runtime.getManifest = () => ({ version: '0.1.1' });   // not the answer kept by the test above
+  let asked = 0;
+  fake.runtime.requestUpdateCheck = () => { asked++; };   // the browser has not answered yet
+  globalThis.fetch = async (url, opts) => (String(url).endsWith('/latest.json')
+    ? { ok: true, status: 200, json: async () => ({ version: '9.9.9', zipUrl: 'https://x.test/k.zip' }) }
+    : realFetch(url, opts));
+  let { v, ms } = await timed({ type: 'version' });
+  assert.ok(ms < 3000, `answered in ${ms} ms`);
+  assert.equal(asked, 1, 'the browser was still asked for the new version');
+  assert.equal(v.latest, '9.9.9');
+  assert.equal(v.newer, true);
+
+  // latest.json does not come back (a slow connection): the answer says what is installed.
+  fake.runtime.getManifest = () => ({ version: '0.1.2' });
+  globalThis.fetch = async (url, opts) => (String(url).endsWith('/latest.json')
+    ? new Promise((resolve, reject) => opts?.signal?.addEventListener('abort', () => reject(opts.signal.reason)))
+    : realFetch(url, opts));
+  ({ v, ms } = await timed({ type: 'version' }));
+  assert.ok(ms < 8000, `answered in ${ms} ms`);
+  assert.equal(v.installed, '0.1.2');
+  assert.equal(v.latest, null);
+
+  globalThis.fetch = realFetch;
+  Date.now = realNow;
+  fake.runtime.requestUpdateCheck = realCheck;
+  fake.runtime.getManifest = realManifest;
+});
+
 test('one tab: a tab that opens YouTube or a KidTube page closes the other such tabs, not other sites or the tools', async () => {
   fake.tabs.query = async () => structuredClone(fake.nav.tabs ?? []);   // (the update test above put its own in)
   fake.nav.removed = [];

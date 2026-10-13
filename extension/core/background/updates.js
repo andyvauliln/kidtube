@@ -10,8 +10,8 @@ const UPDATE_ASK_MS = 5 * 60 * 1000;
 let updateAsked = 0, updateStatus = null;
 const installed = () => chrome.runtime.getManifest().version;
 
-export async function latestRelease() {
-  try { return await (await fetch(LATEST_URL, { cache: 'no-store' })).json(); } catch { return null; }
+export async function latestRelease(ms = 30000) {
+  try { return await (await fetch(LATEST_URL, { cache: 'no-store', signal: AbortSignal.timeout(ms) })).json(); } catch { return null; }
 }
 
 // Asks the browser to look at updates.xml now. Chrome 109+ gives { status, version }, older ones (status, details).
@@ -52,24 +52,28 @@ export async function checkUpdate() {
 // was installed (kind): 'quetta' (latest.json; the browser installs it itself, asked here), 'orion' (orion/latest.json;
 // a .zip from the install page, by hand), 'dev' (an unpacked copy from git, desktop Chrome: the version on GitHub's
 // main; git pull, then Reload in chrome://extensions). Kept 5 minutes: every header asks.
-const VERSION_MS = 5 * 60 * 1000;
+// The page waits 8 s (core/lib/ask.js): latest.json gets 5 s, the browser's update check 1.5 s (it goes on after the
+// answer, its status shows in the next one). A slow tablet took 10.4 s waiting for both (0.12.2).
+const VERSION_MS = 5 * 60 * 1000, LATEST_MS = 5000, UPDATE_WAIT_MS = 1500;
 const DEV_MANIFEST = 'https://raw.githubusercontent.com/andyvauliln/kidtube/main/extension/manifest.json';
 let versionKept = null, versionAt = 0;
 const isDev = () => new Promise((resolve) => {
   try { chrome.management.getSelf((m) => { void chrome.runtime.lastError; resolve(m?.installType === 'development'); }); } catch { resolve(false); }
 });
 async function devLatest() {
-  try { return { version: (await (await fetch(`${DEV_MANIFEST}?t=${Date.now()}`, { cache: 'no-store' })).json()).version }; } catch { return null; }
+  try { return { version: (await (await fetch(`${DEV_MANIFEST}?t=${Date.now()}`, { cache: 'no-store', signal: AbortSignal.timeout(LATEST_MS) })).json()).version }; } catch { return null; }
 }
+const within = (p, ms, late) => Promise.race([p, new Promise((r) => setTimeout(() => r(late), ms))]);
 export async function appVersion() {
   if (versionKept && Date.now() - versionAt < VERSION_MS && versionKept.installed === installed()) return versionKept;
   const kind = TARGET === 'orion' ? 'orion' : (await isDev()) ? 'dev' : 'quetta';
-  const latest = kind === 'dev' ? await devLatest() : await latestRelease();
+  const latest = kind === 'dev' ? await devLatest() : await latestRelease(LATEST_MS);
   const newer = !!latest?.version && cmpVersion(latest.version, installed()) > 0;
-  versionKept = { ok: true, installed: installed(), target: TARGET, kind, latest: latest?.version ?? null, newer,
-    updating: newer && kind === 'quetta' ? await autoUpdate(latest) : null, download: latest?.zipUrl ?? null, installPage: INSTALL_PAGE };
-  versionAt = Date.now();
-  return versionKept;
+  const answer = { ok: true, installed: installed(), target: TARGET, kind, latest: latest?.version ?? null, newer,
+    updating: newer && kind === 'quetta' ? await within(autoUpdate(latest), UPDATE_WAIT_MS, 'asking') : null, download: latest?.zipUrl ?? null, installPage: INSTALL_PAGE };
+  // A latest.json that did not come back is not kept: the next header asks again.
+  if (latest) [versionKept, versionAt] = [answer, Date.now()];
+  return answer;
 }
 
 // The header's new version (a tap on it). Quetta: the browser installs it now and the app restarts. Orion: the install
