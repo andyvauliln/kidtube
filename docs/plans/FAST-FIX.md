@@ -180,6 +180,8 @@ When a check fails, KidTube adds a `problem` event to the outbox and starts a sy
 
 ### 6. The server: canary and fix lane
 
+*2026-10-13: the canary is replaced by [DEVICE-BRIDGE.md](DEVICE-BRIDGE.md): the agents test on the real tablet in dev mode, and in a lab browser on the server.*
+
 **Canary** (`agent/canary.mjs`, new). It loads the built extension in headless Chromium (Playwright, the same setup as our device tests). It opens the real YouTube and runs the start checklist and the outside checks. It runs:
 - every 3 hours from cron, so the server often finds a YouTube change before the tablet does;
 - before every fix, to reproduce the report;
