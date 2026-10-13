@@ -4,7 +4,7 @@ This document tells how a change goes from the code to the tablet, step by step.
 Apps: KidTube, Instagram), the server's agents, the rules that change without a release, and how the git
 repositories merge the changes of several writers (section 9).
 
-Kind: reference (kept current). As of 0.12.11, 2026-10-13.
+Kind: reference (kept current). As of 0.12.10, 2026-10-13.
 
 ## 1. Branches
 
