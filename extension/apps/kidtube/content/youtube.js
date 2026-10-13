@@ -146,6 +146,7 @@
       host.id = 'kidtube-ui';
       host.style.cssText = `position:fixed!important;inset:0!important;z-index:${Z}!important;pointer-events:none!important;display:block!important`;
       ui = host.attachShadow({ mode: 'closed' });
+      globalThis.KidTubeWatch?.shadow?.(ui);   // dev mode reads and taps inside it (core/ui/bridge.js)
       const sheet = document.createElement('style');
       sheet.textContent = PANEL_CSS;
       ui.append(sheet);

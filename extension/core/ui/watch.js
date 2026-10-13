@@ -223,7 +223,12 @@
     }, 4000), { once: true });
   }
 
+  // --- the app's closed shadow roots: dev mode (core/ui/bridge.js) reads and taps inside them ------------------------
+  const roots = new Set();
+  const shadow = (root) => { roots.add(root); return root; };
+
   if (ownPage) step({ kind: 'page', label: document.title });
   addEventListener('hashchange', () => step({ kind: 'page', label: location.hash }));
-  globalThis.KidTubeWatch = { check, watchTaps, noAnswer, step, send, Expect, banner };
+  globalThis.KidTubeWatch = { check, watchTaps, noAnswer, step, send, Expect, banner, shadow,
+    roots: () => [...roots].filter((r) => r.host?.isConnected) };
 })();

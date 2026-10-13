@@ -377,6 +377,7 @@ export function readFixes({ force = false } = {}) {
 //   checked    the AI could not make it happen, or found it was not a bug: nothing to do
 //   needs-you  the AI left it for the parent (its message says what to do)
 //   retry      the AI stopped before it answered; it tries again      gave-up   it stopped 3 times
+//   old        seen only on older versions than this one, not since (done)
 // done: nothing waits (fixed, checked). A report on the fixed version or newer is the problem back: waiting again.
 export function problemsOf(reports, fixes, installed, now = Date.now()) {
   const groups = new Map();
@@ -403,7 +404,7 @@ export function problemsOf(reports, fixes, installed, now = Date.now()) {
     return { ...rest, ...wordsOf(g), tries: Math.max(1, g.versions.length),
       fix: fix && { state: fix.state, version: fix.version ?? null, message: fix.message ?? '', at: fix.at ?? null }, ...stateOf(g, fix, installed, now) };
   });
-  const order = ['working', 'needs-you', 'reload', 'unsent', 'late', 'retry', 'gave-up', 'waiting', 'fixed', 'checked'];
+  const order = ['working', 'needs-you', 'reload', 'unsent', 'late', 'retry', 'gave-up', 'waiting', 'fixed', 'checked', 'old'];
   return out.sort((a, x) => (order.indexOf(a.state) - order.indexOf(x.state)) || x.lastAt.localeCompare(a.lastAt));
 }
 
@@ -455,6 +456,11 @@ function stateOf(g, fix, installed, now) {
   if (fix?.state === 'not-a-bug' && (fix.version ? fixedIn(fix.version) : after)) {
     if (fix.version && cmpVersion(installed, fix.version) < 0) return { state: 'reload', label: `The check was wrong; ${fix.version} has the right one: update Custom Apps`, done: false };
     return { state: 'checked', label: 'Not a bug (the check was wrong and is fixed)', done: true };
+  }
+  // Seen only on versions older than this one, and nobody works on it: done. If it happens again here, it is a new
+  // report on this version and goes to the AI again (one try per version).
+  if (newest && installed && cmpVersion(installed, newest) > 0) {
+    return { state: 'old', label: `Seen on ${g.versions.join(', ')} only, not since this tablet has ${installed}. If it comes back, it is sent again`, done: true };
   }
   if (after && fix?.state === 'not-reproduced') return { state: 'checked', label: 'The AI could not make it happen: nothing changed', done: true };
   if (after && fix?.state === 'needs-you') return { state: 'needs-you', label: 'The AI needs you', done: false };

@@ -328,10 +328,10 @@ test('the notifications: a row swiped away stays away until its status changes; 
     { id: 'problem:a', type: 'error', status: { text: status, tone: 'wait' }, title: 'Tapping “X” did nothing', actions: [], count: 2, tries: 1 },
     { id: 'run', type: 'data', status: { text: 'Sent', tone: 'wait' }, title: 'Your notes were sent', actions: [] },
   ];
-  let inbox = rowsOf('Handling');
+  let inbox = rowsOf('AI working');
   answers.header = () => ({ ok: true, open: true, mode: 'parent', running: 'kidtube', site: null, here: null, connected: null, github: { connected: true }, apps: [], inbox });
   answers.version = () => ({ ok: true, installed: '0.12.9', latest: '0.12.9', newer: false, kind: 'quetta' });
-  local.inboxHidden = { 'problem:a': 'Handling|1' };   // swiped while it was Handling, try 1
+  local.inboxHidden = { 'problem:a': 'AI working|1' };   // swiped while the AI worked on it, try 1
   const titles = (h) => {
     const out = [];
     const walk = (n) => { if (n.className?.startsWith?.('nrow')) out.push(text(n.children[2]).split('Tapping')[0] || text(n.children[2])); (n.children ?? []).forEach(walk); };
@@ -347,5 +347,35 @@ test('the notifications: a row swiped away stays away until its status changes; 
   globalThis.KidTubeHeader.mount(h2, { dark: false });
   await tick(); await tick();
   assert.equal(titles(h2).length, 2);
+  delete local.inboxHidden; delete answers.header; delete answers.version;
+});
+
+test('the notifications: rows swiped one after another all stay away (2026-10-13: the first came back when the second went)', async () => {
+  const row = (id, title) => ({ id, type: 'error', status: { text: 'AI did not reply', tone: 'bad' }, title, actions: [], count: 1, tries: 1 });
+  const inbox = [row('problem:a', 'First problem'), row('problem:b', 'Second problem'), row('problem:c', 'Third problem')];
+  answers.header = () => ({ ok: true, open: true, mode: 'parent', running: 'kidtube', site: null, here: null, connected: null, github: { connected: true }, apps: [], inbox });
+  answers.version = () => ({ ok: true, installed: '0.12.14', latest: '0.12.14', newer: false, kind: 'quetta' });
+  delete local.inboxHidden;
+  const h = new FakeEl('div');
+  globalThis.KidTubeHeader.mount(h, { dark: false });
+  await tick(); await tick();
+  const rowEl = (title) => find(h.shadowRoot, (n) => n.className?.startsWith?.('nrow') && text(n).includes(title));
+  const swipe = async (title) => {
+    const r = rowEl(title);
+    r.setPointerCapture = () => {};
+    const ev = (x) => ({ clientX: x, clientY: 0, pointerId: 1, target: { closest: () => null } });
+    r.dispatchEvent({ type: 'pointerdown', ...ev(0) });
+    r.dispatchEvent({ type: 'pointermove', ...ev(200) });
+    r.dispatchEvent({ type: 'pointerup', ...ev(200) });
+    await new Promise((res) => setTimeout(res, 200));
+    await tick();
+  };
+  await swipe('First problem');
+  assert.ok(!rowEl('First problem'));
+  await swipe('Second problem');
+  assert.ok(!rowEl('Second problem'));
+  assert.ok(!rowEl('First problem'), 'the first stays away');
+  assert.ok(rowEl('Third problem'));
+  assert.deepEqual(Object.keys(local.inboxHidden).sort(), ['problem:a', 'problem:b']);
   delete local.inboxHidden; delete answers.header; delete answers.version;
 });

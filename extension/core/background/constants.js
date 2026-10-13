@@ -13,7 +13,12 @@ export const INSTALL_PAGE = TARGET === 'orion' ? `${PAGES_URL}#orion` : PAGES_UR
 
 export const PIN_PAGE = 'core/pages/pin.html';
 
+// Dev mode (core/background/bridge.js): the server's AI tests this tablet through this bridge server unless the
+// parent typed another one (settings.bridgeUrl). This server: agent/devices/relay.mjs behind nginx.
+export const BRIDGE_URL = 'wss://68-183-124-79.sslip.io/bridge';
+
 // Settings that belong to the tablet, not to a profile: they move along with every profile switch.
-export const DEVICE_SETTINGS = ['pinHash', 'pinSalt', 'pinFails', 'pinLockedUntil', 'deviceId', 'mode', 'repo', 'token'];
+export const DEVICE_SETTINGS = ['pinHash', 'pinSalt', 'pinFails', 'pinLockedUntil', 'deviceId', 'mode', 'repo', 'token',
+  'devMode', 'devKey', 'devUntil', 'bridgeUrl'];
 // The settings file (the header's Save / Load) and the copy on the install page: the connection and the PIN.
 export const BACKUP_KEYS = ['repo', 'token', 'pinSalt', 'pinHash'];

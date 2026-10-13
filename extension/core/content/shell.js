@@ -70,6 +70,7 @@
       host.id = 'kidtube-lock';
       host.style.cssText = `position:fixed!important;inset:0!important;z-index:${Z}!important;display:block!important`;
       lockRoot = host.attachShadow({ mode: 'closed' });
+      globalThis.KidTubeWatch?.shadow?.(lockRoot);
       const sheet = el('style');
       sheet.textContent = LOCK_CSS;
       lockBox = el('div', 'lockcover');

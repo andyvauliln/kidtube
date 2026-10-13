@@ -286,7 +286,7 @@ test('the problems: one per check with its counter, and where each is from the s
     firstAt: at(0), lastAt: at(0), sentAt: sent });
   const now = Date.parse(at(10));
   const ps = problemsOf([rep('a', '0.10.4', 2), rep('a', '0.11.1', 1), rep('b', '0.10.4', 1), rep('c', '0.11.1', 1), rep('d', '0.11.3', 1, null),
-    rep('e', '0.11.3', 1), rep('f', '0.11.1', 1), rep('g', '0.11.3', 1), rep('h', '0.11.1', 1)], [
+    rep('e', '0.11.3', 1), rep('f', '0.11.3', 1), rep('g', '0.11.3', 1), rep('h', '0.11.3', 1), rep('i', '0.11.1', 4)], [
     { key: 'a|quetta', state: 'fixed', version: '0.11.2', message: 'Fixed it.', at: at(5) },
     { key: 'b|quetta', state: 'fixed', version: '0.11.4', message: 'Fixed it.', at: at(5) },
     { key: 'c|quetta', state: 'working', at: at(5) },
@@ -295,7 +295,10 @@ test('the problems: one per check with its counter, and where each is from the s
     { key: 'h|quetta', state: 'no-answer', at: at(5) },
   ], '0.11.3', now);
   const st = Object.fromEntries(ps.map((p) => [p.check, p.state]));
-  assert.deepEqual(st, { a: 'fixed', b: 'reload', c: 'working', d: 'unsent', e: 'waiting', f: 'needs-you', g: 'waiting', h: 'retry' });
+  assert.deepEqual(st, { a: 'fixed', b: 'reload', c: 'working', d: 'unsent', e: 'waiting', f: 'needs-you', g: 'waiting', h: 'retry', i: 'old' });
+  // Seen only on an older version and not since (2026-10-13: 0.10.5 and 0.12.2 problems said "No answer" for days): done.
+  const old = ps.find((p) => p.check === 'i');
+  assert.deepEqual([old.done, old.label], [true, 'Seen on 0.11.1 only, not since this tablet has 0.11.3. If it comes back, it is sent again']);
   const a = ps.find((p) => p.check === 'a');
   assert.deepEqual([a.count, a.versions, a.done, a.label, a.fix.message], [3, ['0.10.4', '0.11.1'], true, 'Fixed in 0.11.2', 'Fixed it.'], 'two versions, one problem, counted');
   assert.match(ps.find((p) => p.check === 'b').label, /Fixed in 0\.11\.4: update Custom Apps/);
@@ -322,7 +325,8 @@ test('the problems: one per check with its counter, and where each is from the s
     assert.deepEqual([p.state, p.count], ['working', 3]);
     // The header's notifications: one row, [type] [status] the message [Details] [×count].
     const row = (await fromPage({ type: 'header' })).inbox.find((x) => x.id === 'problem:parent.loads|quetta');
-    assert.deepEqual([row.type, row.status.text, row.count, row.tries], ['validation', 'Handling', 3, 1]);
+    assert.deepEqual([row.type, row.status.text, row.count, row.tries], ['validation', 'AI working', 3, 1]);
+    assert.match(row.versions, /^Came from [0-9.]+ · This tablet: [0-9.]+$/, 'where it came from, in words');
     assert.match(row.title, /^A self-check failed .*: /);
     assert.match(row.state, /^The AI is working on it now\./);
     assert.deepEqual(row.actions.map((a) => a.label), ['Details']);

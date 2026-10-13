@@ -128,6 +128,7 @@
     .msg { min-width: 0; display: grid; gap: 1px; }
     .msg b { font-weight: 500; overflow-wrap: anywhere; }
     .msg span { font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
+    .msg span.pvers { font-size: 11px; }
     .msg span.answer { font-size: 14px; color: var(--ink); white-space: pre-wrap; padding: 2px 0; }
     .msg textarea { font: inherit; font-size: 14px; width: 100%; min-height: 60px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line);
       background: var(--bg); color: var(--ink); resize: vertical; }
@@ -253,6 +254,7 @@
   // Returns { refresh(force), setDark(on), destroy() }.
   function mount(host, { dark = !!globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches, siteView = null } = {}) {
     const root = host.shadowRoot ?? host.attachShadow({ mode: 'closed' });
+    globalThis.KidTubeWatch?.shadow?.(root);   // dev mode reads and taps inside it (core/ui/bridge.js)
     host.classList.toggle('dark', dark);
     // The account menu drops down over the page below, its sticky toolbar too (the parent tabs):
     // lift the bar above the page's own layers. On YouTube shell.js already pins it on top.
@@ -500,7 +502,8 @@
     // version (App update) and what its last action said (System, with ✕).
     const TYPE = { error: 'Error', validation: 'Validation', data: 'Data update', note: 'My note', question: 'Question', update: 'App update', system: 'System' };
     const SHOWN = 5;
-    function rowsNow(h) {
+    // Every row, the swiped ones too; rowsNow: the ones shown.
+    function allRows(h) {
       const rows = [...(h.inbox ?? [])];
       if (ver?.newer) rows.unshift(updateRow(ver));
       const note = ui.github ? '' : ui.note || h.error;
@@ -509,8 +512,9 @@
         rows.unshift({ id: 'system', type: 'system', status: { text: tone === 'err' ? 'Failed' : tone === 'ok' ? 'Done' : 'Info', tone: tone === 'err' ? 'bad' : tone === 'ok' ? 'ok' : '' },
           title: note, detail: ui.note ? '' : 'The apps list could not be read from GitHub.', actions: ui.note ? [{ do: 'dismiss', label: '✕' }] : [] });
       }
-      return rows.filter((r) => hidden[r.id] !== sigOf(r));
+      return rows;
     }
+    const rowsNow = (h) => allRows(h).filter((r) => hidden[r.id] !== sigOf(r));
     const sigOf = (r) => `${r.status?.text ?? ''}|${r.tries ?? ''}`;
     // A row swiped to the right: a note asks once more (its Delete); an answered question closes (Got it); the header's
     // message goes; any other row is hidden until its status changes.
@@ -519,7 +523,8 @@
       const close = r.actions?.find((a) => a.do === 'question.dismiss');
       if (close) return tapRow(r, close);
       if (r.id === 'system') { ui.note = ''; return draw(); }
-      const ids = new Set(rowsNow(data ?? {}).map((x) => x.id));
+      // Forget only rows that are gone for good (not the ones swiped before: they would come back).
+      const ids = new Set(allRows(data ?? {}).map((x) => x.id));
       hidden = { ...Object.fromEntries(Object.entries(hidden).filter(([k]) => ids.has(k))), [r.id]: sigOf(r) };
       chrome.storage.local.set({ inboxHidden: hidden }).catch(() => {});
       draw();
@@ -619,6 +624,7 @@
         if (r.answer) msg.append(el('span', 'answer', `Answer: ${r.answer}`));   // the AI's answer to a question
         if (r.detail) msg.append(el('span', '', r.detail));
         if (r.state) msg.append(el('span', '', r.state));
+        if (r.versions) msg.append(el('span', 'pvers', r.versions));   // a problem: where it came from, where it is fixed
         for (const a of r.actions ?? []) {
           const sure = a.do === 'note.drop' && ui.sure === r.id;
           const b = button(sure ? 'sure' : a.do === 'note.send' ? 'go' : '', sure ? 'Sure? Delete' : a.label, () => tapRow(r, a));
@@ -781,6 +787,7 @@
   function modeSwitch(mode) {
     const host = document.createElement('span');
     const root = host.attachShadow({ mode: 'closed' });
+    globalThis.KidTubeWatch?.shadow?.(root);
     const seg = el('div', 'seg');
     seg.setAttribute('role', 'group');
     seg.setAttribute('aria-label', 'Mode');

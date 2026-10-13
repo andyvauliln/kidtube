@@ -125,6 +125,7 @@
     const host = h('span');
     host.style.cssText = 'position:fixed;left:12px;bottom:72px;z-index:2147483647';
     const root = host.attachShadow({ mode: 'closed' });
+    globalThis.KidTubeWatch?.shadow?.(root);   // dev mode reads and taps inside it (core/ui/bridge.js)
     const msg = h('div', { class: 'msg', role: 'status', hidden: true });
     let timer;
     const say = (text, err = false) => {
@@ -875,6 +876,7 @@
     host = document.createElement('div');
     host.style.cssText = 'position:fixed;inset:0;z-index:2147483646;overflow-y:auto;overscroll-behavior:contain;-webkit-overflow-scrolling:touch;display:none';
     const shadow = host.attachShadow({ mode: 'closed' });
+    globalThis.KidTubeWatch?.shadow?.(shadow);
     headerBox = h('div');
     main = h('main');
     tabsBar = h('nav', { class: 'tabs', 'aria-label': 'Tabs' });

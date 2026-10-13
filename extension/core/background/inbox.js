@@ -18,19 +18,24 @@ const recent = (at, now = Date.now()) => !!at && now - Date.parse(at) < RECENT;
 
 // A problem's state (runner.js stateOf) as the row's status: its short words and its tone (bad, wait, ok).
 const PROBLEM_STATUS = {
-  unsent: ['Not sent', 'bad'], waiting: ['Sent', 'wait'], late: ['No answer', 'bad'], working: ['Handling', 'wait'],
-  reload: ['Fixed: update', 'wait'], fixed: ['Done', 'ok'], checked: ['Done', 'ok'], 'needs-you': ['Needs you', 'bad'],
-  retry: ['Retrying', 'wait'], 'gave-up': ['Stopped', 'bad'],
+  unsent: ['Not sent', 'bad'], waiting: ['Sent to the AI', 'wait'], late: ['AI did not reply', 'bad'], working: ['AI working', 'wait'],
+  reload: ['Fixed: update', 'wait'], fixed: ['Fixed', 'ok'], checked: ['Closed', 'ok'], 'needs-you': ['Needs you', 'bad'],
+  retry: ['AI retrying', 'wait'], 'gave-up': ['AI stopped', 'bad'], old: ['Not seen since', 'ok'],
 };
+// Where a problem came from and where it is fixed, in one line: "Came from 0.12.2 · Fixed in 0.12.6 · This tablet: 0.12.14".
+function versionsOf(p, installed) {
+  const fixed = p.fix?.version && ['fixed', 'not-a-bug'].includes(p.fix.state) ? ` · ${p.fix.state === 'fixed' ? 'Fixed' : 'Check corrected'} in ${p.fix.version}` : '';
+  return `Came from ${p.versions.join(', ') || '?'}${fixed}${installed ? ` · This tablet: ${installed}` : ''}`;
+}
 const status = ([text, tone]) => ({ text, tone });
 
-function problemRow(p) {
+function problemRow(p, installed) {
   const actions = [{ do: 'open', page: 'checks', label: 'Details' }];
   if (p.state === 'unsent') actions.unshift({ do: 'problems.send', label: 'Send now' });
   if (p.state === 'reload') actions.unshift({ do: 'update', label: 'Update' });
   const ai = p.fix?.message ? ` The AI says: ${p.fix.message}` : '';
   return { id: `problem:${p.key}`, type: p.kind, status: status(PROBLEM_STATUS[p.state] ?? ['Open', 'bad']), title: p.title,
-    detail: p.detail, state: `${p.label}.${ai}`, count: p.count, tries: p.tries, at: p.lastAt, done: !!p.done, actions,
+    detail: p.detail, state: `${p.label}.${ai}`, versions: versionsOf(p, installed), count: p.count, tries: p.tries, at: p.lastAt, done: !!p.done, actions,
     more: `${p.check} · ${p.versions.join(', ')}` };
 }
 
@@ -45,7 +50,7 @@ function runRow(a) {
       detail: 'The server checks every minute. The run takes about 10–30 minutes.', actions: [] };
     case 'running': return { ...base, status: status(['Handling', 'wait']), title: 'The AI is working on your notes',
       detail: 'It updates the lists when it is done (about 10–30 minutes).', actions: [] };
-    case 'late': return { ...base, status: status(['No answer', 'bad']), title: 'The server did not start the AI run in 10 minutes',
+    case 'late': return { ...base, status: status(['Not started', 'bad']), title: 'The server did not start the AI run in 10 minutes',
       detail: 'The server may be off or busy. Ask again, or wait.', actions: [again] };
     case 'done': return recent(a.at) ? { ...base, status: status(['Done', 'ok']), title: 'The AI run is done: the lists are updated',
       detail: a.message || '', done: true, actions: a.page ? [open] : [] } : null;
@@ -116,7 +121,7 @@ export async function inboxOf(cur) {
       detail: 'The server writes down what each video says. It looks for new ones every minute.' });
   }
   // The last sync's errors: one row (its self-check gh.sync, reported too, is the same thing: not a second row).
-  const { problems } = await checksView();
+  const { problems, version } = await checksView();
   const errs = mine.sync?.errors ?? [];
   if (errs.length) {
     rows.push({ id: 'sync', type: 'error', status: status(['Failed', 'bad']), title: 'The last sync with GitHub had a problem: some changes may stay on this tablet',
@@ -126,7 +131,7 @@ export async function inboxOf(cur) {
   // Each problem that waits for something, and the ones fixed or checked in the last 3 minutes.
   for (const p of problems) {
     if (errs.length && p.check === 'gh.sync') continue;
-    if (!p.done || recent(p.fix?.at)) rows.push(problemRow(p));
+    if (!p.done || recent(p.fix?.at)) rows.push(problemRow(p, version));
   }
   // What waits for the parent first, what is done last.
   const rank = (r) => (r.done ? 2 : r.status.tone === 'bad' || r.fresh ? 0 : 1);   // an answer is what the parent waits for
