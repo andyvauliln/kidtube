@@ -5,9 +5,14 @@ import { TARGET } from '../lib/target.js';
 import { cmpVersion } from '../lib/version.js';
 import { LATEST_URL, INSTALL_PAGE } from './constants.js';
 import { sync } from './sync.js';
+import { step } from '../checks/runner.js';
 
-const UPDATE_ASK_MS = 5 * 60 * 1000;
-let updateAsked = 0, updateStatus = null;
+// Chrome (and Quetta) refuse requestUpdateCheck when it comes often ("throttled"), and then do not look at all: before
+// 0.12.8 KidTube asked every 5 minutes and the tablet stayed on 0.12.2 for hours (2026-10-13). Now: once when a new
+// version shows up, then at most every 30 minutes, and at once on the parent's tap. The state is kept in storage
+// (updateState) so a restarted worker does not ask again: { version, since, askedAt, status, tries }.
+const ASK_GAP_MS = 30 * 60000;
+const MANUAL_AFTER_MS = 10 * 60000;   // asked, and still not installed 10 minutes later: offer the install page
 const installed = () => chrome.runtime.getManifest().version;
 
 export async function latestRelease(ms = 30000) {
@@ -23,27 +28,38 @@ const askUpdate = () => new Promise((resolve) => {
   }
 });
 
-async function askNow() {
-  updateAsked = Date.now();
-  return (updateStatus = await askUpdate());
+async function loadState(version) {
+  const { updateState: st } = await chrome.storage.local.get('updateState');
+  return st?.version === version ? st : { version, since: Date.now(), askedAt: 0, status: null, tries: 0 };
+}
+async function askNow(version) {
+  const st = await loadState(version ?? null);
+  // Kept before the browser answers: one that never answers is not asked again at once (status 'asking').
+  await chrome.storage.local.set({ updateState: { ...st, askedAt: Date.now(), status: 'asking', tries: st.tries + 1 } });
+  const status = await askUpdate();
+  const next = { ...st, askedAt: Date.now(), status, tries: st.tries + 1 };
+  await chrome.storage.local.set({ updateState: next });
+  step({ kind: 'update', type: status, label: version ?? '' });
+  return next;
 }
 
 export async function autoUpdate(latest) {
   if (TARGET === 'orion' || !latest?.version || cmpVersion(latest.version, installed()) <= 0) return null;
-  if (Date.now() - updateAsked < UPDATE_ASK_MS) return updateStatus;
-  return askNow();
+  const st = await loadState(latest.version);
+  if (st.askedAt && Date.now() - st.askedAt < ASK_GAP_MS) return st;
+  return askNow(latest.version);
 }
 
-// The bottom bar's ↻ Update when there is a newer app (Quetta): ask the browser now, not in 5 min.
+// The bottom bar's ↻ Update when there is a newer app (Quetta): ask the browser now, not in 30 min.
 export async function updateApp() {
   if (TARGET === 'orion') return { ok: false, error: 'Orion installs a new version from the .zip' };
-  return { ok: true, status: await askNow() };
+  return { ok: true, status: (await askNow((await latestRelease())?.version)).status };
 }
 
 // Settings → Update now: the browser's answer, the newest release, and a fresh sync.
 export async function checkUpdate() {
-  const check = { status: TARGET === 'orion' ? 'manual' : await askNow() };
   const latest = await latestRelease();
+  const check = { status: TARGET === 'orion' ? 'manual' : (await askNow(latest?.version)).status };
   const newer = latest && cmpVersion(latest.version, installed()) > 0;
   return { installed: installed(), check, latest: latest?.version ?? null, installPage: newer ? INSTALL_PAGE : null, download: newer ? latest.zipUrl ?? null : null, sync: await sync() };
 }
@@ -55,22 +71,41 @@ export async function checkUpdate() {
 // The page waits 8 s (core/lib/ask.js): latest.json gets 5 s, the browser's update check 1.5 s (it goes on after the
 // answer, its status shows in the next one). A slow tablet took 10.4 s waiting for both (0.12.2).
 const VERSION_MS = 5 * 60 * 1000, LATEST_MS = 5000, UPDATE_WAIT_MS = 1500;
+const within = (p, ms, late) => Promise.race([p, new Promise((r) => setTimeout(() => r(late), ms))]);
 const DEV_MANIFEST = 'https://raw.githubusercontent.com/andyvauliln/kidtube/main/extension/manifest.json';
 let versionKept = null, versionAt = 0;
-const isDev = () => new Promise((resolve) => {
-  try { chrome.management.getSelf((m) => { void chrome.runtime.lastError; resolve(m?.installType === 'development'); }); } catch { resolve(false); }
+// How this copy was installed (chrome.management): 'normal' (a .crx: the browser can update it from updates.xml),
+// 'development' (unpacked: a folder or a .zip; the browser never updates it), 'sideload', 'other'.
+export const installTypeOf = () => new Promise((resolve) => {
+  try { chrome.management.getSelf((m) => { void chrome.runtime.lastError; resolve(m?.installType ?? null); }); } catch { resolve(null); }
 });
+const android = () => /Android/i.test(globalThis.navigator?.userAgent ?? '');
 async function devLatest() {
   try { return { version: (await (await fetch(`${DEV_MANIFEST}?t=${Date.now()}`, { cache: 'no-store', signal: AbortSignal.timeout(LATEST_MS) })).json()).version }; } catch { return null; }
 }
-const within = (p, ms, late) => Promise.race([p, new Promise((r) => setTimeout(() => r(late), ms))]);
-export async function appVersion() {
-  if (versionKept && Date.now() - versionAt < VERSION_MS && versionKept.installed === installed()) return versionKept;
-  const kind = TARGET === 'orion' ? 'orion' : (await isDev()) ? 'dev' : 'quetta';
+// phase (Quetta, a newer one): installing (the browser said update_available a short time ago: it downloads it and
+// KidTube restarts), waiting (the browser was asked; it looks again by itself), manual (installed from a .zip, or still
+// not installed 10 minutes after asking: the install page's .crx, by hand). Installed: newer is false, one version.
+export function phaseOf(st, installType, now = Date.now()) {
+  if (installType === 'development') return { phase: 'manual', why: 'zip' };
+  if (st?.status === 'update_available' && now - st.askedAt < 5 * 60000) return { phase: 'installing' };
+  if (st?.askedAt && now - st.since >= MANUAL_AFTER_MS) return { phase: 'manual', why: st.status ?? 'error' };
+  return { phase: 'waiting', why: st?.status ?? null };
+}
+export async function appVersion({ fresh = false } = {}) {
+  if (!fresh && versionKept && Date.now() - versionAt < VERSION_MS && versionKept.installed === installed()) return versionKept;
+  const installType = await installTypeOf();
+  // An unpacked copy on a computer is a copy from git; on Android it is a .zip installed in Quetta.
+  const kind = TARGET === 'orion' ? 'orion' : installType === 'development' && !android() ? 'dev' : 'quetta';
   const latest = kind === 'dev' ? await devLatest() : await latestRelease(LATEST_MS);
   const newer = !!latest?.version && cmpVersion(latest.version, installed()) > 0;
-  const answer = { ok: true, installed: installed(), target: TARGET, kind, latest: latest?.version ?? null, newer,
-    updating: newer && kind === 'quetta' ? await within(autoUpdate(latest), UPDATE_WAIT_MS, 'asking') : null, download: latest?.zipUrl ?? null, installPage: INSTALL_PAGE };
+  if (latest && !newer) await chrome.storage.local.remove('updateState');
+  // The browser's answer at most 1.5 s; a later one is in updateState for the next read (the header reads it again).
+  const quetta = newer && kind === 'quetta' && installType !== 'development';
+  const st = quetta ? (await within(autoUpdate(latest), UPDATE_WAIT_MS, null)) ?? (await loadState(latest.version)) : null;
+  const answer = { ok: true, installed: installed(), target: TARGET, kind, installType, latest: latest?.version ?? null, newer,
+    ...(newer && kind === 'quetta' ? { ...phaseOf(st, installType), status: st?.status ?? null, askedAt: st?.askedAt ?? null } : {}),
+    updating: st?.status ?? null, download: latest?.zipUrl ?? null, installPage: INSTALL_PAGE };
   // A latest.json that did not come back is not kept: the next header asks again.
   if (latest) [versionKept, versionAt] = [answer, Date.now()];
   return answer;
@@ -79,10 +114,16 @@ export async function appVersion() {
 // The header's new version (a tap on it). Quetta: the browser installs it now and the app restarts. Orion: the install
 // page in a new tab (its .zip; opening it also refreshes the copy of the connection, content/backup.js). An unpacked
 // copy: Chrome's page of this extension, where Reload loads it after git pull.
-export async function openUpdate() {
+// manual: the parent chose "by hand" (or the phase says so): the install page, whose .crx installs over this one.
+export async function openUpdate(msg = {}) {
   const v = await appVersion();
-  if (v.kind === 'quetta') return { ok: true, kind: v.kind, status: (await updateApp()).status };
+  if (v.kind === 'quetta' && !msg.manual && v.phase !== 'manual') {
+    // The browser's answer, 5 s at most (the header waits 15): later, the label follows it (updateState).
+    const st = await within(askNow(v.latest), 5000, { status: 'asking' });
+    versionAt = 0;   // the header reads the new phase at once
+    return { ok: true, kind: v.kind, status: st.status, latest: v.latest };
+  }
   const url = v.kind === 'dev' ? `chrome://extensions/?id=${chrome.runtime.id}` : v.installPage;
   await chrome.tabs.create({ url });
-  return { ok: true, kind: v.kind, url };
+  return { ok: true, kind: v.kind, url, manual: v.kind === 'quetta', why: v.why ?? null, latest: v.latest };
 }

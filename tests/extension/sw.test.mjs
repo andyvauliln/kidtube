@@ -218,7 +218,8 @@ test('"version" answers in time when the browser\'s update check or latest.json 
     const v = await Promise.race([send(msg), new Promise((r) => setTimeout(() => r('no answer'), 9000))]);
     return { v, ms: realNow() - t0 };
   };
-  Date.now = () => realNow() + 10 * 60000;   // the last ask was more than 5 minutes ago
+  Date.now = () => realNow() + 10 * 60000;
+  delete fake.store.updateState;   // no ask yet for this version (the browser is asked once, then every 30 min)
   fake.runtime.getManifest = () => ({ version: '0.1.1' });   // not the answer kept by the test above
   let asked = 0;
   fake.runtime.requestUpdateCheck = () => { asked++; };   // the browser has not answered yet

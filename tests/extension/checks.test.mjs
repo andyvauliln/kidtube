@@ -365,7 +365,8 @@ test('a problem in plain words: what went wrong, where, and what was expected', 
   const err = wordsOf({ check: 'rule.pageError.render-js_172', area: 'page', expect: 'no uncaught error', first: { what: 'an uncaught error', expected: 'none', actual: 'x is undefined' } });
   assert.deepEqual([err.kind, err.title, err.detail], ['error', 'A script error on an extension page (render-js:172)', 'The error: x is undefined']);
   const slow = wordsOf({ check: 'rule.slowAnswer.connect', area: 'header', first: { what: 'time', expected: 'under 15000 ms', actual: '21000 ms' } });
-  assert.equal(slow.detail, 'It took 21000 ms; the page waits 15000 ms.');
+  assert.deepEqual([slow.title, slow.detail], ['Connect was too slow in the header', 'It took 21 s, but the screen waits only 15 s, so it said “no answer” too early.']);
+  assert.equal(wordsOf({ check: 'rule.slowAnswer.runHelper', area: 'background' }).title, '↻ Update (send the notes, ask for an AI run) was too slow');
   const v = wordsOf({ check: 'parent.dock', area: 'parent', expect: 'The bottom bar has ↻ Update', first: { what: '↻ Update', expected: 'the Update button', actual: '' } });
   assert.deepEqual([v.kind, v.title, v.detail], ['validation', 'A self-check failed on the parent screens: The bottom bar has ↻ Update', '↻ Update: expected the Update button, but it was nothing.']);
 });
@@ -406,4 +407,36 @@ test('a sync may take as long as its page waits (60 s): 10.5 s is not slow, more
     assert.ok(r, 'longer than the page waits: still a slow answer');
     assert.match(r.saw, /expected under 60000 ms/);
   } finally { Date.now = realNow; globalThis.fetch = realFetch; await fromPage({ type: 'clearChecks' }); }
+});
+
+test('a new version on Quetta: the browser is asked once, then at most every 30 min; the header sees where it is', async () => {
+  const { autoUpdate, phaseOf } = await import('../../extension/core/background/updates.js');
+  const realCheck = fake.runtime.requestUpdateCheck;
+  let asks = 0;
+  fake.runtime.requestUpdateCheck = (cb) => { asks++; cb({ status: 'throttled' }); };
+  try {
+    delete fake.store.updateState;
+    const latest = { version: '9.9.9' };
+    assert.equal((await autoUpdate(latest)).status, 'throttled');
+    await autoUpdate(latest);
+    await autoUpdate(latest);
+    assert.equal(asks, 1, 'asking often makes the browser refuse (2026-10-13: the tablet stayed on 0.12.2): once, then wait');
+    assert.equal(fake.store.updateState.version, '9.9.9');
+    fake.store.updateState.askedAt -= 31 * 60000;
+    await autoUpdate(latest);
+    assert.equal(asks, 2, 'again after 30 minutes');
+    assert.equal(await autoUpdate({ version: '0.0.1' }), null, 'not newer: nothing to ask');
+    // The tap on the new version asks at once, whatever the gap.
+    fake.store.updateState.askedAt = Date.now();
+    await fromPage({ type: 'openUpdate' });
+    assert.equal(asks, 3);
+  } finally { fake.runtime.requestUpdateCheck = realCheck; delete fake.store.updateState; }
+  // The phase next to the logo and in the App update row.
+  const now = Date.parse('2026-10-13T10:00:00Z');
+  const st = (status, askedMin, sinceMin) => ({ status, askedAt: now - askedMin * 60000, since: now - sinceMin * 60000 });
+  assert.deepEqual(phaseOf(st('update_available', 1, 1), 'normal', now), { phase: 'installing' });
+  assert.deepEqual(phaseOf(st('throttled', 1, 2), 'normal', now), { phase: 'waiting', why: 'throttled' });
+  assert.deepEqual(phaseOf(st('throttled', 1, 11), 'normal', now), { phase: 'manual', why: 'throttled' }, 'not installed in 10 min: by hand');
+  assert.deepEqual(phaseOf(st('update_available', 8, 11), 'normal', now), { phase: 'manual', why: 'update_available' }, 'said it downloads, but nothing came');
+  assert.deepEqual(phaseOf(null, 'development', now), { phase: 'manual', why: 'zip' }, 'a .zip install: the browser never updates it');
 });

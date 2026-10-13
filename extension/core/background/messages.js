@@ -121,9 +121,9 @@ const HANDLERS = {
   readFixes: () => readFixes({ force: true }).then((f) => ({ ok: true, error: f?.error ?? null })),
   // The 15-second banner of a new report (core/ui/watch.js): only where the parent is (not in kid mode, not at a locked header).
   checkAlert: async () => ({ ok: true, alert: (await headerOpen()) ? await takeAlert() : null }),
-  version: () => appVersion(),
+  version: (msg) => appVersion({ fresh: !!msg.fresh }),
   updateApp: () => updateApp(),
-  openUpdate: () => openUpdate(),
+  openUpdate: (msg) => openUpdate(msg),
 };
 
 // Messages that change the mode or the profile come only from the extension's own pages.

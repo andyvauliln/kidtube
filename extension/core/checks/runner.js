@@ -74,7 +74,9 @@ export async function contextNow(sender) {
   const yt = g.ytAccount ?? null;
   const parentOn = st.mode === 'parent';
   return redact({
-    app: { version: m.version, versionName: m.version_name ?? null, target: TARGET, workerStartedAt: workerStart },
+    app: { version: m.version, versionName: m.version_name ?? null, target: TARGET, workerStartedAt: workerStart,
+      installType: await new Promise((r) => { try { chrome.management.getSelf((x) => { void chrome.runtime.lastError; r(x?.installType ?? null); }); } catch { r(null); } }),
+      update: (await chrome.storage.local.get('updateState')).updateState ?? null },
     browser: { userAgent: globalThis.navigator?.userAgent ?? null, online: globalThis.navigator?.onLine ?? null,
       language: globalThis.navigator?.language ?? null, timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone },
     profile: {
@@ -409,8 +411,16 @@ export function problemsOf(reports, fixes, installed, now = Date.now()) {
 // a self-check found something not as it should be), title (what went wrong, where) and detail (what was expected
 // and what was there). The check id stays in the details for the AI.
 const WHERE = { header: 'in the header', parent: 'on the parent screens', youtube: 'on YouTube', page: 'on an extension page',
-  background: 'in the background', notes: 'with the notes', rules: 'with the rules', instagram: 'in the Instagram app', kid: 'on the kid’s screen' };
+  background: '', notes: 'with the notes', rules: 'with the rules', instagram: 'in the Instagram app', kid: 'on the kid’s screen' };
 const quote = (s) => `“${String(s ?? '').slice(0, 60)}”`;
+// The messages by what the parent tapped or saw (a check names the message type; the parent never sees those).
+const ACTION = { runHelper: '↻ Update (send the notes, ask for an AI run)', sync: 'the sync with GitHub', header: 'loading the header',
+  inbox: 'a button in the notifications', openApp: 'opening an app', connect: 'Connect', plainSite: 'the App | site switch',
+  plainYouTube: 'the App | YouTube switch', connectGitHub: 'connecting GitHub', exportSettings: 'saving the settings file',
+  importSettings: 'loading the settings file', openUpdate: 'the new version next to the logo', checkUpdate: 'Update now in Settings',
+  parentData: 'loading the parent screens', state: 'loading his screen', note: 'saving a note', wish: 'saving a note', setMode: 'the Parent | Kid switch' };
+const action = (type) => ACTION[type] ?? quote(type);
+const secs = (ms) => (/^\d+ ms$/.test(ms) ? `${Math.round(parseInt(ms, 10) / 100) / 10} s` : ms);
 export function wordsOf({ check, area, expect, first, saw }) {
   const [, rule, arg = ''] = String(check).match(/^rule\.(\w+)\.?(.*)$/) ?? [];
   const where = WHERE[area] ? ` ${WHERE[area]}` : '';
@@ -419,11 +429,11 @@ export function wordsOf({ check, area, expect, first, saw }) {
   const label = String(expect ?? '').match(/“(.+)”/)?.[1] ?? arg;
   switch (rule) {
     case 'deadButton': return { kind: 'error', title: `Tapping ${quote(label)}${where} did nothing`, detail: 'Nothing on the screen changed within 5 seconds after the tap.' };
-    case 'noAnswer': return { kind: 'error', title: `A request (${quote(arg)}) got no answer${where}`, detail: `The page asked the extension and waited ${wanted.replace(/^within /, '') || '15 s'}: no answer came.` };
+    case 'noAnswer': return { kind: 'error', title: `No answer for ${action(arg)}${where}`, detail: `The screen waited ${wanted.replace(/^within /, '') || '15 s'} for the extension and then stopped waiting. A slow connection to GitHub is the usual cause; the action may still have worked.` };
     case 'pageError': return { kind: 'error', title: `A script error${where} (${arg.replace(/_(\d+)$/, ':$1')})`, detail: got ? `The error: ${got}` : '' };
-    case 'handlerError': return { kind: 'error', title: `The extension failed while doing ${quote(arg)}`, detail: got ? `The error: ${got.replace(/^threw: /, '')}` : '' };
-    case 'slowAnswer': return { kind: 'error', title: `${quote(arg)} was too slow${where}`, detail: got ? `It took ${got}; the page waits ${wanted.replace(/^under /, '')}.` : '' };
-    case 'noReason': return { kind: 'error', title: `${quote(arg)} failed and did not say why`, detail: 'You would only see “That didn’t work”.' };
+    case 'handlerError': return { kind: 'error', title: `The extension broke during ${action(arg)}`, detail: got ? `The error: ${got.replace(/^threw: /, '')}` : '' };
+    case 'slowAnswer': return { kind: 'error', title: `${action(arg)[0].toUpperCase()}${action(arg).slice(1)} was too slow${where}`, detail: got ? `It took ${secs(got)}, but the screen waits only ${secs(wanted.replace(/^under /, ''))}, so it said “no answer” too early.` : '' };
+    case 'noReason': return { kind: 'error', title: `${action(arg)[0].toUpperCase()}${action(arg).slice(1)} failed and did not say why`, detail: 'You would only see “That didn’t work”.' };
     default: break;
   }
   const what = first?.what ? `${first.what}: ` : '';

@@ -226,17 +226,23 @@
   }
 
   // The new version's tap (core/background/updates.js openUpdate): what happens next, by how this copy was installed.
+  // Quetta: what the browser said when it was asked (core/background/updates.js askNow).
   const UPDATING = {
-    update_available: 'Installing the new version… Custom Apps restarts in a moment.',
-    throttled: 'The browser asks to wait: it installs the new version within a few minutes.',
-    no_update: 'The browser does not see the new version yet: try again in a minute.',
-    error: 'The browser could not check for the new version: try again in a minute.',
+    update_available: (v) => `The browser is downloading ${v}. Custom Apps restarts by itself in about a minute; then only ${v} shows next to the logo.`,
+    throttled: (v) => `The browser says it checked a short time ago and wants to wait, so ${v} is not installed yet. If it is still not installed in 10 minutes, tap the version again: it opens the install page to install it by hand.`,
+    asking: (v) => `The browser is checking for ${v}. The label next to the logo shows what it found in a minute.`,
+    no_update: (v) => `The browser does not see ${v} yet (the site can be up to 10 minutes behind). Try again in a few minutes.`,
+    error: (v) => `The browser could not check for ${v}. Try again in a few minutes, or install it by hand from the install page.`,
   };
+  const BY_HAND = (v) => `The install page opened. Tap Download .crx, then open Quetta’s ⋮ → Extensions and install the file (choose the .crx in Downloads). Your settings and lists stay. After that only ${v} shows next to the logo.`;
+  // The new version above the current one: what it is doing now (Quetta's phase), and what a tap does.
   const NEWER = {
-    quetta: (v) => `Version ${v} is ready: tap to install it now`,
+    quetta: (v, p) => (p === 'installing' ? `${v} is downloading: Custom Apps restarts by itself`
+      : p === 'manual' ? `${v} is not installed yet: tap to install it by hand from the install page` : `${v} is ready: tap to install it now`),
     orion: (v) => `Version ${v} is ready: tap to download it from the install page`,
     dev: (v) => `Version ${v} is on GitHub: tap, then git pull and Reload`,
   };
+  const NEW_LABEL = { installing: (v) => `↓ ${v} installing…`, manual: (v) => `↑ ${v} · by hand` };
 
   // --- the header -------------------------------------------------------------------------------------------
   // host: an element to draw into (its shadow root). dark: YouTube's own theme (shell.js); on the extension's pages, the system's.
@@ -311,20 +317,27 @@
 
     // The version next to the logo, and a newer one above it: read with the header's refreshes, at most every
     // 10 minutes (the background keeps its answer 5 minutes).
-    let verAt = 0;
-    async function readVersion() {
-      if (Date.now() - verAt < 10 * 60000) return;
+    let verAt = 0, verTimer = null;
+    // While a newer one waits: every minute, so the label follows the browser (installing → installed: one version).
+    async function readVersion(force = false) {
+      if (!force && Date.now() - verAt < (ver?.newer ? 60000 : 10 * 60000)) return;
       verAt = Date.now();
-      const v = await ask({ type: 'version' });
+      const v = await ask({ type: 'version', fresh: force });
       if (!alive || !v?.ok) return;
-      const changed = !ver || ver.installed !== v.installed || ver.latest !== v.latest || ver.newer !== v.newer;
+      const changed = !ver || ver.installed !== v.installed || ver.latest !== v.latest || ver.newer !== v.newer || ver.phase !== v.phase;
       ver = v;
       if (changed) draw();
+      // A newer one waits: look again in a minute, so the label follows it (installing, then one version).
+      clearTimeout(verTimer);
+      if (v.newer && alive) verTimer = setTimeout(() => readVersion(true), 60000);
     }
-    async function getUpdate() {
-      const r = await act('Updating…', { type: 'openUpdate' });
+    async function getUpdate(manual = false) {
+      const r = await act('Updating…', { type: 'openUpdate', manual });
       if (!r?.ok) return;
-      if (r.kind === 'quetta') say(UPDATING[r.status] ?? UPDATING.error, r.status === 'update_available' ? 'ok' : '');
+      readVersion(true);
+      const v = r.latest ?? ver?.latest ?? 'the new version';
+      if (r.kind === 'quetta' && r.manual) say(BY_HAND(v), 'ok');
+      else if (r.kind === 'quetta') say((UPDATING[r.status] ?? UPDATING.error)(v), r.status === 'update_available' ? 'ok' : '');
       else if (r.kind === 'dev') say('Run git pull in the extension’s folder, then press ⟳ Reload on Custom Apps in the tab that opened.', 'ok');
       else say('Download the new .zip on the install page that opened, then install it in Orion the same way as the first time.', 'ok');
     }
@@ -332,8 +345,8 @@
       const b = el('div', 'brand');
       const vers = el('span', 'vers');
       if (ver?.newer) {
-        const n = button('newver', `↑ ${ver.latest}`, getUpdate);
-        n.title = NEWER[ver.kind]?.(ver.latest) ?? `Version ${ver.latest} is ready`;
+        const n = button('newver', NEW_LABEL[ver.phase]?.(ver.latest) ?? `↑ ${ver.latest}`, () => getUpdate());
+        n.title = NEWER[ver.kind]?.(ver.latest, ver.phase) ?? `Version ${ver.latest} is ready`;
         n.disabled = !!busy;
         vers.append(n);
       }
@@ -477,10 +490,7 @@
     const SHOWN = 5;
     function rowsNow(h) {
       const rows = [...(h.inbox ?? [])];
-      if (ver?.newer) {
-        rows.unshift({ id: 'update', type: 'update', status: { text: 'New', tone: 'wait' }, title: `Custom Apps ${ver.latest} is ready (this browser has ${ver.installed})`,
-          detail: NEWER[ver.kind]?.(ver.latest) ?? '', actions: [{ do: 'update', label: ver.kind === 'quetta' ? 'Install' : 'Get it' }] });
-      }
+      if (ver?.newer) rows.unshift(updateRow(ver));
       const note = ui.github ? '' : ui.note || h.error;
       if (note) {
         const tone = ui.note ? ui.noteKind : 'err';
@@ -489,11 +499,26 @@
       }
       return rows;
     }
+    // The App update row: where the new version is, in plain words, and what to do.
+    function updateRow(v) {
+      const base = { id: 'update', type: 'update', title: `Custom Apps ${v.latest} is out. This browser has ${v.installed}.` };
+      if (v.kind !== 'quetta') return { ...base, status: { text: 'New', tone: 'wait' }, detail: NEWER[v.kind]?.(v.latest) ?? '', actions: [{ do: 'update', label: 'Get it' }] };
+      const asked = v.askedAt ? ` (asked at ${new Date(v.askedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : '';
+      const said = { throttled: 'it wants to wait', no_update: 'it does not see the new version yet', error: 'it could not check' }[v.status];
+      if (v.phase === 'installing') return { ...base, status: { text: 'Installing', tone: 'wait' }, actions: [],
+        detail: `The browser is downloading it${asked}. Custom Apps restarts by itself; then this row goes away.` };
+      if (v.phase === 'manual') return { ...base, status: { text: 'By hand', tone: 'bad' }, actions: [{ do: 'update.manual', label: 'Install by hand' }],
+        detail: v.why === 'zip' ? 'This copy was installed from a .zip, so the browser cannot update it. Install the .crx from the install page once: after that the browser updates it by itself.'
+          : `The browser did not install it${said ? ` (${said})` : ''}${asked}. Install it from the install page: download the .crx and open it in Quetta’s Extensions. Your settings stay.` };
+      return { ...base, status: { text: 'Waiting', tone: 'wait' }, actions: [{ do: 'update', label: 'Install now' }, { do: 'update.manual', label: 'By hand' }],
+        detail: `${said ? `The browser was asked${asked}: ${said}. It looks again by itself.` : 'Tap Install now: the browser downloads it and Custom Apps restarts.'}` };
+    }
     const waiting = (rows) => rows.filter((r) => !r.done && r.type !== 'system').length;
 
     async function tapRow(r, a) {
       if (a.do === 'dismiss') { ui.note = ''; return draw(); }
       if (a.do === 'update') return getUpdate();
+      if (a.do === 'update.manual') return getUpdate(true);
       if (a.do === 'open') {
         const o = await ask({ type: 'openAiPage', page: a.page });
         if (!o?.ok) say(o?.error ?? 'That didn’t work. Try again.', 'err');
@@ -661,6 +686,7 @@
     let aiTimer = null;
     const onStorage = (ch) => {
       if (ch.checkAlert?.newValue && !ch.checkAlert.newValue.shown) newReport();
+      if (ch.updateState) readVersion(true);
       if (ch.ytAccount || ch.igAccount || ch.settings || ch.accounts || ch.repoProfiles || ch.account || ch.shell) refresh();
       else if (ch.outbox || ch.data || ch.ig || ch.checks || ch.notes || ch.syncStatus) { clearTimeout(aiTimer); aiTimer = setTimeout(() => refresh(), 1000); }
     };
@@ -673,7 +699,7 @@
     return {
       refresh,
       setDark(on) { host.classList.toggle('dark', on); },
-      destroy() { alive = false; clearTimeout(aiTimer); chrome.storage.onChanged.removeListener(onStorage); },
+      destroy() { alive = false; clearTimeout(aiTimer); clearTimeout(verTimer); chrome.storage.onChanged.removeListener(onStorage); },
     };
   }
 

@@ -237,6 +237,24 @@ test('the apps header: a newer version above the version, in blue, gets it; the 
   assert.equal(views, 1, 'Instagram: the same page’s own view, not a new page');
   assert.ok(!sent.some((m) => m.type === 'plainSite'));
 
+  // Quetta: the label says where the new version is; not installed in time: by hand, the install page.
+  answers.version = () => ({ ok: true, installed: '0.12.2', latest: '0.12.8', newer: true, kind: 'quetta', phase: 'installing', status: 'update_available', askedAt: Date.now() });
+  const q = new FakeEl('div');
+  globalThis.KidTubeHeader.mount(q, { dark: false });
+  await tick(); await tick();
+  assert.equal(text(find(q.shadowRoot, (n) => n.className === 'newver')).trim(), '↓ 0.12.8 installing…');
+  answers.version = () => ({ ok: true, installed: '0.12.2', latest: '0.12.8', newer: true, kind: 'quetta', phase: 'manual', why: 'throttled', status: 'throttled', askedAt: Date.now() });
+  answers.openUpdate = (m) => ({ ok: true, kind: 'quetta', manual: !!m.manual || true, url: 'https://x/', latest: '0.12.8' });
+  const q2 = new FakeEl('div');
+  globalThis.KidTubeHeader.mount(q2, { dark: false });
+  await tick(); await tick();
+  const nv = find(q2.shadowRoot, (n) => n.className === 'newver');
+  assert.equal(text(nv).trim(), '↑ 0.12.8 · by hand');
+  sent.length = 0;
+  nv.click();
+  await tick(); await tick();
+  assert.ok(text(q2.shadowRoot).includes('Download .crx'), 'what to do on the install page');
+
   answers.version = () => ({ ok: true, installed: '0.12.0', latest: '0.12.0', newer: false, kind: 'quetta' });
   const now = new FakeEl('div');   // after the update: only the current version
   globalThis.KidTubeHeader.mount(now, { dark: false });
