@@ -264,3 +264,23 @@ test('↻ Update waits for the run to be sent: 9 s on a slow tablet is an answer
     assert.deepEqual(missed, [['runHelper', 60000]]);
   } finally { chrome.runtime.sendMessage = send; delete globalThis.KidTubeWatch; t.mock.timers.reset(); }
 });
+
+test('the parent page waits for a whole sync: 10.5 s on a slow tablet is an answer, not “the extension did not answer” (rule.noAnswer.sync, 0.12.2)', async (t) => {
+  const { ask } = await import('../../extension/core/lib/ask.js');
+  const send = chrome.runtime.sendMessage;
+  const missed = [];
+  globalThis.KidTubeWatch = { noAnswer: (msg, ms) => missed.push([msg.type, ms]) };
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  chrome.runtime.sendMessage = (msg, cb) => { sent.push(msg); setTimeout(() => cb({ ok: true }), 10460); };   // GitHub and back several times
+  try {
+    const synced = ask({ type: 'sync' });
+    t.mock.timers.tick(10460);
+    assert.deepEqual(await synced, { ok: true }, 'the answer came');
+    assert.deepEqual(missed, []);
+    chrome.runtime.sendMessage = (msg) => { sent.push(msg); };   // a background that never answers is still noticed
+    const lost = ask({ type: 'sync' });
+    t.mock.timers.tick(60000);
+    assert.equal(await lost, undefined);
+    assert.deepEqual(missed, [['sync', 60000]]);
+  } finally { chrome.runtime.sendMessage = send; delete globalThis.KidTubeWatch; t.mock.timers.reset(); }
+});

@@ -388,3 +388,22 @@ test('↻ Update (runHelper) may take as long as its page waits (60 s): 9 s is n
     assert.match(r.saw, /expected under 60000 ms/);
   } finally { Date.now = realNow; globalThis.fetch = realFetch; await fromPage({ type: 'clearChecks' }); }
 });
+
+test('a sync may take as long as its page waits (60 s): 10.5 s is not slow, more than 60 s still is (0.12.2)', async () => {
+  const realNow = Date.now, realFetch = globalThis.fetch;
+  let late = 0;
+  globalThis.fetch = (...a) => { const shift = late; Date.now = () => realNow() + shift; return realFetch(...a); };   // GitHub answers slowly
+  try {
+    await fromPage({ type: 'clearChecks' });
+    late = 10460;
+    await fromPage({ type: 'sync' });
+    await wait(50);
+    assert.equal(await result('rule.slowAnswer.sync'), undefined, '10460 ms in the report: the page still waits');
+    Date.now = realNow; late = 61000;
+    await fromPage({ type: 'sync' });
+    await wait(50);
+    const r = await result('rule.slowAnswer.sync');
+    assert.ok(r, 'longer than the page waits: still a slow answer');
+    assert.match(r.saw, /expected under 60000 ms/);
+  } finally { Date.now = realNow; globalThis.fetch = realFetch; await fromPage({ type: 'clearChecks' }); }
+});
