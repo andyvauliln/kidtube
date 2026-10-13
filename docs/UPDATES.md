@@ -55,7 +55,7 @@ only, for Orion only, or for both.
 2. The script signs the `.crx` with the key. The key keeps the extension id the same
    (`mpgpgldgfogdipaaaobleoppocmhlidp`), so a new version installs over the old one and the settings stay.
 3. The script writes `site/custom-apps-<version>.crx`, `.zip`, `site/updates.xml` and `site/latest.json`.
-4. Remove the old `.crx` and `.zip` from git (`git rm`).
+4. The script deletes the old `.crx` and `.zip`. Run `git add -A site` so that git records it.
 5. Commit as `quetta <version>: release`, then push.
 6. Wait for GitHub Pages. Check: `curl -s https://andyvauliln.github.io/kidtube/latest.json` shows the new version.
 
@@ -137,7 +137,7 @@ The header compares the version with `extension/manifest.json` on GitHub's `main
 
 | Who | When | What it releases |
 | --- | --- | --- |
-| A person in a chat session | On request. Standing rule since 2026-10-13: every change set is also released for Quetta. | Quetta; Orion only on request |
+| A person in a chat session | On request. Standing rule since 2026-10-13 (kept in the chat assistant's memory, not in this repo): every change set is also released for Quetta. | Quetta; Orion only on request |
 | The fix agent (`agent/FIX.md`) | A tablet sent a problem report (`problems/<day>.json` in the data repo). `agent/poll.sh` starts it within 1 minute. At most 6 runs a day. | Quetta and Orion |
 | The notes agent (`agent/NOTES.md`) | The parent sent a note that asks for an app change. At most 10 runs a day. | Quetta and Orion |
 
@@ -196,7 +196,8 @@ writes one file with a check that nobody wrote it first. Nobody force-pushes or 
 | The fix agent, the notes agent | `~/.local/share/kidtube/app` (their own clone) | `poll.sh` does `git fetch`, `git reset --hard origin/main` and `git clean -fd`. Old local changes are dropped. |
 | The nightly helper, the cron | `~/youtube-wraper` (the main checkout) | Nothing: they run the files as they are in the working tree |
 
-**Push a change (every writer, every time):**
+**Push a change (every writer, every time).** Written for the agents in `agent/NOTES.md` → "Releasing a change to
+the app" (the fix agent follows it too, `agent/FIX.md`), and for a chat session in `CLAUDE.md` at the top of the repo:
 
 1. Commit the change. The message ends with the `Co-Authored-By` line.
 2. Run `git fetch origin`.
@@ -243,9 +244,9 @@ The server uses a git clone (`~/.local/share/kidtube/kidtube-data`):
 1. Before it reads, it runs `git fetch` and `git reset --hard` to the remote (`agent/lib/data.mjs syncClone`).
    Local leftovers are dropped.
 2. After it writes, it runs `git add -A`, `git commit` and `git push`.
-3. If the push is refused (the tablet wrote a file in the meantime), it runs `git pull --rebase` and pushes again. It
-   tries 3 times (`agent/lib/data.mjs commitAndPush`; the same loop is in `agent/poll.sh` for `run-status.json` and
-   `fixes.json`).
+3. If the push is refused (the tablet wrote a file in the meantime), it runs `git pull --rebase` and pushes again, up
+   to 3 more times (`agent/lib/data.mjs commitAndPush`; `agent/poll.sh` has the same loop with 3 pushes for
+   `run-status.json` and `fixes.json`).
 4. `poll.sh` sees new work with `git ls-remote`, once a minute. It pulls only when the remote changed.
 
 **Each file has one owner, so the two sides rarely meet in the same file:**
@@ -256,7 +257,7 @@ The server uses a git clone (`~/.local/share/kidtube/kidtube-data`):
 | `parent-config.json` (rules changed on the tablet) | Tablet (the helper reads it) | The tablet's changes are merged over the newest file: objects merge, lists and values replace (`core/lib/merge.js mergeConfig`) |
 | `requests/run.json` (↻ Update) | Tablet | Replaced: the newest request wins |
 | `profile.json`, `transcripts/<id>.json` | Tablet | Written once |
-| `posts.json`, `posts/<id>.json`, `notes/<id>.wav` (Instagram) | Tablet | One file per post |
+| `posts.json`, `posts/<id>.json`, `notes/<id>.wav` (Instagram) | Tablet (the only writer) | Replaced: on a refused write the tablet reads the new `sha` once and writes again (`apps/instagram/background/sync.js putFile`) |
 | `problems/<day>.json` (top) | Tablet | One entry per `reportId`: the tablet replaces its own entry, keeps the others |
 | `queue.json`, `memory.json`, `helper.json`, `context/*.md` | Server (the helper) | A git rebase over the tablet's commits |
 | `run-status.json`, `notes-done.json`, `answers.json` | Server (`poll.sh`) | A git rebase over the tablet's commits |

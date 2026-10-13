@@ -36,12 +36,24 @@ Use it to find what "this", "here" or "the button" means, and to reproduce a pro
 
 ## Releasing a change to the app
 
-One version number for both browsers:
+One version number for both browsers. Other writers (a person in a chat session, another agent run) push to `main`
+too, so the release files are made last, on top of the newest code (`docs/UPDATES.md` section 9):
 
-1. Raise the patch number in `extension/manifest.json` (0.8.9 → 0.8.10). Commit the change with it: `<version>: <short summary>`.
-2. **Quetta:** `node build/pack.mjs extension --key ~/kidtube-key.pem --out site --base-url https://andyvauliln.github.io/kidtube`. Then commit `site/` as `quetta <version>: release`.
-3. **Orion:** follow the `update-orion` skill (orion-check, `node build/build-orion.mjs`, a section in `site/orion/CHANGES.md` the parent understands). Commit as `orion <version>: <short summary>`.
-4. `git push origin main`. If it is rejected: `git pull --rebase origin main`, test again, push.
+1. `git fetch origin && git rebase origin/main`. Solve a conflict by keeping both changes; run `npm test` again.
+2. Raise the patch number in `extension/manifest.json` above the newest one on `main` (`site/latest.json`):
+   0.8.9 → 0.8.10. Commit the change with it: `<version>: <short summary>`.
+3. `git push origin main`. If it is refused: go back to step 1. If the rebase stops on `extension/manifest.json`,
+   take the next free number above the remote's and change your commit message to it.
+4. Only now, with your code on `main`: **Quetta:** `node build/pack.mjs extension --key ~/kidtube-key.pem --out site --base-url https://andyvauliln.github.io/kidtube`,
+   (it deletes the old `.crx` and `.zip`), then `git add -A site` and commit as `quetta <version>: release`.
+5. **Orion:** follow the `update-orion` skill (orion-check, `node build/build-orion.mjs`, a section in `site/orion/CHANGES.md` the parent understands). Commit as `orion <version>: <short summary>`.
+6. `git push origin main`. If it is refused, run `git fetch origin && git rebase origin/main`:
+   - The rebase goes through (the other writer changed code only): `npm test`, then push.
+   - The rebase stops on a file in `site/` (someone released in the meantime): `git rebase --abort`, then
+     `git reset --hard origin/main` (this drops only your release commits: your code is on `main` since step 3).
+     If the newest release (`site/latest.json` → `sourceCommit`) already has your code, you are done. If not, do
+     steps 2–6 again with the next number.
+   - Never solve a `site/` file by hand: the scripts make it.
 
 The tablet then sees the new version next to the logo in the header. Quetta is asked for it once, then every 30 minutes; it is not proven that Quetta installs it by itself. If the label says "· by hand", the parent taps it and installs the .crx from the install page. Orion: the parent downloads the .zip. Never promise that the parent does nothing: say "tap the new version next to the logo".
 
