@@ -388,6 +388,11 @@ test('up and down through boxes: a swipe up or ↓ is the next box; a swipe only
   assert.equal(swipeStep(ends, 0, -40), 0, 'too short');
   assert.equal(swipeStep({ top: true, bottom: false }, 0, -120), 0, 'a long box scrolls to its end first');
   assert.equal(swipeStep({ top: false, bottom: true }, 0, 120), 0, 'and back to its top');
+  // Then (the parent's note, 2026-10-13): easier to swipe, and a scroll never changes the box.
+  assert.equal(swipeStep(ends, 0, -50), 1, 'a short swipe is enough');
+  assert.equal(swipeStep(ends, 45, -60), 1, 'a swipe not quite straight still counts');
+  assert.equal(swipeStep(ends, 0, -200, true), 0, 'the page (or a field) scrolled: a scroll, not a swipe');
+  assert.equal(swipeStep(ends, 0, 200, true), 0, 'also up');
   const key = (k, extra = {}) => ({ key: k, target: { closest: () => null }, ...extra });
   assert.equal(keyStep(key('ArrowDown')), 1);
   assert.equal(keyStep(key('PageDown')), 1);

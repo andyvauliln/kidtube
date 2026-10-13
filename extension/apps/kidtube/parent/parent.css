@@ -156,6 +156,8 @@ details.step > summary::-webkit-details-marker { display: none; }
 @media (prefers-reduced-motion: reduce) { .from-below, .from-above { animation: none; } }
 /* in those modes a swipe down at the top is the box before, not the browser's pull-to-refresh (kit.js holdPage) */
 html.updown, html.updown body { overscroll-behavior-y: none; }
+/* and nothing on top of the box: no apps header (its notifications) and no tabs; the mode's button leaves it (the parent's note, 2026-10-13) */
+html.updown #appHeader, html.updown body > header { display: none; }
 
 /* --- notes for the AI: the 🎤 bottom right, and the card on top of every tab -------------------------------------- */
 .notefab { position: fixed; right: 20px; bottom: 20px; z-index: 9; width: 60px; height: 60px; padding: 0; border-radius: 50%;

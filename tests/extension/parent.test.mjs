@@ -1013,4 +1013,5 @@ test('Context: no notes box, a 🔳 Full screen button and a swipe up to the nex
   assert.match(set, /holdPage\(shown\.slides, true\)/, 'Settings: the button asks for full screen');
   assert.match(src, /shownTab !== r\.tab\) \{ holdPage\(false\)/, 'another tab: pull-to-refresh back');
   assert.match(readFileSync(new URL('../../extension/apps/kidtube/parent/parent.css', import.meta.url), 'utf8'), /html\.updown[^{]*\{ overscroll-behavior-y: none/);
+  assert.match(readFileSync(new URL('../../extension/apps/kidtube/parent/parent.css', import.meta.url), 'utf8'), /html\.updown #appHeader, html\.updown body > header \{ display: none/, 'in the mode: no apps header, notifications or tabs on top');
 });

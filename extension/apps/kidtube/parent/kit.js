@@ -27,9 +27,12 @@ export function btn(text, onClick, cls = '') {
 // Settings' 🔳 One box and Context's 🔳 Full screen: a swipe up goes to the next box, a swipe down to the one before,
 // ↓ ↑ (and Page Down / Page Up) on a keyboard always. A box longer than the screen scrolls first: only from its end does
 // the next swipe go on. A swipe left or right does nothing there.
-// The step for a swipe of dx, dy from a start that was (or not) at the box's top and its end: 1, -1 or 0.
-export function swipeStep(start, dx, dy) {
-  if (Math.abs(dy) < 70 || Math.abs(dx) > Math.abs(dy) * 0.6) return 0;
+// Then (the parent's note, 2026-10-13: "very hard to swipe", "I cannot scroll"): a finger that scrolled the page (or a
+// field) never changes the box, and a shorter, less straight swipe is enough, also on a field (most of Hearing is fields).
+// The step for a swipe of dx, dy from a start that was (or not) at the box's top and its end, and that scrolled
+// something (moved) or not: 1, -1 or 0.
+export function swipeStep(start, dx, dy, moved = false) {
+  if (moved || Math.abs(dy) < 45 || Math.abs(dx) > Math.abs(dy)) return 0;
   if (dy < 0) return start.bottom ? 1 : 0;
   return start.top ? -1 : 0;
 }
@@ -41,22 +44,27 @@ export function keyStep(e) {
   return 0;
 }
 // on(): the mode is on here; box(): the box on the screen; go(step): show the next (1) or the one before (-1).
-// The keys stop with the host's page.
+// The keys stop with the host's page. Not from the field being typed in (its keyboard is open) or from skip.
 export function upDown(host, { on, box, go, skip = '' }) {
   let start = null;
+  const scrolled = () => { if (start) start.moved = true; };
   host.addEventListener('touchstart', (e) => {
     const t = e.touches[0];
     const r = box()?.getBoundingClientRect();
-    start = on() && r && e.touches.length === 1 && !e.target.closest?.(`textarea, input, select, pre${skip ? `, ${skip}` : ''}`)
-      ? { x: t.clientX, y: t.clientY, top: scrollY <= 2, bottom: r.bottom <= innerHeight + 2 } : null;
+    const typing = e.target === document.activeElement && e.target.closest?.('textarea, input');
+    start = on() && r && e.touches.length === 1 && !typing && !(skip && e.target.closest?.(skip))
+      ? { x: t.clientX, y: t.clientY, sy: scrollY, moved: false, top: scrollY <= 2 || r.top >= -24, bottom: r.bottom <= innerHeight + 24 } : null;
   }, { passive: true });
+  // Any scroll while the finger is down (the page, a long field, a wide table): it was a scroll, not a swipe.
+  document.addEventListener('scroll', scrolled, { passive: true, capture: true });
   host.addEventListener('touchend', (e) => {
     if (!start) return;
     const t = e.changedTouches[0];
-    const step = swipeStep(start, t.clientX - start.x, t.clientY - start.y);
+    const step = swipeStep(start, t.clientX - start.x, t.clientY - start.y, start.moved || Math.abs(scrollY - start.sy) > 2);
     start = null;
     if (step) go(step);
   }, { passive: true });
+  host.addEventListener('touchcancel', () => { start = null; }, { passive: true });
   const key = (e) => {
     if (!host.isConnected) return removeEventListener('keydown', key);
     const step = on() ? keyStep(e) : 0;
@@ -69,7 +77,8 @@ export function upDown(host, { on, box, go, skip = '' }) {
 // While the mode is on (the parent's notes, 2026-10-13): a swipe down at the top goes to the box before, it does not
 // reload the page (html.updown stops the browser's pull-to-refresh; parent.css). Out of the mode it reloads as before.
 // tapped: the mode's button was just tapped, so the browser may also go full screen (no status bar or notifications
-// on top); leaving the mode leaves full screen. A browser that refuses full screen keeps the mode as it was.
+// on top); leaving the mode leaves full screen. html.updown also hides the page's top: the apps header with its
+// notifications and the tabs (the parent's note, 2026-10-13; parent.css); the mode's own button stays to leave it. A browser that refuses full screen keeps the mode as it was.
 export function holdPage(on, tapped = false) {
   document.documentElement.classList.toggle('updown', on);
   if (on && tapped && !document.fullscreenElement) document.documentElement.requestFullscreen?.({ navigationUI: 'hide' })?.catch?.(() => {});

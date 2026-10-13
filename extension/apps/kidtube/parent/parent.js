@@ -507,6 +507,7 @@ async function renderContext() {
     t.eq('no notes box', 0, [...view.querySelectorAll('h2')].filter((h) => /Your notes/.test(h.textContent)).length);
     t.eq('no ‹ › buttons (a swipe up or down)', 0, view.querySelectorAll('.pager button').length);
     t.eq('a swipe down is the document before, not a reload', 'none', getComputedStyle(document.documentElement).overscrollBehaviorY);
+    t.eq('nothing on top (no apps header, notifications or tabs)', 'none', getComputedStyle(document.querySelector('body > header') ?? document.body).display);
   }, 1500);
 }
 let contextStep = 0;

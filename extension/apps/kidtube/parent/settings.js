@@ -322,6 +322,7 @@ export function mountSettings(root) {
       t.eq('the box a note is about', titleOf(secs[shown.at]), settingsBox());
       t.eq('no ‹ › buttons (a swipe up or down)', 0, root.querySelectorAll('.pager button').length);
       t.eq('a swipe down is the box before, not a reload', 'none', getComputedStyle(document.documentElement).overscrollBehaviorY);
+      t.eq('nothing on top (no apps header, notifications or tabs)', 'none', getComputedStyle(document.querySelector('body > header') ?? document.body).display);
     }, 1500);
   }
   // The chip tapped stays marked: a sign the tap worked even when the page is already at that section. Its box opens.
