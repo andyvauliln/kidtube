@@ -2,6 +2,10 @@
 
 Newest first. Each version is built from `extension/` with `build/build-orion.mjs` (see [ORION.md](https://github.com/andyvauliln/kidtube/blob/main/docs/ORION.md)).
 
+## 0.12.5 (2026-10-13)
+
+- **↻ Update no longer gives up too early.** Sending your notes to GitHub can take more than 8 seconds on a slow connection. The parent screen now waits up to a minute, so it no longer says "the extension did not answer" while the notes are still being sent.
+
 ## 0.12.4 (2026-10-13)
 
 - **One notifications list in the header (🔔).** Each row shows the type (Error, Validation, Data update, My note, App update, System), the status (Not sent, Sent, Handling, Done…), the message, its buttons and how many times it happened. The number on the bell shows what still waits; red means something needs you.
