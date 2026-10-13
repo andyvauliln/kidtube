@@ -107,7 +107,9 @@
     .badge.calm { background: var(--blue); }
     .inbox { margin: 0 12px 10px; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
     .nrow { display: grid; grid-template-columns: auto auto minmax(0, 1fr) auto auto; gap: 4px 10px; align-items: center; padding: 8px 12px;
-      border-top: 1px solid var(--line); }
+      border-top: 1px solid var(--line); background: var(--bg); touch-action: pan-y; user-select: none; -webkit-user-select: none; }
+    .nrow.back { transition: transform .15s, opacity .15s; }
+    .nhint { padding: 6px 12px; border-top: 1px solid var(--line); color: var(--muted); font-size: 12px; }
     .nrow:first-child { border-top: 0; }
     .nrow.done { opacity: .7; }
     .chip { display: inline-block; height: 22px; line-height: 22px; padding: 0 8px; border-radius: 11px; font-size: 12px; font-weight: 600;
@@ -269,13 +271,23 @@
     // The notifications list starts open; the bell closes it, and it stays closed on every page (storage headerUi).
     // A new problem report opens it again (instead of core/ui/watch.js's banner on a page without the header).
     globalThis.KidTubeHeaderShown = true;
+    // Rows swiped away (storage inboxHidden: row id → its status when swiped). The same row with a new status (a new
+    // try, an answer, fixed) comes back.
+    let hidden = {};
+    chrome.storage.local.get('inboxHidden').then((g) => { hidden = g.inboxHidden ?? {}; if (alive) draw(); }).catch(() => {});
     chrome.storage.local.get('headerUi').then((g) => { if (g.headerUi?.inboxClosed && alive) { ui.inbox = false; draw(); } }).catch(() => {});
     async function newReport() {
       const r = await ask({ type: 'checkAlert' });
       if (r?.alert && alive && !ui.inbox) { ui.inbox = true; draw(); }
     }
     // The round apps button shows or hides the apps row. It starts closed on every page and every reload.
-    const say = (text, kind = '') => { ui.note = text; ui.noteKind = kind; draw(); };
+    // A message that needs nothing (kind ok) goes by itself after 30 s; an error stays until ✕ or a swipe.
+    let sayTimer = null;
+    const say = (text, kind = '') => {
+      ui.note = text; ui.noteKind = kind; draw();
+      clearTimeout(sayTimer);
+      if (kind === 'ok') sayTimer = setTimeout(() => { if (ui.note === text) { ui.note = ''; draw(); } }, 30000);
+    };
 
     // A refresh asked for while one is running is not dropped: it runs right after (the storage can change twice).
     let first = true;
@@ -497,7 +509,53 @@
         rows.unshift({ id: 'system', type: 'system', status: { text: tone === 'err' ? 'Failed' : tone === 'ok' ? 'Done' : 'Info', tone: tone === 'err' ? 'bad' : tone === 'ok' ? 'ok' : '' },
           title: note, detail: ui.note ? '' : 'The apps list could not be read from GitHub.', actions: ui.note ? [{ do: 'dismiss', label: '✕' }] : [] });
       }
-      return rows;
+      return rows.filter((r) => hidden[r.id] !== sigOf(r));
+    }
+    const sigOf = (r) => `${r.status?.text ?? ''}|${r.tries ?? ''}`;
+    // A row swiped to the right: a note asks once more (its Delete); an answered question closes (Got it); the header's
+    // message goes; any other row is hidden until its status changes.
+    function swiped(r) {
+      if (r.actions?.some((a) => a.do === 'note.drop')) { ui.sure = r.id; return draw(); }
+      const close = r.actions?.find((a) => a.do === 'question.dismiss');
+      if (close) return tapRow(r, close);
+      if (r.id === 'system') { ui.note = ''; return draw(); }
+      const ids = new Set(rowsNow(data ?? {}).map((x) => x.id));
+      hidden = { ...Object.fromEntries(Object.entries(hidden).filter(([k]) => ids.has(k))), [r.id]: sigOf(r) };
+      chrome.storage.local.set({ inboxHidden: hidden }).catch(() => {});
+      draw();
+    }
+    // Swipe to the right (a finger or the mouse): past a third of the row it goes; less, it slides back.
+    function swipeable(row, r) {
+      let x0 = null, y0 = 0, dx = 0, pid = null, side = false;
+      const back = () => { row.classList.add('back'); row.style.transform = ''; row.style.opacity = ''; };
+      row.addEventListener('pointerdown', (e) => {
+        if (e.target?.closest?.('button, textarea')) return;
+        x0 = e.clientX; y0 = e.clientY; dx = 0; pid = e.pointerId; side = false; row.classList.remove('back');
+      });
+      row.addEventListener('pointermove', (e) => {
+        if (x0 == null || e.pointerId !== pid) return;
+        const mx = e.clientX - x0, my = e.clientY - y0;
+        if (!side) {
+          if (Math.abs(my) > 10 && Math.abs(my) > Math.abs(mx)) { x0 = null; return; }   // the list scrolls
+          if (mx < 10) return;
+          side = true;
+          try { row.setPointerCapture(pid); } catch {}
+        }
+        dx = Math.max(0, mx);
+        row.style.transform = `translateX(${dx}px)`;
+        row.style.opacity = String(1 - Math.min(0.7, dx / (row.offsetWidth || 300)));
+      });
+      const end = () => {
+        if (x0 == null) return;
+        x0 = null;
+        if (side && dx > (row.offsetWidth || 300) / 3) {
+          row.classList.add('back');
+          row.style.transform = `translateX(${row.offsetWidth || 300}px)`;
+          setTimeout(() => swiped(r), 150);
+        } else back();
+      };
+      row.addEventListener('pointerup', end);
+      row.addEventListener('pointercancel', end);
     }
     // The App update row: where the new version is, in plain words, and what to do.
     function updateRow(v) {
@@ -574,6 +632,7 @@
       const count = el('span', 'count', r.count != null ? `×${r.count}` : '');
       if (r.count != null) count.title = `It happened ${r.count} time${r.count === 1 ? '' : 's'}. The same problem again only counts up: it is not sent again.`;
       row.append(el('span', `chip ${r.type}`, TYPE[r.type] ?? r.type), st, msg, acts, count);
+      if (!editing) swipeable(row, r);
       return row;
     }
     function inboxList(rows) {
@@ -584,6 +643,7 @@
       const shown = ui.all ? rows : rows.slice(0, SHOWN);
       for (const r of shown) box.append(inboxRow(r));
       if (rows.length > SHOWN) box.append(button('nmore', ui.all ? 'Show fewer' : `Show all ${rows.length}`, () => { ui.all = !ui.all; draw(); }));
+      box.append(el('div', 'nhint', 'Swipe a row to the right to remove it. Done rows go by themselves after 3 minutes.'));
       return box;
     }
 
@@ -687,6 +747,7 @@
     const onStorage = (ch) => {
       if (ch.checkAlert?.newValue && !ch.checkAlert.newValue.shown) newReport();
       if (ch.updateState) readVersion(true);
+      if (ch.inboxHidden) { hidden = ch.inboxHidden.newValue ?? {}; draw(); }
       if (ch.ytAccount || ch.igAccount || ch.settings || ch.accounts || ch.repoProfiles || ch.account || ch.shell) refresh();
       else if (ch.outbox || ch.data || ch.ig || ch.checks || ch.notes || ch.syncStatus) { clearTimeout(aiTimer); aiTimer = setTimeout(() => refresh(), 1000); }
     };
@@ -699,7 +760,7 @@
     return {
       refresh,
       setDark(on) { host.classList.toggle('dark', on); },
-      destroy() { alive = false; clearTimeout(aiTimer); clearTimeout(verTimer); chrome.storage.onChanged.removeListener(onStorage); },
+      destroy() { alive = false; clearTimeout(aiTimer); clearTimeout(verTimer); clearTimeout(sayTimer); chrome.storage.onChanged.removeListener(onStorage); },
     };
   }
 

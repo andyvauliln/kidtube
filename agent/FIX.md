@@ -18,6 +18,22 @@ Each problem below merges the reports of one check on one browser (`key` = `<che
 
 Secrets are never in a report (`(hidden)` where they were). Never try to get them.
 
+## First: what is already done or on its way
+
+You are not the only one changing this code: the parent's notes agent, another fix run and a person in a chat session
+may have pushed a minute ago. Before you change anything:
+
+- `git log --oneline -15` and `site/latest.json`: the newest release and what the last versions fixed.
+- Compare each report's `context.app.version` with the newest release. **A report from a version older than a release
+  that already fixed it is not new work:** answer `fixed` with that version and the message "Fixed in X: tap the new
+  version next to the logo to install it". 2026-10-13: three runs fixed the same slow-tablet cause again and again
+  (0.12.5, 0.12.6, 0.12.8) while every report came from 0.12.2, a tablet that had not updated.
+- Several problems with one cause (one slow tablet: `rule.noAnswer.*`, `rule.slowAnswer.*` on the same device and
+  time): one fix, one version.
+- `context.app.update` and `installType` say whether the tablet can get a new version by itself (`development` = a
+  .zip install: never). Say so in the message when it matters.
+- Push with `git pull --rebase origin main` first; a conflict means someone changed the same lines: keep both changes.
+
 ## For each problem
 
 1. **Understand it.** Read the check (search its id in `extension/`), the code it names, and the mismatch. Decide what kind it is:
@@ -74,3 +90,4 @@ Write the result as JSON to the result file given below, with one entry per prob
 - `state`: `fixed` (released, or a test or agent change pushed), `not-a-bug` (the check was wrong and is fixed: give the version), `not-reproduced`, or `needs-you`.
 - `version`: the version with the fix, or `null`.
 - `message`: one plain sentence for the parent: what was wrong and what changed, or what you need from them.
+  Don't promise that Quetta installs the new version by itself: say "tap the new version next to the logo".

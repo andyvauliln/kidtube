@@ -25,7 +25,7 @@ const local = {};   // chrome.storage.local
 const answers = {};   // type → (msg) => the background's answer
 globalThis.chrome = {
   runtime: { sendMessage: (msg, cb) => { sent.push(msg); cb(answers[msg.type]?.(msg) ?? { ok: true }); }, lastError: null },
-  storage: { local: { get: async (keys) => Object.fromEntries([keys].flat().filter((k) => k in local).map((k) => [k, local[k]])) }, onChanged: { addListener() {}, removeListener() {} } },
+  storage: { local: { get: async (keys) => Object.fromEntries([keys].flat().filter((k) => k in local).map((k) => [k, local[k]])), set: async (o) => { Object.assign(local, o); } }, onChanged: { addListener() {}, removeListener() {} } },
 };
 
 // The device's speech recognition the Android way: each phrase ends it, and the page has to start it again.
@@ -301,4 +301,31 @@ test('the parent page waits for a whole sync: 10.5 s on a slow tablet is an answ
     assert.equal(await lost, undefined);
     assert.deepEqual(missed, [['sync', 60000]]);
   } finally { chrome.runtime.sendMessage = send; delete globalThis.KidTubeWatch; t.mock.timers.reset(); }
+});
+
+test('the notifications: a row swiped away stays away until its status changes; done rows and messages need no swipe', async () => {
+  const rowsOf = (status) => [
+    { id: 'problem:a', type: 'error', status: { text: status, tone: 'wait' }, title: 'Tapping “X” did nothing', actions: [], count: 2, tries: 1 },
+    { id: 'run', type: 'data', status: { text: 'Sent', tone: 'wait' }, title: 'Your notes were sent', actions: [] },
+  ];
+  let inbox = rowsOf('Handling');
+  answers.header = () => ({ ok: true, open: true, mode: 'parent', running: 'kidtube', site: null, here: null, connected: null, github: { connected: true }, apps: [], inbox });
+  answers.version = () => ({ ok: true, installed: '0.12.9', latest: '0.12.9', newer: false, kind: 'quetta' });
+  local.inboxHidden = { 'problem:a': 'Handling|1' };   // swiped while it was Handling, try 1
+  const titles = (h) => {
+    const out = [];
+    const walk = (n) => { if (n.className?.startsWith?.('nrow')) out.push(text(n.children[2]).split('Tapping')[0] || text(n.children[2])); (n.children ?? []).forEach(walk); };
+    walk(h.shadowRoot);
+    return out.map((t) => t.trim());
+  };
+  const h1 = new FakeEl('div');
+  globalThis.KidTubeHeader.mount(h1, { dark: false });
+  await tick(); await tick();
+  assert.deepEqual(titles(h1), ['Your notes were sent'], 'the swiped row stays away');
+  inbox = rowsOf('Done');   // the AI fixed it: a new status, so it shows again (and goes by itself after 3 minutes)
+  const h2 = new FakeEl('div');
+  globalThis.KidTubeHeader.mount(h2, { dark: false });
+  await tick(); await tick();
+  assert.equal(titles(h2).length, 2);
+  delete local.inboxHidden; delete answers.header; delete answers.version;
 });

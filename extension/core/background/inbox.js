@@ -11,7 +11,8 @@ import { sync } from './sync.js';
 import { partOf } from './apps.js';
 import { checksView, sendReports } from '../checks/runner.js';
 
-const RECENT = 30 * 60000;
+// Done, nothing to do (a fixed problem, a finished run): shown 3 minutes so the parent sees it change, then gone.
+const RECENT = 3 * 60000;
 const recent = (at, now = Date.now()) => !!at && now - Date.parse(at) < RECENT;
 
 // A problem's state (runner.js stateOf) as the row's status: its short words and its tone (bad, wait, ok).
@@ -32,7 +33,8 @@ function problemRow(p) {
     more: `${p.check} · ${p.versions.join(', ')}` };
 }
 
-// The app's run on the notes (KidTube's aiView): sent, working, late, done or failed in the last 30 minutes.
+// The app's run on the notes (KidTube's aiView): sent, working, late, done in the last 3 minutes, failed in the last day
+// (it needs the parent: Ask again, or swipe it away).
 function runRow(a) {
   const base = { id: 'run', type: 'data', at: a.at, count: null };
   const open = { do: 'open', page: a.page, label: 'Open' };
@@ -46,7 +48,7 @@ function runRow(a) {
       detail: 'The server may be off or busy. Ask again, or wait.', actions: [again] };
     case 'done': return recent(a.at) ? { ...base, status: status(['Done', 'ok']), title: 'The AI run is done: the lists are updated',
       detail: a.message || '', done: true, actions: a.page ? [open] : [] } : null;
-    case 'failed': return recent(a.at) ? { ...base, status: status(['Failed', 'bad']), title: 'The AI run failed',
+    case 'failed': return a.at && Date.now() - Date.parse(a.at) < 24 * 3600000 ? { ...base, status: status(['Failed', 'bad']), title: 'The AI run failed',
       detail: a.message || 'The server did not say why.', actions: [again] } : null;
     default: return null;
   }
@@ -103,7 +105,7 @@ export async function inboxOf(cur) {
       detail: String(errs[0]).slice(0, 300), at: mine.sync.at ?? null,
       count: problems.find((p) => p.check === 'gh.sync')?.count ?? null, actions: [{ do: 'sync', label: 'Try again' }] });
   }
-  // Each problem that waits for something, and the ones fixed or checked in the last 30 minutes.
+  // Each problem that waits for something, and the ones fixed or checked in the last 3 minutes.
   for (const p of problems) {
     if (errs.length && p.check === 'gh.sync') continue;
     if (!p.done || recent(p.fix?.at)) rows.push(problemRow(p));
