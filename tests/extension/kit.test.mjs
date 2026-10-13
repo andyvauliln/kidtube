@@ -244,3 +244,23 @@ test('the apps header: a newer version above the version, in blue, gets it; the 
   assert.deepEqual((find(now.shadowRoot, (n) => n.className === 'vers')?.children ?? []).map((n) => n.className), ['ver']);
   delete answers.header; delete answers.version; delete answers.openUpdate;
 });
+
+test('↻ Update waits for the run to be sent: 9 s on a slow tablet is an answer, not “the extension did not answer” (rule.noAnswer.runHelper, 0.12.2)', async (t) => {
+  const { runNow } = await import('../../extension/apps/kidtube/parent/kit.js');
+  const send = chrome.runtime.sendMessage;
+  const missed = [];
+  globalThis.KidTubeWatch = { noAnswer: (msg, ms) => missed.push([msg.type, ms]) };
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  chrome.runtime.sendMessage = (msg, cb) => { sent.push(msg); setTimeout(() => cb({ ok: true }), 9000); };   // the whole sync, then requests/run.json
+  try {
+    const run = runNow();
+    t.mock.timers.tick(9000);
+    assert.equal(await run, true, 'the answer came: the run was asked for');
+    assert.deepEqual(missed, []);
+    chrome.runtime.sendMessage = (msg) => { sent.push(msg); };   // a background that never answers is still noticed
+    const lost = runNow();
+    t.mock.timers.tick(60000);
+    assert.equal(await lost, false);
+    assert.deepEqual(missed, [['runHelper', 60000]]);
+  } finally { chrome.runtime.sendMessage = send; delete globalThis.KidTubeWatch; t.mock.timers.reset(); }
+});

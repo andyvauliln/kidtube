@@ -10,6 +10,7 @@ import { Expect, redact, safeUrl, fingerprint, clip } from './kit.js';
 import { getRepoFile, putRepoFile } from '../lib/github.js';
 import { DEFAULT_REPO } from '../background/constants.js';
 import { cmpVersion } from '../lib/version.js';
+import { WAIT } from '../lib/ask.js';
 
 // --- what is registered ---------------------------------------------------------------------------------------
 const START = [];        // { id, area, expect, code, net, run(t, ctx) }
@@ -239,9 +240,9 @@ export function runStartChecks(reason) {
 // Reads answered every second (the state, playback time) are not steps; their failures still count.
 const QUIET = new Set(['state', 'tick', 'header', 'ping', 'frameReady', 'runStatus', 'version', 'heldNotes', 'getRules', 'status',
   'parentData', 'videoDetail', 'helperData', 'contextData', 'talk', 'apps', 'checks', 'checkResult', 'details']);
-// How long the asking page waits (core/lib/ask.js 8 s; the apps header 15 s). An answer later than that never arrives.
+// How long the asking page waits (core/lib/ask.js 8 s or its WAIT; the apps header 15 s). An answer later than that never arrives.
 const HEADER_TYPES = new Set(['header', 'inbox', 'openApp', 'connect', 'plainSite', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings']);
-const waitOf = (type) => (HEADER_TYPES.has(type) ? 15000 : 8000);
+const waitOf = (type) => (HEADER_TYPES.has(type) ? 15000 : WAIT[type] ?? 8000);
 // Answers the page shows as they are: { ok: false } must say why, or the parent sees "That didn't work".
 const SAYS_WHY = new Set(['inbox', 'openApp', 'connect', 'plainSite', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings', 'runHelper', 'updateApp', 'setMode']);
 // When a content script last spoke, per tab (the start check "the YouTube tab answers").

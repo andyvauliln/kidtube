@@ -369,3 +369,22 @@ test('a problem in plain words: what went wrong, where, and what was expected', 
   const v = wordsOf({ check: 'parent.dock', area: 'parent', expect: 'The bottom bar has ↻ Update', first: { what: '↻ Update', expected: 'the Update button', actual: '' } });
   assert.deepEqual([v.kind, v.title, v.detail], ['validation', 'A self-check failed on the parent screens: The bottom bar has ↻ Update', '↻ Update: expected the Update button, but it was nothing.']);
 });
+
+test('↻ Update (runHelper) may take as long as its page waits (60 s): 9 s is not slow, more than 60 s still is (0.12.2)', async () => {
+  const realNow = Date.now, realFetch = globalThis.fetch;
+  let late = 0;
+  globalThis.fetch = (...a) => { const shift = late; Date.now = () => realNow() + shift; return realFetch(...a); };   // GitHub answers slowly
+  try {
+    await fromPage({ type: 'clearChecks' });
+    late = 9000;
+    await fromPage({ type: 'runHelper' });
+    await wait(50);
+    assert.equal(await result('rule.slowAnswer.runHelper'), undefined, '8463 ms in the report: the page still waits');
+    Date.now = realNow; late = 61000;
+    await fromPage({ type: 'runHelper' });
+    await wait(50);
+    const r = await result('rule.slowAnswer.runHelper');
+    assert.ok(r, 'longer than the page waits: still a slow answer');
+    assert.match(r.saw, /expected under 60000 ms/);
+  } finally { Date.now = realNow; globalThis.fetch = realFetch; await fromPage({ type: 'clearChecks' }); }
+});
