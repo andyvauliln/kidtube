@@ -94,7 +94,8 @@ export const CORE_ACTIONS = {
       if (!answer?.ok) return refused(t, answer);
       t.eq('shell', { on: true, locked: false }, { on: after.shell?.on, locked: !!after.shell?.locked });
     },
-    later: { ms: 4000, check: (t, c) => tabWent(t, c, c.answer?.navigated ? c.answer.url : null) },
+    // YouTube moves a tab between its hosts by itself (m. → www.?app=desktop on a desktop-mode tablet): any YouTube is it.
+    later: { ms: 4000, check: (t, c) => tabWent(t, c, !c.answer?.navigated ? null : youtube(c.answer.url) ? youtube : c.answer.url) },
   },
 
   plainYouTube: {

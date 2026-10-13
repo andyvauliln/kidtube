@@ -192,6 +192,32 @@ test('a check that waits for the tab: Kid sends the tab to his list', async () =
   await fromPage({ type: 'setMode', mode: 'parent' });
 });
 
+// The report action.plainSite|quetta (0.12.2): the worker had just started, so it sent the tab to m.youtube.com; the
+// tablet's YouTube is the desktop one and YouTube moved the tab on to www.youtube.com/?app=desktop by itself.
+// Plain YouTube is on the tab all the same: the YouTube tile passes on any YouTube host, Instagram's on its address.
+test('the YouTube tile passes when YouTube moves the tab to its other host (m. → www.)', async () => {
+  const update = fake.tabs.update;
+  fake.tabs.update = async (id, { url }) => { await update(id, { url }); fake.nav.at[id] = url.replace('//m.youtube.com/', '//www.youtube.com/?app=desktop'); };
+  try {
+    const r = await fromPage({ type: 'plainSite', site: 'youtube' });
+    assert.deepEqual([r.ok, r.url, r.navigated], [true, 'https://m.youtube.com/', true]);
+    await wait(4300);   // the check looks at the tab 4 s later
+  } finally { fake.tabs.update = update; }
+  const yt = await result('action.plainSite');
+  assert.equal(yt.status, 'pass', yt.saw);
+  // Instagram's tile still needs Instagram on the tab.
+  fake.tabs.update = async (id, { url }) => { await update(id, { url }); fake.nav.at[id] = 'https://m.youtube.com/'; };
+  try {
+    await fromPage({ type: 'plainSite', site: 'instagram' });
+    await wait(4300);
+  } finally { fake.tabs.update = update; }
+  const ig = await result('action.plainSite');
+  assert.equal(ig.status, 'fail');
+  assert.match(ig.saw, /expected https:\/\/www\.instagram\.com\//);
+  fake.store.shell = { on: false, locked: false };
+  await fromPage({ type: 'setMode', mode: 'parent' });
+});
+
 test('a page’s own result: a failure with the page’s steps; a pass; nonsense refused', async () => {
   const fail = await fromPage({ type: 'checkResult', steps: [{ at: new Date().toISOString(), kind: 'tap', label: 'Load from GitHub', where: 'parent.html' }],
     result: { id: 'rule.deadButton.Load-from-GitHub', kind: 'rule', area: 'header', status: 'fail', expect: '“Load from GitHub” does something',
