@@ -2,6 +2,16 @@
 
 Newest first. Each version is built from `extension/` with `build/build-orion.mjs` (see [ORION.md](https://github.com/andyvauliln/kidtube/blob/main/docs/ORION.md)).
 
+## 0.12.2 (2026-10-13)
+
+- **The extension is now called Custom Apps.** KidTube is one of its apps, Instagram is the other. The header shows the Custom Apps logo and name.
+- **The version is next to the logo.** When a newer version exists, it shows above it in blue. Tap it: the install page opens with the new .zip.
+- **App | site switch in the header.** KidTube: **App | YouTube**. Instagram: **App | Instagram**. The apps row shows only the apps (KidTube, Instagram); the YouTube and Instagram tiles are gone.
+- **One Connect button.** Sign in with YouTube's or Instagram's own buttons, then tap **Connect** on that site. A KidTube profile is a YouTube email; an Instagram profile is an Instagram username.
+- **The Instagram app (new).** It runs over Instagram's own Saved page: your saved posts, all or one collection, voice and typed notes per post, a list for the AI, and what the AI wrote about each video. **App | Instagram** switches between the app and Instagram's page.
+- **An AI line under the header** (parent only): notes not sent yet, the AI run, and problems the app found, each once with its state (sent, the AI is working, fixed, fixed in a newer version).
+- KidTube's bottom bar: **↻ Update** only sends your notes now; the new version is in the header.
+
 ## 0.10.5 (2026-10-12)
 
 - **KidTube checks itself.** After a start, after each tap that asks the background, and on its screens, it checks that the right thing happened. A problem goes to the data repo, shows for 15 seconds where the parent is (never in kid mode) and appears in the bottom bar of the parent page. The server's AI looks at it and fixes it.
