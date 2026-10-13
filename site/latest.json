@@ -1,10 +1,10 @@
 {
-  "version": "0.12.21",
+  "version": "0.12.22",
   "target": "quetta",
-  "sourceCommit": "45593c5e1594dbb0a5f27c3807647053b2a4f48e",
+  "sourceCommit": "7a4814434078fd3e28ce464a81f6bf9f6b357176",
   "id": "mpgpgldgfogdipaaaobleoppocmhlidp",
-  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.21.crx",
-  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.21.zip",
+  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.22.crx",
+  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.22.zip",
   "quizTypes": [
     "text",
     "choice",
