@@ -2,6 +2,11 @@
 
 Newest first. Each version is built from `extension/` with `build/build-orion.mjs` (see [ORION.md](https://github.com/andyvauliln/kidtube/blob/main/docs/ORION.md)).
 
+## 0.12.8 (2026-10-13)
+
+- **The version next to the logo no longer makes the header wait.** On a slow connection, looking for a newer version could take more than 8 seconds. It now gives up after 5 seconds and tries again the next time the header opens.
+- **Questions for the AI (from 0.12.7).** A note with the ❓ Question switch, or with a "?" in it, shows in the 🔔 list as a Question: not sent yet, then Waiting, then Answered with the AI's answer under it (Got it closes it). While a question waits, the app checks for the answer every minute.
+
 ## 0.12.6 (2026-10-13)
 
 - **Fetching the newest lists no longer gives up too early.** On a slow connection, getting the newest video list and rules from GitHub can take more than 8 seconds. The parent screen now waits up to a minute for it, so it no longer counts this as "the extension did not answer".
