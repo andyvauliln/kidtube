@@ -323,13 +323,15 @@ test('the problems: one per check with its counter, and where each is from the s
     assert.deepEqual(await fromPage({ type: 'readFixes' }), { ok: true, error: null });
     const p = (await view()).problems.find((x) => x.check === 'parent.loads');
     assert.deepEqual([p.state, p.count], ['working', 3]);
-    // The header's notifications: one row, [type] [status] the message [Details] [×count].
+    // The header's notifications: one row, [type] [status] the message [All checks] [×count]; a tap on it: its Details.
     const row = (await fromPage({ type: 'header' })).inbox.find((x) => x.id === 'problem:parent.loads|quetta');
     assert.deepEqual([row.type, row.status.text, row.count, row.tries], ['validation', 'AI working', 3, 1]);
     assert.match(row.versions, /^Came from [0-9.]+ · This tablet: [0-9.]+$/, 'where it came from, in words');
     assert.match(row.title, /^A self-check failed .*: /);
     assert.match(row.state, /^The AI is working on it now\./);
-    assert.deepEqual(row.actions.map((a) => a.label), ['Details']);
+    assert.deepEqual(row.actions.map((a) => a.label), ['All checks']);
+    assert.deepEqual(row.view.sections.map((x) => x.title), ['What happened', 'The check', 'When', 'The AI', 'Check it again']);
+    assert.match(row.view.sections.at(-1).steps[0], /the AI works on it/);
     const n = reads;
     await view();
     await wait(20);

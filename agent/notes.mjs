@@ -5,7 +5,8 @@
 //   node agent/notes.mjs mark FILE [--state DIR]           → marks the notes in FILE (the array printed by `new`) handled
 //   node agent/notes.mjs done FILE [--data DIR]            → adds them to notes-done.json in the data folder: the tablet
 //                                                            deletes those notes from its lists (it keeps no history)
-//   node agent/notes.mjs answers RESULT FILE [--data DIR]  → the agent's answers to the questions in FILE (RESULT's
+//   node agent/notes.mjs answers RESULT FILE [--data DIR] [--report reports/<id>.json]
+//                                                            → the agent's answers to the questions in FILE (RESULT's
 //                                                            "answers": [{ eventId, answer }]) into answers.json in the
 //                                                            data folder; the tablet shows each under its question
 //   node agent/notes.mjs voice [--data DIR]                → writes down the recorded notes the tablet could not
@@ -24,7 +25,7 @@ import { parseArgs } from 'node:util';
 const here = dirname(fileURLToPath(import.meta.url));
 const config = JSON.parse(readFileSync(join(here, 'config.json'), 'utf8'));
 const home = (p) => p.replace(/^~/, process.env.HOME);
-const { values, positionals } = parseArgs({ allowPositionals: true, options: { data: { type: 'string' }, state: { type: 'string' } } });
+const { values, positionals } = parseArgs({ allowPositionals: true, options: { data: { type: 'string' }, state: { type: 'string' }, report: { type: 'string' } } });
 const DATA = home(values.data ?? process.env.KIDTUBE_DATA_DIR ?? config.dataDir);
 const STATE = home(values.state ?? process.env.KIDTUBE_STATE_DIR ?? config.stateDir ?? '~/.local/share/kidtube/state');
 const HANDLED = join(STATE, 'notes-handled.json');
@@ -59,11 +60,12 @@ export function allNotes(dataDir) {
 
 // The agent's answers (result.answers) to notes of this run (notes): added to answers.json, newest last, at most 50.
 // Only answers to a note of this run count; the words are cut at 2000 characters. Returns how many were added.
-export function writeAnswers(dataDir, result, notes, now = new Date().toISOString()) {
+// report: the run's report (agent/report.mjs), opened from the answer's Details on the tablet.
+export function writeAnswers(dataDir, result, notes, now = new Date().toISOString(), report = null) {
   const asked = new Map(notes.map((n) => [n.eventId, n]));
   const fresh = (Array.isArray(result?.answers) ? result.answers : [])
     .filter((a) => asked.has(a?.eventId) && typeof a.answer === 'string' && a.answer.trim())
-    .map((a) => ({ eventId: a.eventId, question: String(asked.get(a.eventId).text ?? '').slice(0, 500), answer: a.answer.trim().slice(0, 2000), at: now }));
+    .map((a) => ({ eventId: a.eventId, question: String(asked.get(a.eventId).text ?? '').slice(0, 500), answer: a.answer.trim().slice(0, 2000), at: now, ...(report ? { report } : {}) }));
   if (!fresh.length) return 0;
   const p = join(dataDir, 'answers.json');
   const ids = new Set(fresh.map((a) => a.eventId));
@@ -124,7 +126,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     writeFileSync(p, JSON.stringify({ schemaVersion: 1, updatedAt: new Date().toISOString(), ids }, null, 2) + '\n');
     console.log(`done ${done.length}`);
   } else if (cmd === 'answers' && file && positionals[2]) {
-    console.log(`answers ${writeAnswers(DATA, readJson(file, {}), readJson(positionals[2], []))}`);
+    console.log(`answers ${writeAnswers(DATA, readJson(file, {}), readJson(positionals[2], []), undefined, /^reports\/[\w.-]+\.json$/.test(values.report ?? '') ? values.report : null)}`);
   } else if (cmd === 'voice') {
     const { transcribeFile, readEnv } = await import('./instagram.mjs');
     const env = { ...readEnv(home(config.envFile ?? '~/.config/kidtube/agent.env')), ...process.env };

@@ -6,7 +6,8 @@
 // Connect on a site's own page (YouTube, Instagram): the account signed in there becomes the profile
 // (core/background/profiles.js connect). Signing in and switching accounts happen with the site's own buttons. Below:
 // the GitHub connection (first time), or the apps row: each app (KidTube, Instagram), dimmed while its site's account
-// has no profile in it; and the notifications (the 🔔: notes, the AI run, problems, a new version; inboxList).
+// has no profile in it; and the notifications (the 🔔: notes, the AI run, problems, a new version; inboxList); a tap on one opens its Details
+// (detailView: its sections, and the AI run's report with every step, core/background/inbox.js readReport).
 // Hidden in kid mode (shell.js and the pages decide).
 // A plain script, not a module, so the YouTube content script can use it too: it sets globalThis.KidTubeHeader.
 // No innerHTML anywhere: YouTube's Trusted Types policy refuses it.
@@ -146,8 +147,41 @@
     .nchecks label { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 500; color: var(--muted); cursor: pointer; }
     .nchecks label.on { color: var(--ink); }
     .nchecks input { width: 16px; height: 16px; margin: 0; padding: 0; accent-color: var(--blue); }
-    .ndet { display: grid; gap: 2px; margin-top: 4px; padding: 6px 8px; border-radius: 8px; background: var(--soft); }
-    .msg .ndet span { white-space: pre-wrap; color: var(--ink); font-size: 13px; }
+    .nrow { cursor: pointer; }
+    .nrow:hover { background: var(--hover); }
+    .nrow .msg::after { content: 'Details ›'; font-size: 12px; color: var(--blue); }
+    .dview { padding: 10px 14px 14px; border-top: 1px solid var(--line); max-height: 72vh; overflow: auto; overscroll-behavior: contain; display: grid; gap: 12px; }
+    .dview .dhead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
+    .dview .dhead b { flex-basis: 100%; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
+    .dview .back { height: 30px; padding: 0 12px; border-radius: 15px; background: var(--soft); font-weight: 500; }
+    .dview h4 { margin: 0 0 4px; font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+    .dview .dtext { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.45; }
+    .dview dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 12px; margin: 0; font-size: 13px; }
+    .dview dt { color: var(--muted); } .dview dd { margin: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .dview ol, .dview ul { margin: 0; padding-left: 20px; display: grid; gap: 3px; font-size: 13px; line-height: 1.4; }
+    .dview .acts { justify-content: flex-start; }
+    .dview .say { list-style: none; margin-left: -20px; display: grid; gap: 4px; }
+    .dview .say li { padding: 6px 10px; border-radius: 8px; background: var(--soft); }
+    .dview .say li.bad { background: color-mix(in srgb, var(--bad) 12%, var(--bg)); color: var(--bad); }
+    .dview .say li.do { background: var(--blue-soft); color: var(--blue); font-weight: 600; }
+    .dview .say li.ok { background: color-mix(in srgb, var(--ok) 12%, var(--bg)); color: var(--ok); }
+    .dview .steps { list-style: none; padding: 0; gap: 2px; }
+    .dview .steps li { display: grid; grid-template-columns: 28px minmax(0, 1fr); gap: 2px 6px; padding: 4px 6px; border-radius: 6px; }
+    .dview .steps li.words { background: var(--soft); }
+    .dview .dsec { display: grid; gap: 4px; }
+    .dview .dsec .dsec { gap: 4px; margin-top: 8px; }
+    .dview .sub { font-size: 12px; font-weight: 600; color: var(--muted); margin-top: 4px; }
+    .dview .steps li.failed { background: color-mix(in srgb, var(--bad) 10%, var(--bg)); }
+    .dview .steps li.open, .dview .steps li[data-more] { cursor: pointer; }
+    .dview .steps .n { color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; text-align: right; padding-top: 1px; }
+    .dview .steps .w { overflow-wrap: anywhere; white-space: pre-wrap; }
+    .dview .steps li[data-more] .w::after { content: ' ▸'; color: var(--muted); }
+    .dview .steps li.open .w::after { content: ' ▾'; }
+    .dview .steps pre { grid-column: 2; margin: 2px 0 4px; padding: 6px 8px; border-radius: 6px; background: var(--soft); font: 12px/1.4 ui-monospace, Menlo, monospace;
+      white-space: pre-wrap; overflow-wrap: anywhere; max-height: 260px; overflow: auto; }
+    .dview .files li { font: 12px/1.4 ui-monospace, Menlo, monospace; }
+    .dview .files .add { color: var(--ok); } .dview .files .del { color: var(--bad); }
+    .dview .muted { color: var(--muted); font-size: 13px; }
     .msg .ndet span.k { color: var(--muted); font-size: 12px; font-weight: 600; }
     .nfoot { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-top: 1px solid var(--line); }
     .nfoot .nhint { flex: 1; padding: 0; border: 0; }
@@ -282,7 +316,8 @@
 
     let data = null, alive = true, busy = '', loading = false, again = null, ver = null;
     const ui = { menu: false, github: false, repo: null, token: '', note: '', noteKind: '', apps: false,
-      inbox: true, all: false, edit: null, sure: null, open: null, dev: false, devLife: 'never', devUrl: null };
+      inbox: true, all: false, edit: null, sure: null, dev: false, devLife: 'never', devUrl: null,
+      detail: null, rep: null, repAll: false, stepOpen: new Set() };
     // The notifications list starts open; the bell closes it, and it stays closed on every page (storage headerUi).
     // A new problem report opens it again (instead of core/ui/watch.js's banner on a page without the header).
     globalThis.KidTubeHeaderShown = true;
@@ -592,7 +627,9 @@
       if (note) {
         const tone = ui.note ? ui.noteKind : 'err';
         rows.unshift({ id: 'system', type: 'system', status: { text: tone === 'err' ? 'Failed' : tone === 'ok' ? 'Done' : 'Info', tone: tone === 'err' ? 'bad' : tone === 'ok' ? 'ok' : '' },
-          title: note, detail: ui.note ? '' : 'The apps list could not be read from GitHub.', actions: ui.note ? [{ do: 'dismiss', label: '✕' }] : [] });
+          title: note, detail: ui.note ? '' : 'The apps list could not be read from GitHub.', actions: ui.note ? [{ do: 'dismiss', label: '✕' }] : [],
+          view: { sections: [{ title: 'Message', text: note }, { title: 'What it is', text: ui.note ? 'What the header’s last action said. ✕ or a swipe hides it.'
+            : 'The header could not read the apps list from GitHub. Check the internet and the GitHub connection in the account menu.' }] } });
       }
       return rows;
     }
@@ -617,7 +654,7 @@
       const back = () => { row.classList.add('back'); row.style.transform = ''; row.style.opacity = ''; };
       row.addEventListener('pointerdown', (e) => {
         if (e.target?.closest?.('button, textarea, label')) return;
-        x0 = e.clientX; y0 = e.clientY; dx = 0; pid = e.pointerId; side = false; row.classList.remove('back');
+        x0 = e.clientX; y0 = e.clientY; dx = 0; pid = e.pointerId; side = false; row.classList.remove('back'); delete row.dataset.moved;
       });
       row.addEventListener('pointermove', (e) => {
         if (x0 == null || e.pointerId !== pid) return;
@@ -626,6 +663,7 @@
           if (Math.abs(my) > 10 && Math.abs(my) > Math.abs(mx)) { x0 = null; return; }   // the list scrolls
           if (mx < 10) return;
           side = true;
+          row.dataset.moved = '1';   // a swipe, not a tap: no Details
           try { row.setPointerCapture(pid); } catch {}
         }
         dx = Math.max(0, mx);
@@ -646,7 +684,11 @@
     }
     // The App update row: where the new version is, in plain words, and what to do.
     function updateRow(v) {
-      const base = { id: 'update', type: 'update', title: `Custom Apps ${v.latest} is out. This browser has ${v.installed}.` };
+      const how = v.kind === 'quetta' ? ['Tap Install now. The browser downloads it and Custom Apps restarts by itself.', 'Not installed in a few minutes: tap By hand and install the .crx from the install page. Your settings stay.']
+        : [NEWER[v.kind]?.(v.latest) ?? 'Install it from the install page.'];
+      const base = { id: 'update', type: 'update', title: `Custom Apps ${v.latest} is out. This browser has ${v.installed}.`,
+        view: { sections: [{ title: 'Versions', rows: [['This browser', v.installed], ['New', v.latest], ['Installed as', v.kind ?? ''], ['Asked the browser', v.askedAt ?? '', 'time'],
+          ['The browser said', v.status ?? '']] }, { title: 'How to get it', steps: [...how, 'Then check what the new version changed: open the run report of the note or problem it was for.'] }] } };
       if (v.kind !== 'quetta') return { ...base, status: { text: 'New', tone: 'wait' }, detail: NEWER[v.kind]?.(v.latest) ?? '', actions: [{ do: 'update', label: 'Get it' }] };
       const asked = v.askedAt ? ` (asked at ${new Date(v.askedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : '';
       const said = { throttled: 'it wants to wait', no_update: 'it does not see the new version yet', error: 'it could not check' }[v.status];
@@ -669,7 +711,6 @@
         if (!o?.ok) say(o?.error ?? 'That didn’t work. Try again.', 'err');
         return;
       }
-      if (a.do === 'details') { ui.open = ui.open === r.id ? null : r.id; return draw(); }
       if (a.do === 'note.edit') { ui.edit = { id: r.note, text: r.editText ?? r.title }; ui.sure = null; draw(); root.querySelector('textarea')?.focus(); return; }
       // Delete asks once more on the same button: a dictated note can be long.
       if (a.do === 'note.drop' && ui.sure !== r.id) { ui.sure = r.id; return draw(); }
@@ -735,14 +776,7 @@
           }
           msg.append(box);
         }
-        // A sent note's Details: the answer, or what the AI did about it.
-        if (r.details?.length && ui.open === r.id) {
-          const d = el('div', 'ndet');
-          for (const [k, v] of r.details) d.append(el('span', 'k', k), el('span', '', v));
-          msg.append(d);
-        }
-        const actions = r.details?.length ? [{ do: 'details', label: ui.open === r.id ? 'Hide details' : 'Details' }, ...(r.actions ?? [])] : r.actions ?? [];
-        for (const a of actions) {
+        for (const a of r.actions ?? []) {
           const sure = a.do === 'note.drop' && ui.sure === r.id;
           const b = button(sure ? 'sure' : a.do === 'note.send' ? 'go' : '', sure ? 'Sure? Delete' : a.label, () => tapRow(r, a));
           b.disabled = !!busy;
@@ -755,8 +789,150 @@
       const count = el('span', 'count', r.count != null ? `×${r.count}` : '');
       if (r.count != null) count.title = `It happened ${r.count} time${r.count === 1 ? '' : 's'}. The same problem again only counts up: it is not sent again.`;
       row.append(el('span', `chip ${r.type}`, TYPE[r.type] ?? r.type), st, msg, acts, count);
-      if (!editing) swipeable(row, r);
+      if (!editing) {
+        swipeable(row, r);
+        // A tap on the row (not on its buttons): its Details.
+        row.addEventListener('click', (e) => {
+          if (e.target?.closest?.('button, textarea, label, input') || row.dataset.moved) return;
+          openDetail(r);
+        });
+      }
       return row;
+    }
+
+    // --- a notification's Details: its sections (core/background/inbox.js view), and an AI run's report ---------------
+    function openDetail(r) {
+      ui.detail = r.id; ui.detailRow = r; ui.rep = null; ui.repAll = false; ui.stepOpen = new Set();
+      draw();
+      root.querySelector?.('.dview')?.scrollTo?.(0, 0);
+      const rp = r.view?.report;
+      if (rp) loadReport(rp);
+    }
+    async function loadReport(rp) {
+      const key = `${rp.root ? '/' : ''}${rp.path}`;
+      ui.rep = { key, state: 'loading' };
+      draw();
+      const res = await ask({ type: 'runReport', path: rp.path, root: !!rp.root });
+      if (ui.rep?.key !== key) return;
+      ui.rep = res?.ok ? { key, state: 'ok', report: res.report } : { key, state: 'err', error: res?.error ?? 'The report could not be read.' };
+      draw();
+    }
+    const when = (v) => { const t = Date.parse(v); return Number.isFinite(t) ? new Date(t).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : ''; };
+    function section(title, ...body) {
+      const d = el('div', 'dsec');
+      d.append(el('h4', '', title), ...body);
+      return d;
+    }
+    function rowsOf(rows) {
+      const dl = el('dl');
+      let n = 0;
+      for (const [k, v, fmt] of rows) {
+        const shown = fmt === 'time' ? when(v) : v;
+        if (shown === '' || shown == null) continue;
+        dl.append(el('dt', '', k), el('dd', '', String(shown)));
+        n++;
+      }
+      return n ? dl : null;
+    }
+    function listOf(items, ordered, cls = '') {
+      const l = el(ordered ? 'ol' : 'ul', cls);
+      for (const t of items) l.append(el('li', '', t));
+      return l;
+    }
+    function sectionOf(sec) {
+      if (sec.text != null) return sec.text ? section(sec.title, el('div', 'dtext', sec.text)) : null;
+      if (sec.rows) { const dl = rowsOf(sec.rows); return dl ? section(sec.title, dl) : null; }
+      if (sec.steps?.length) return section(sec.title, listOf(sec.steps, true));
+      if (sec.list?.length) return section(sec.title, listOf(sec.list, false));
+      return null;
+    }
+    const ICON = { say: '💬', think: '💭', read: '📖', search: '🔎', edit: '✏️', run: '▶️', test: '🧪', release: '🚀', commit: '📦', agent: '🤖',
+      skill: '🧩', plan: '📋', device: '📱', lab: '🖥️', other: '•' };
+    const SHOWN_STEPS = 40;
+    // The run report (agent/report.mjs): For you first, then what it got, what it said, what changed, every step.
+    function reportView(rp) {
+      const out = [];
+      const head = [rp.title, rp.ok ? 'finished' : 'stopped', when(rp.at), rp.minutes != null ? `${rp.minutes} min` : '', rp.turns != null ? `${rp.turns} turns` : '',
+        rp.costUsd != null ? `$${rp.costUsd}` : '', rp.model ?? ''].filter(Boolean).join(' · ');
+      out.push(el('div', 'muted', head));
+      if (rp.forYou?.length) {
+        const l = el('ul', 'say');
+        for (const x of rp.forYou) l.append(el('li', x.tone ?? '', x.text));
+        out.push(section('For you', l));
+      }
+      if (rp.input?.length) {
+        const l = el('ol');
+        for (const i of rp.input) {
+          const li = el('li', '', i.title);
+          if (i.detail) li.append(el('div', 'muted', i.detail));
+          l.append(li);
+        }
+        out.push(section('What it got', l));
+      }
+      if (rp.said) out.push(section('What it said', el('div', 'dtext', rp.said)));
+      if (rp.answers?.length) out.push(section('Its answers', listOf(rp.answers.map((a) => a.answer), false)));
+      const changed = [];
+      const facts = rowsOf([['New version', rp.released ?? ''], ['Tests', rp.tests ? `${rp.tests.pass} passed, ${rp.tests.fail} failed` : '']]);
+      if (facts) changed.push(facts);
+      if (rp.commits?.length) changed.push(el('div', 'sub', `Commits (${rp.commits.length})`), listOf(rp.commits.map((c) => `${c.sha} ${c.subject}`), false, 'files'));
+      if (rp.files?.length) {
+        changed.push(el('div', 'sub', `Files (${rp.files.length})`));
+        const l = el('ul', 'files');
+        for (const f of rp.files) { const li = el('li', '', `${f.path} `); li.append(el('span', 'add', `+${f.add}`), ' ', el('span', 'del', `−${f.del}`)); l.append(li); }
+        changed.push(l);
+      }
+      out.push(section('What changed', ...(changed.length ? changed : [el('div', 'muted', 'Nothing in the code: no commit in this run.')])));
+      const steps = rp.steps ?? [];
+      if (steps.length) {
+        const l = el('ol', 'steps');
+        const shown = ui.repAll ? steps : steps.slice(0, SHOWN_STEPS);
+        shown.forEach((st, i) => {
+          const li = el('li', `${st.kind === 'say' || st.kind === 'think' ? 'words' : ''}${st.failed ? ' failed' : ''}${ui.stepOpen.has(i) ? ' open' : ''}`);
+          li.append(el('span', 'n', `${i + 1} ${ICON[st.kind] ?? '•'}`), el('span', 'w', st.what));
+          const more = [st.detail, st.out].filter(Boolean).join('\n— output —\n');
+          if (more) {
+            li.dataset.more = '1';
+            if (ui.stepOpen.has(i)) li.append(el('pre', '', more));
+            li.addEventListener('click', () => { if (ui.stepOpen.has(i)) ui.stepOpen.delete(i); else ui.stepOpen.add(i); draw(); });
+          }
+          l.append(li);
+        });
+        const body = [l];
+        if (steps.length > SHOWN_STEPS) body.push(button('nmore', ui.repAll ? 'Show fewer steps' : `Show all ${steps.length} steps`, () => { ui.repAll = !ui.repAll; draw(); }));
+        if (rp.more) body.push(el('div', 'muted', `${rp.more} more steps are not in the report.`));
+        if (rp.helpers) body.push(el('div', 'muted', `Its helper agents made ${rp.helpers} more steps of their own (not listed).`));
+        out.push(section(`Step by step (${steps.length}) · tap a step for its output`, ...body));
+      }
+      return out;
+    }
+    function detailView(r) {
+      const v = el('div', 'dview');
+      const head = el('div', 'dhead');
+      head.append(button('back', '‹ Back', () => { ui.detail = null; ui.rep = null; draw(); }), el('span', `chip ${r.type}`, TYPE[r.type] ?? r.type),
+        el('span', `st ${r.status?.tone ?? ''}`, r.status?.text ?? ''), el('b', '', r.title));
+      v.append(head);
+      if (r.answer) v.append(section('Answer', el('div', 'dtext', r.answer)));
+      const secs = (r.view?.sections ?? []).map(sectionOf).filter(Boolean);
+      if (!secs.length && r.details?.length) secs.push(section('Details', rowsOf(r.details)));
+      else if (!secs.length && r.detail) secs.push(section('Details', el('div', 'dtext', [r.detail, r.state].filter(Boolean).join('\n'))));
+      v.append(...secs);
+      if (r.actions?.length) {
+        const acts = el('div', 'acts');
+        for (const a of r.actions) { const b = button(a.do === 'note.send' ? 'go' : '', a.label, () => tapRow(r, a)); b.disabled = !!busy; acts.append(b); }
+        v.append(acts);
+      }
+      if (r.view?.report) {
+        const rp = ui.rep;
+        const sec = el('div', 'dsec');
+        sec.append(el('h4', '', 'The AI run'));
+        if (!rp || rp.state === 'loading') sec.append(el('div', 'muted', 'Loading the run’s report from GitHub…'));
+        else if (rp.state === 'err') sec.append(el('div', 'muted', rp.error), button('back', 'Try again', () => loadReport(r.view.report)));
+        else sec.append(...reportView(rp.report));
+        v.append(sec);
+      } else if (['note', 'question', 'data', 'error', 'validation'].includes(r.type)) {
+        v.append(el('div', 'muted', 'No AI run report yet: it comes with the AI’s answer.'));
+      }
+      return v;
     }
     function inboxList(rows) {
       const box = el('div', 'inbox');
@@ -869,7 +1045,9 @@
               : `${a.label}: sign in on ${a.site}, then press Connect there.`)).join(' ')));
           }
         }
-        if (shownInbox && ui.inbox && h.github.connected && !ui.github && !ui.dev) kids.push(inboxList(rows));
+        // A row's Details: the row as it is now, or as it was when it went (a done row goes after 3 minutes).
+        if (ui.detail) { const now = allRows(h).find((x) => x.id === ui.detail); if (now) ui.detailRow = now; else if (ui.detailRow?.id !== ui.detail) ui.detail = null; }
+        if (shownInbox && ui.inbox && h.github.connected && !ui.github && !ui.dev) kids.push(ui.detail && ui.detailRow ? detailView(ui.detailRow) : inboxList(rows));
         else if (!h.github.connected || ui.github || ui.dev) { /* the card shows its own message */ }
         else if (ui.note || h.error) kids.push(el('p', `note ${ui.note ? ui.noteKind : 'err'}`, ui.note || h.error));
         if (ui.menu) kids.push(accountMenu());
@@ -892,7 +1070,10 @@
       else if (ch.outbox || ch.data || ch.ig || ch.checks || ch.notes || ch.syncStatus || ch.bridgeLog) { clearTimeout(aiTimer); aiTimer = setTimeout(() => refresh(), 1000); }
     };
     chrome.storage.onChanged.addListener(onStorage);
-    const onKey = (e) => { if (e.key === 'Escape' && ui.menu) { ui.menu = false; draw(); } };
+    const onKey = (e) => {
+      if (e.key !== 'Escape') return;
+      if (ui.menu) { ui.menu = false; draw(); } else if (ui.detail) { ui.detail = null; ui.rep = null; draw(); }
+    };
     root.addEventListener('keydown', onKey);
     draw();
     refresh();

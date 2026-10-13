@@ -21,6 +21,7 @@ It uses free AI models on OpenRouter and rotates between them. A paid model can 
 | `problems.mjs`, `FIX.md` | Finds the tablets' new problem reports (`problems/` in the data repo, from the app's checks; no AI); the fix agent's instructions. Its answers go to `fixes.json` |
 | `run.mjs` | The old fixed program, the fallback when Claude can't run |
 | `runlog.mjs` | Adds each run's time, turns and cost to `runs.json` |
+| `report.mjs` | The parent's report of each AI run (notes, fix, helper): from the run's stream-json recording, every step in plain words, the commits, files, release and tests, and “For you” (what to know and check); in `reports/` of the data repo, opened from the tablet's 🔔 → Details |
 | `limits.mjs` | The AI runs a day: the parent's numbers from Settings (`parent-config.json` `agents`) inside safe limits, else `config.json`'s; writes `server.json` (today's runs, the Claude account) for Settings → AI on the server |
 | `config.json` | Profiles, apps, models, voices, limits |
 | `lib/` | The toolkit's modules (see `lib/README.md`) |

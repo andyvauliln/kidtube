@@ -14,6 +14,7 @@ import { checkUpdate, appVersion, updateApp, openUpdate } from './updates.js';
 import { partOf, allParts } from './apps.js';
 import { observe, pageResult, checksView, runStartChecks, clearReports, takeAlert, sendReports, readFixes } from '../checks/runner.js';
 import { setDevMode, devView, frameAnswer } from './bridge.js';
+import { readReport } from './inbox.js';
 
 const pinPage = (purpose) => chrome.runtime.getURL(`${PIN_PAGE}?for=${purpose}`);
 
@@ -43,6 +44,8 @@ const HANDLERS = {
   header: (msg, { host }) => headerView(!!msg.refresh, host),
   openAiPage: (msg, { tabId }) => openAiPage(msg, tabId),
   inbox: (msg) => inboxButton(msg),
+  // A notification's Details: the AI run's report from the data repo (core/background/inbox.js).
+  runReport: (msg) => readReport(msg),
   openApp: (msg, { tabId, host }) => openApp(msg, tabId, host),
   connect: (msg, { tabId, host }) => connect(tabId, host),
   plainSite: (msg, { tabId, host }) => plainSite(msg.site, tabId, host),

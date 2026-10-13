@@ -1,16 +1,18 @@
 // After a Claude run (daily.sh): prints its report for the log and adds one line to kidtube-data runs.json
-// (time, turns, cost, errors) so parent mode can show how the runs go. Usage: node agent/runlog.mjs <claude json> [request]
+// (time, turns, cost, errors) so parent mode can show how the runs go, and with the run's stream-json recording its
+// report (agent/report.mjs) to reports/helper-<time>.json. Usage: node agent/runlog.mjs <claude json> [request] [stream]
 import { readFileSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readJson, writeJson, syncClone, commitAndPush } from './lib/data.mjs';
 import { locate } from './lib/profile.mjs';
+import { buildReport, prune as pruneReports } from './report.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const config = JSON.parse(readFileSync(join(ROOT, 'agent/config.json'), 'utf8'));
 // runs.json of this run's profile (KIDTUBE_PROFILE); the clone is pulled and pushed as a whole.
 const { cloneDir, dataDir, profile } = locate(config);
-const [file, kind] = process.argv.slice(2);
+const [file, kind, stream] = process.argv.slice(2);
 let r = {};
 try { r = JSON.parse(readFileSync(file, 'utf8')); } catch (e) { console.log(`=== no JSON result from claude (${e.message})`); }
 if (r.result) console.log(r.result);
@@ -26,6 +28,16 @@ try {
   syncClone(cloneDir, config.dataRepo);
   const path = join(dataDir, 'runs.json');
   const log = readJson(path, { schemaVersion: 1, runs: [] });
+  if (stream) {
+    const id = `helper-${run.at.replace(/[-:]/g, '').slice(0, 15)}Z`;
+    let lines = [];
+    try { lines = readFileSync(stream, 'utf8').split('\n').filter(Boolean); } catch {}
+    const report = buildReport({ kind: 'helper', lines, app: ROOT, id, profile: profile?.path ?? null,
+      input: [{ text: kind === 'request' ? 'A run you asked for (↻ Update): new lists from your notes and his activity.' : 'The nightly run: new lists from his activity and the plan.', where: 'agent/DAILY.md' }] });
+    writeJson(join(dataDir, 'reports', `${id}.json`), report);
+    pruneReports(join(dataDir, 'reports'));
+    run.report = `reports/${id}.json`;
+  }
   log.runs = [...log.runs, run].slice(-60);
   writeJson(path, log);
   commitAndPush(cloneDir, `helper: run log (${run.minutes ?? '?'} min, ${run.turns ?? '?'} turns)${profile ? ` (${profile.path})` : ''}`);

@@ -5,7 +5,7 @@
 //   node agent/problems.mjs mark   FILE --state DIR [--result RESULT]  → the problems in FILE (the array from `new`) are handled
 //                                                                         (with RESULT: only those the agent answered)
 //   node agent/problems.mjs working FILE --data DIR                    → fixes.json says the AI works on the problems in FILE now
-//   node agent/problems.mjs record RESULT --data DIR [--asked FILE --state DIR] [--note TEXT]
+//   node agent/problems.mjs record RESULT --data DIR [--asked FILE --state DIR] [--note TEXT] [--report reports/<id>.json]
 //                                                                       → the fix agent's answers go into fixes.json (the tablets read
 //                                                                         it); a problem of FILE with no answer: no-answer or gave-up
 // The reports are in the data repo's problems/<day>.json (every tablet and profile). One problem is one check on one
@@ -73,12 +73,13 @@ export function newProblems(reports, handled, fixes, now = Date.now()) {
 // answered; tried again in 2 hours), gave-up (3 runs with no answer). The tablet shows each (core/checks/runner.js).
 const STATES = ['fixed', 'not-reproduced', 'needs-you', 'not-a-bug'];
 const SERVER_STATES = [...STATES, 'working', 'no-answer', 'gave-up'];
-export function recordFixes(file, result, now = new Date().toISOString(), states = STATES) {
+// report: the run's report in the data repo (agent/report.mjs), which the tablet's Details opens.
+export function recordFixes(file, result, now = new Date().toISOString(), states = STATES, report = null) {
   const list = file?.fixes ?? [];
   for (const f of result?.fixes ?? []) {
     if (!f?.key || !states.includes(f.state)) continue;
     const entry = { key: String(f.key), check: String(f.key).split('|')[0], target: String(f.key).split('|')[1] ?? null, state: f.state,
-      version: typeof f.version === 'string' ? f.version : null, message: String(f.message ?? '').slice(0, 500), at: now };
+      version: typeof f.version === 'string' ? f.version : null, message: String(f.message ?? '').slice(0, 500), at: now, ...(report ? { report } : {}) };
     const i = list.findIndex((x) => x.key === entry.key);
     if (i >= 0) list[i] = entry; else list.push(entry);
   }
@@ -94,19 +95,19 @@ export function workingOn(file, problems, now = new Date().toISOString()) {
 
 // After the run: the agent's answers, and for each problem asked with no answer, no-answer (tries: the runs with
 // no answer, from problems-handled.json; tried again) or gave-up (mark gave up on it: no tries kept).
-export function afterRun(file, result, asked, handled, now = new Date().toISOString()) {
+export function afterRun(file, result, asked, handled, now = new Date().toISOString(), report = null) {
   const answered = new Set((result?.fixes ?? []).filter((f) => STATES.includes(f?.state)).map((f) => f.key));
-  const out = recordFixes(file, result, now);
+  const out = recordFixes(file, result, now, STATES, report);
   const missing = asked.filter((p) => !answered.has(p.key)).map((p) => {
     const n = handled?.tries?.[p.key];
     return n ? { key: p.key, state: 'no-answer', message: `The AI stopped before it answered. It tries again after 2 hours (try ${n + 1} of ${TRIES}).` }
       : { key: p.key, state: 'gave-up', message: `The AI stopped ${TRIES} times before it answered. It tries again when a new version reports it.` };
   });
-  return recordFixes(out, { fixes: missing }, now, SERVER_STATES);
+  return recordFixes(out, { fixes: missing }, now, SERVER_STATES, report);
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
-  const { values, positionals } = parseArgs({ allowPositionals: true, options: { data: { type: 'string' }, state: { type: 'string' }, result: { type: 'string' }, asked: { type: 'string' }, note: { type: 'string' } } });
+  const { values, positionals } = parseArgs({ allowPositionals: true, options: { data: { type: 'string' }, state: { type: 'string' }, result: { type: 'string' }, asked: { type: 'string' }, note: { type: 'string' }, report: { type: 'string' } } });
   const [cmd, file] = positionals;
   const HANDLED = values.state ? join(values.state, 'problems-handled.json') : null;
   if (cmd === 'new' && values.data && HANDLED) {
@@ -137,7 +138,7 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     // --note: what the parent must know about the release (poll.sh release_check), after each fix with a version.
     const result = readJson(file, {});
     if (values.note) result.fixes = (result.fixes ?? []).map((f) => (f?.state === 'fixed' && f.version ? { ...f, message: `${f.message ?? ''} ${values.note}`.trim() } : f));
-    writeFileSync(p, JSON.stringify(afterRun(readJson(p, {}), result, asked, HANDLED ? readJson(HANDLED, {}) : {}), null, 2) + '\n');
+    writeFileSync(p, JSON.stringify(afterRun(readJson(p, {}), result, asked, HANDLED ? readJson(HANDLED, {}) : {}, undefined, /^reports\/[\w.-]+\.json$/.test(values.report ?? '') ? values.report : null), null, 2) + '\n');
     console.log('recorded');
   } else {
     console.error('usage: problems.mjs new --data DIR --state DIR | mark FILE --state DIR [--result RESULT] | working FILE --data DIR | record RESULT --data DIR [--asked FILE --state DIR] [--note TEXT]');

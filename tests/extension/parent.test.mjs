@@ -510,6 +510,19 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
     await fromPage({ type: 'sync' });
     f = await follow();
     assert.deepEqual([f.status.text, f.done, f.details, f.actions.map((a) => a.label).join()], ['Done', true, [['What was done', 'Made the buttons bigger in 0.12.14.']], 'Got it']);
+    // Its Details (a tap on the row): the note, what was done, how to check it, and the run's report (agent/report.mjs).
+    files['answers.json'] = { json: { schemaVersion: 1, answers: [{ eventId: up.eventId, answer: 'Made the buttons bigger in 0.12.14.', at: new Date().toISOString(), report: 'reports/notes-1.json' }] } };
+    await fromPage({ type: 'sync' });
+    f = await follow();
+    assert.deepEqual(f.view.sections.map((x) => x.title), ['Your note', 'What was done', 'What the AI said about its run', 'About', 'Check it']);
+    assert.deepEqual(f.view.report, { path: 'reports/notes-1.json', root: false });
+    files['reports/notes-1.json'] = { json: { schemaVersion: 1, kind: 'notes', steps: [{ kind: 'say', what: 'Bigger buttons.' }] } };
+    const rep = await fromPage({ type: 'runReport', path: 'reports/notes-1.json', root: false });
+    assert.deepEqual([rep.ok, rep.report.steps[0].what], [true, 'Bigger buttons.']);
+    assert.equal((await fromPage({ type: 'runReport', path: '../settings.json' })).ok, false, 'only a run report');
+    assert.match((await fromPage({ type: 'runReport', path: 'reports/gone.json' })).error, /not in the data repo/);
+    // Every row has its Details.
+    for (const r of (await fromPage({ type: 'header' })).inbox) assert.ok(r.view?.sections?.length, `${r.id} has a view`);
 
     // Settings → Update now (sync with notes: true) also sends them.
     await fromPage({ type: 'wish', text: 'More Russian' });

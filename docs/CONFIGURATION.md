@@ -64,6 +64,7 @@ A profile = one account with one app: a YouTube (Google) account email for `kidt
 - `queue.json` — today's 10 videos **plus up to 10 spares** (intro/outro text + recordings, quiz ids), and `upcoming` (planned list).
 - `memory.json` — the helper's record of every video (parent mode Planned / History).
 - `audio/*.mp3`, `transcripts/*.json`, `characters/`.
+- `reports/<kind>-<time>.json` — the report of each AI run on this profile (notes and helper runs; fix runs: `reports/` at the root of the repo), written by `agent/report.mjs` from the run's stream-json recording: For you, what it got, what it said, what changed (commits, files, release, tests) and every step with a short output. The server keeps the newest 60. `run-status.json`, `answers.json` and `fixes.json` name the report of their run; the tablet's 🔔 → a row → Details reads it.
 - `server.json` — written by the server (`agent/limits.mjs`, from `agent/poll.sh`) when it changes: the AI runs a day in force, today's runs (a UTC day), the defaults and limits, and the e-mail address of the Claude account the agents use. Settings → AI on the server shows it.
 - It writes `activity/` (watches, answers, thumbs, comments, wishes, parent-mode plan changes).
 - Beside the profile folders: `<app>/keys.json` (0.9.15, optional) — `{ "schemaVersion": 1, "groqKey": "gsk_…", "geminiKey": "AIza…", "openrouterKey": "sk-or-…" }` (0.9.18: groqKey), the listening keys for every tablet and profile of the app. A key typed in Settings → Talking friend wins. The data repo must stay private.

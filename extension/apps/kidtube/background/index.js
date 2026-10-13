@@ -38,7 +38,7 @@ export default {
   // The header's notifications: the notes ↻ Update has not sent yet, and the notes agent's latest run.
   aiView(s) {
     const r = runView(s);
-    return { held: r.held, run: r.state, message: r.message ?? '', at: r.at ?? null, page: 'parent', send: '↻ Update' };
+    return { held: r.held, run: r.state, message: r.message ?? '', at: r.at ?? null, page: 'parent', send: '↻ Update', report: r.report ?? null };
   },
   // The parent's notes not sent yet, each with Edit, Delete and Send and its checkboxes in the header's list.
   notes: {

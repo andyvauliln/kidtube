@@ -87,6 +87,16 @@ check).
 
 The tablet then sees the new version next to the logo in the header. Quetta is asked for it once, then every 30 minutes; it is not proven that Quetta installs it by itself. If the label says "· by hand", the parent taps it and installs the .crx from the install page. Orion: the parent downloads the .zip. Never promise that the parent does nothing: say "tap the new version next to the logo".
 
+## The parent reads this run
+
+Every step of this run goes into a report that the parent opens from the tablet's 🔔 (`agent/report.mjs`): your
+words between the steps, each tool call with a short output, your commits, the release and the tests.
+
+- Before each group of steps, say in one short sentence what you do and why ("The note asks for vertical swipes: I
+  change the box's gestures in settings.js."). These sentences are the parent's view of your reasoning.
+- Say it in plain words when a step fails and what you do instead.
+- Never print a token or a key: the report cuts the ones it knows, not every one.
+
 ## When you are done
 
 Write the result as JSON to the result file given below. Use exactly these keys:

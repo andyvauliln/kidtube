@@ -102,6 +102,16 @@ Commit your changes, then `npm run ship -- -m "<short summary>"`, exactly as `ag
 - **Data repo:** read only. Do not edit `problems/`; `agent/poll.sh` writes `fixes.json` from your result (and "working" while you run, "no-answer" when you give none). The tablet shows each problem's state from it.
 - If something fails and you cannot fix it, push nothing broken. Say what happened in the message of that problem.
 
+## The parent reads this run
+
+Every step of this run goes into a report that the parent opens from the tablet's 🔔 (`agent/report.mjs`): your
+words between the steps, each tool call with a short output, your commits, the release and the tests.
+
+- Before each group of steps, say in one short sentence what you do and why ("The note asks for vertical swipes: I
+  change the box's gestures in settings.js."). These sentences are the parent's view of your reasoning.
+- Say it in plain words when a step fails and what you do instead.
+- Never print a token or a key: the report cuts the ones it knows, not every one.
+
 ## When you are done
 
 Write the result as JSON to the result file given below, with one entry per problem (use its `key`):

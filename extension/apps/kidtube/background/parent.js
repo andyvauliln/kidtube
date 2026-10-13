@@ -152,7 +152,7 @@ export function questionsView(s, now = Date.now()) {
     const a = answers.find((x) => x?.eventId === q.id && typeof x.answer === 'string');
     const state = a ? 'answered' : done.has(q.id) ? 'none' : 'waiting';
     if (now - Date.parse(a?.at ?? q.at) > (a && asks(q) ? 7 : 3) * DAY) continue;
-    out.push({ ...q, ask: asks(q), state, ...(a ? { answer: a.answer.slice(0, 2000), answeredAt: a.at ?? null } : {}) });
+    out.push({ ...q, ask: asks(q), state, ...(a ? { answer: a.answer.slice(0, 2000), answeredAt: a.at ?? null, report: a.report ?? q.report ?? null } : {}) });
   }
   return out;
 }
@@ -162,7 +162,11 @@ export function keepResults(s) {
   const done = new Set(s.data.notesDone ?? []);
   const st = s.data.runStatus;
   if (!st?.message || !['done', 'failed'].includes(st.state)) return;
-  for (const q of s.notes?.questions ?? []) if (!q.result && done.has(q.id) && (st.finishedAt ?? '') >= q.at) q.result = String(st.message).slice(0, 1000);
+  for (const q of s.notes?.questions ?? []) {
+    if (q.result || !done.has(q.id) || (st.finishedAt ?? '') < q.at) continue;
+    q.result = String(st.message).slice(0, 1000);
+    if (typeof st.report === 'string') q.report = st.report;   // the run's report: the note's Details opens it
+  }
 }
 
 export function dismissQuestion(s, id) {
@@ -443,5 +447,5 @@ export function runView(s) {
     return { state: 'queued', at: req.at, message: 'Asked. The server starts it within a minute or two.', held };
   }
   if (!st) return { state: 'none', held };
-  return { state: st.state, at: st.finishedAt ?? st.startedAt, message: st.message ?? '', held };
+  return { state: st.state, at: st.finishedAt ?? st.startedAt, message: st.message ?? '', held, report: st.report ?? null };
 }

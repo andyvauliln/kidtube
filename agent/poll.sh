@@ -92,6 +92,7 @@ release_check() {
 # fixes.json to the data repo. $1: the commit message.
 push_fixes() {
   git -C "$CLONE" add fixes.json
+  [ -d "$CLONE/reports" ] && git -C "$CLONE" add -A reports
   git -C "$CLONE" -c user.name="KidTube helper" commit --quiet -m "$1" || return 1
   for i in 1 2 3; do git -C "$CLONE" push --quiet origin HEAD && return 0; git -C "$CLONE" pull --quiet --rebase origin HEAD; done
 }
@@ -116,6 +117,10 @@ fix_lane() {
   result="$SROOT/fix-result.json"
   rm -f "$result"
   mkdir -p "$SROOT/fix-runs"
+  # Every step of the run is recorded (stream-json): agent/report.mjs makes the parent's report of it.
+  local ts stream
+  ts=$(date -u +%Y%m%dT%H%M%SZ)
+  stream="$SROOT/fix-runs/$ts.jsonl"
   local model effort prompt
   model=$(cfg "c.fixAgent?.model??c.notesAgent?.model")
   effort=$(cfg "c.fixAgent?.effort??c.notesAgent?.effort")
@@ -134,15 +139,19 @@ $problems
   (cd "$APP" && CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 BASH_DEFAULT_TIMEOUT_MS=900000 BASH_MAX_TIMEOUT_MS=1800000 \
     claude -p "$prompt" --model "${model:-opus}" ${effort:+--effort "$effort"} \
       --permission-mode dontAsk --allowedTools "Bash" "Read" "Edit" "Write" "Glob" "Grep" "Skill" "Agent" "Task" ${AGENT_TOOLS[@]+"${AGENT_TOOLS[@]}"} \
-      ${AGENT_MCP[@]+"${AGENT_MCP[@]}"} --add-dir "$SROOT" "$CLONE" --output-format json < /dev/null) > "$SROOT/fix-runs/$(date -u +%Y%m%dT%H%M%SZ).json" 2>> "$log"
+      ${AGENT_MCP[@]+"${AGENT_MCP[@]}"} --add-dir "$SROOT" "$CLONE" --output-format stream-json --verbose < /dev/null) > "$stream" 2>> "$log"
   echo "=== claude exit $?" >> "$log"
+  node agent/report.mjs result "$stream" > "$SROOT/fix-runs/$ts.json"
   local note
   note=$(release_check "$log")
+  node agent/report.mjs build --kind fix --stream "$stream" --input "$SROOT/problems-in.json" --result "$result" --app "$APP" \
+    --id "fix-$ts" ${note:+--note "$note"} --out "$CLONE/reports/fix-$ts.json" >> "$log" 2>&1
+  node agent/report.mjs prune "$CLONE/reports"; node agent/report.mjs prune "$SROOT/fix-runs"
   # Handled when the agent answered it. One with no answer (the agent stopped, a usage limit) is tried again in
   # 2 hours, at most 3 times; never every minute.
   node agent/problems.mjs mark "$SROOT/problems-in.json" --state "$SROOT" --result "$result" >> "$log"
   [ -f "$result" ] || printf '{"fixes":[]}' > "$result"
-  node agent/problems.mjs record "$result" --data "$CLONE" --asked "$SROOT/problems-in.json" --state "$SROOT" ${note:+--note "$note"} >> "$log"
+  node agent/problems.mjs record "$result" --data "$CLONE" --asked "$SROOT/problems-in.json" --state "$SROOT" ${note:+--note "$note"} --report "reports/fix-$ts.json" >> "$log"
   push_fixes "helper: fixes ($count problem(s))" || return 0
   if [ -z "$(git -C "$ROOT" status --porcelain)" ]; then git -C "$ROOT" pull --quiet --ff-only origin main >> "$log" 2>&1; fi
 }
@@ -194,16 +203,19 @@ count=$(printf '%s' "$notes" | node -e "let s='';process.stdin.on('data',d=>s+=d
 [ -n "$id" ] || [ "$count" -gt 0 ] || exit 0
 # Notes sent by an older tablet (no request) still get a status line under their own id.
 statusId=${id:-notes-$(date -u +%Y%m%dT%H%M%SZ)}
+# The report of the run that ends (agent/report.mjs): in run-status.json, so the tablet's row opens it.
+REPORT=""
 
 status() { # state, message
   node -e "
     const fs=require('fs'),p='$DATA/run-status.json';
     const old=(()=>{try{return JSON.parse(fs.readFileSync(p,'utf8'))}catch{return {}}})();
     const now=new Date().toISOString(), st=process.argv[1];
-    const s={schemaVersion:1,requestId:'$statusId',state:st,message:process.argv[2]||'',
+    const s={schemaVersion:1,requestId:'$statusId',state:st,message:process.argv[2]||'',report:'$REPORT'||null,
       startedAt:st==='running'?(old.requestId==='$statusId'&&old.startedAt||now):(old.requestId==='$statusId'?old.startedAt:null),finishedAt:st==='running'?null:now};
     fs.writeFileSync(p,JSON.stringify(s,null,2)+'\n');" "$1" "$2"
   git -C "$DATA" add run-status.json
+  [ -n "$REPORT" ] && [ -d "$DATA/reports" ] && git -C "$DATA" add -A reports
   [ -f "$DATA/notes-done.json" ] && git -C "$DATA" add notes-done.json
   [ -f "$DATA/answers.json" ] && git -C "$DATA" add answers.json
   git -C "$DATA" -c user.name="KidTube helper" commit --quiet -m "helper: run $1" || return 0
@@ -223,10 +235,15 @@ run_helper() { # code checkout to run it from, text to put before the result
   echo "$TODAY $statusId" >> "$STATE/on-demand"
   status running "${before_text}The helper is updating the lists (usually 10–30 minutes)."
   echo "=== $(date -u +%FT%TZ) helper run on request $statusId${PROFILE:+ for $PROFILE} (from $dir)" >> "$SROOT/helper.log"
-  local before
+  local before started
   before=$(git -C "$DATA" rev-parse HEAD)
+  started=$(date -u +%FT%TZ)
   (cd "$dir" && KIDTUBE_LOCKED=1 KIDTUBE_ON_DEMAND=1 KIDTUBE_PROFILE="$PROFILE" agent/daily.sh) >> "$SROOT/helper.log" 2>&1
   git -C "$DATA" fetch --quiet origin && git -C "$DATA" reset --quiet --hard origin/HEAD
+  # This run's report (agent/runlog.mjs puts it in runs.json); none: the notes run's report stays.
+  local rep
+  rep=$(node -e "try{const r=require('$DATA/runs.json').runs.at(-1);process.stdout.write(r.at>='$started'&&r.report||'')}catch{}")
+  [ -n "$rep" ] && REPORT=$rep
   if git -C "$DATA" log --format=%s "$before..HEAD" -- . | grep -q "^helper: [0-9]"; then
     status done "${before_text}The new lists are on the tablet after the next sync."
   else
@@ -256,6 +273,8 @@ if [ "$count" -gt 0 ]; then
   RESULT="$STATE/notes-result.json"
   rm -f "$RESULT"
   mkdir -p "$STATE/notes-runs"
+  ts=$(date -u +%Y%m%dT%H%M%SZ)
+  stream="$STATE/notes-runs/$ts.jsonl"
   MODEL=$(cfg "c.notesAgent?.model")
   EFFORT=$(cfg "c.notesAgent?.effort")
   prompt="$(cat "$APP/agent/NOTES.md")
@@ -273,9 +292,15 @@ $notes
   (cd "$APP" && CLAUDE_CODE_DISABLE_BACKGROUND_TASKS=1 BASH_DEFAULT_TIMEOUT_MS=900000 BASH_MAX_TIMEOUT_MS=1800000 \
     claude -p "$prompt" --model "${MODEL:-opus}" ${EFFORT:+--effort "$EFFORT"} \
       --permission-mode dontAsk --allowedTools "Bash" "Read" "Edit" "Write" "Glob" "Grep" "Skill" "Agent" "Task" ${AGENT_TOOLS[@]+"${AGENT_TOOLS[@]}"} \
-      ${AGENT_MCP[@]+"${AGENT_MCP[@]}"} --add-dir "$STATE" "$DATA" --output-format json < /dev/null) > "$STATE/notes-runs/$(date -u +%Y%m%dT%H%M%SZ).json" 2>> "$log"
+      ${AGENT_MCP[@]+"${AGENT_MCP[@]}"} --add-dir "$STATE" "$DATA" --output-format stream-json --verbose < /dev/null) > "$stream" 2>> "$log"
   echo "=== claude exit $?" >> "$log"
+  node agent/report.mjs result "$stream" > "$STATE/notes-runs/$ts.json"
   release=$(release_check "$log")
+  # The parent's report of this run: every step, what changed, what to check (the tablet's row opens it).
+  REPORT="reports/notes-$ts.json"
+  node agent/report.mjs build --kind notes --stream "$stream" --input "$STATE/notes-in.json" --result "$RESULT" --app "$APP" \
+    --id "notes-$ts" --profile "$PROFILE" ${release:+--note "$release"} --server "$DATA/server.json" --out "$DATA/$REPORT" >> "$log" 2>&1 || REPORT=""
+  node agent/report.mjs prune "$DATA/reports"; node agent/report.mjs prune "$STATE/notes-runs"
   # Handled either way: a note that failed is not tried again every minute (the summary says what happened).
   node agent/notes.mjs mark "$STATE/notes-in.json" --state "$STATE" >> "$log"
 
@@ -289,7 +314,7 @@ $notes
   [ -n "$summary" ] && node agent/notes.mjs done "$STATE/notes-in.json" --data "$DATA" >> "$log"
   # The answers to the parent's questions: answers.json, sent with the next status (the tablet shows them in the
   # header's list, under each question; it looks every minute while a question waits).
-  [ -f "$RESULT" ] && node agent/notes.mjs answers "$RESULT" "$STATE/notes-in.json" --data "$DATA" >> "$log"
+  [ -f "$RESULT" ] && node agent/notes.mjs answers "$RESULT" "$STATE/notes-in.json" --data "$DATA" ${REPORT:+--report "$REPORT"} >> "$log"
   if [ -z "$summary" ]; then
     status failed "The AI could not finish working on your notes. Details are in the server log (notes.log)."
   elif [ -n "$helper" ]; then

@@ -50,10 +50,13 @@ run_profile() { # app/folder, or - for the old layout
       --model "${MODEL:-sonnet}" ${EFFORT:+--effort "$EFFORT"} \
       --permission-mode dontAsk \
       --allowedTools "Bash(node agent/kt.mjs:*)" "Read" "Edit(//tmp/kidtube-in/**)" "Skill" "Agent" "Task" --add-dir /tmp/kidtube-in \
-      --output-format json < /dev/null > "$OUT"
+      --output-format stream-json --verbose < /dev/null > "${OUT}l"
     code=$?
-    # The report goes to the log; time, turns and cost go to the profile's runs.json (parent mode → Prompt).
-    node agent/runlog.mjs "$OUT" "${KIDTUBE_ON_DEMAND:+request}"
+    node agent/report.mjs result "${OUT}l" > "$OUT"
+    # The report goes to the log; time, turns and cost go to the profile's runs.json (parent mode → Prompt), and every
+    # step to reports/ (agent/report.mjs: the tablet's 🔔 → Details).
+    node agent/runlog.mjs "$OUT" "${KIDTUBE_ON_DEMAND:+request}" "${OUT}l"
+    node agent/report.mjs prune "$PSTATE/runs"
     echo "=== claude exit $code"
   fi
 

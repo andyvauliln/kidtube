@@ -369,12 +369,51 @@ test('the notifications: a note’s checkboxes (This screen, App data, Question)
   tap(h.shadowRoot, 'Send all (2)');
   await tick(); await tick();
   assert.ok(sent.some((m) => m.type === 'inbox' && m.do === 'run'));
-  // A sent note: Details opens what the AI did about it.
+  // A sent note: a tap on its row opens its Details, with what the AI did about it; Back returns to the list.
   assert.ok(!text(row('Remove update box')).includes('Removed it in 0.12.14.'));
-  tap(row('Remove update box'), 'Details');
+  row('Remove update box').dispatchEvent({ type: 'click', target: { closest: () => null } });
   await tick();
-  assert.ok(text(row('Remove update box')).includes('Removed it in 0.12.14.'));
+  const view = find(h.shadowRoot, (n) => n.className === 'dview');
+  assert.ok(view && text(view).includes('Removed it in 0.12.14.'));
+  assert.ok(!row('Bigger buttons'), 'the list is closed meanwhile');
+  tap(view, '‹ Back');
+  await tick();
+  assert.ok(row('Bigger buttons'));
   delete answers.header; delete answers.version; delete answers.inbox;
+});
+
+// The parent's wish (2026-10-13): “every notification should be clickable and goes to details … all agents runs should
+// have also details step by step”. A row with a run report: For you, what it got, what changed, and every step.
+test('the notifications: a row’s Details shows its sections and the AI run’s report, step by step', async () => {
+  const report = { schemaVersion: 1, kind: 'notes', title: 'Run on your notes', ok: true, at: '2026-10-13T15:22:00Z', minutes: 8.4, turns: 43, costUsd: 1.18, model: 'claude-opus-5-5',
+    forYou: [{ tone: 'do', text: 'New version 0.12.20: update the tablet.' }], input: [{ title: 'Slides up and down, not left and right', detail: 'Settings' }],
+    said: 'One box goes up and down as in Reels.', released: '0.12.20', tests: { pass: 278, fail: 0 }, commits: [{ sha: 'fdd9a20', subject: 'One box: up and down' }],
+    files: [{ path: 'extension/apps/kidtube/parent/settings.js', add: 12, del: 30 }],
+    steps: [{ kind: 'say', what: 'The note asks for vertical swipes.' }, { kind: 'edit', what: 'Changed settings.js', detail: '- old\n+ new' }, { kind: 'test', what: 'Run the tests', out: '# pass 278', failed: false }] };
+  answers.header = () => ({ ok: true, open: true, mode: 'parent', running: 'kidtube', site: null, here: null, connected: null, github: { connected: true }, apps: [], inbox: [
+    { id: 'run', type: 'data', done: true, status: { text: 'Done', tone: 'ok' }, title: 'The AI run is done', actions: [],
+      view: { sections: [{ title: 'This run', rows: [['State', 'done'], ['Ended', '2026-10-13T15:22:00Z', 'time']] }], report: { path: 'reports/notes-1.json', root: false } } },
+  ] });
+  answers.version = () => ({ ok: true, installed: '0.12.20', latest: '0.12.20', newer: false, kind: 'quetta' });
+  answers.runReport = (m) => (m.path === 'reports/notes-1.json' && m.root === false ? { ok: true, report } : { ok: false, error: 'no' });
+  const h = new FakeEl('div');
+  globalThis.KidTubeHeader.mount(h, { dark: false });
+  await tick(); await tick();
+  const row = find(h.shadowRoot, (n) => n.className?.startsWith?.('nrow'));
+  row.dispatchEvent({ type: 'click', target: { closest: () => null } });
+  await tick(); await tick();
+  const view = () => find(h.shadowRoot, (n) => n.className === 'dview');
+  const all = text(view());
+  for (const want of ['This run', 'For you', 'New version 0.12.20: update the tablet.', 'What it got', 'Slides up and down', 'What it said', 'One box goes up and down',
+    '278 passed, 0 failed', 'fdd9a20 One box: up and down', 'extension/apps/kidtube/parent/settings.js', 'Step by step (3)', 'The note asks for vertical swipes.']) {
+    assert.ok(all.includes(want), `${want} in the Details`);
+  }
+  assert.ok(!all.includes('+ new'), 'a step’s output is closed at first');
+  const step = find(view(), (n) => n.tagName === 'LI' && text(n).includes('Changed settings.js'));
+  step.dispatchEvent({ type: 'click', target: { closest: () => null } });
+  await tick();
+  assert.ok(text(view()).includes('+ new'), 'a tap on a step opens its output');
+  delete answers.header; delete answers.version; delete answers.runReport;
 });
 
 // The parent's note (2026-10-13): Settings' 🔳 One box (and Context's 🔳 Full screen) go up and down as in Reels, no ‹ ›.

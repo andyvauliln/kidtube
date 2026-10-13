@@ -59,7 +59,7 @@ function world(extraEnv = {}) {
   sh(`git clone -q ${p('data.git')} ${p('data')} 2>/dev/null; cd ${p('data')} && mkdir -p activity && echo '{}' > memory.json && git add -A && git commit -qm init && git push -q origin HEAD:main && git remote set-head origin main`);
   sh(`git clone -q ${p('code.git')} ${p('root')} 2>/dev/null`);
   mkdirSync(p('root', 'agent', 'lib'), { recursive: true });
-  for (const f of ['poll.sh', 'notes.mjs', 'NOTES.md', 'problems.mjs', 'FIX.md', 'lib/profile.mjs', 'lib/data.mjs']) copyFileSync(join('agent', f), p('root', 'agent', f));
+  for (const f of ['poll.sh', 'notes.mjs', 'NOTES.md', 'problems.mjs', 'FIX.md', 'report.mjs', 'limits.mjs', 'lib/profile.mjs', 'lib/data.mjs']) copyFileSync(join('agent', f), p('root', 'agent', f));
   // The old layout: one child at the root of the data repo, no profiles.
   writeFileSync(p('root', 'agent', 'config.json'), JSON.stringify({ ...JSON.parse(readFileSync('agent/config.json', 'utf8')), profiles: [] }));
   // The helper: commits a new list the way the real one does.
@@ -76,6 +76,8 @@ const result = prompt.match(/Result file: (\\S+)/)[1];
 const work = ${JSON.stringify(p('agent-does.sh'))};
 if (fs.existsSync(work)) require('child_process').execFileSync('bash', [work], { stdio: 'ignore' });
 fs.writeFileSync(result, fs.readFileSync(${JSON.stringify(p('answer.json'))}, 'utf8'));
+// The run's recording (stream-json), when the test gives one.
+if (fs.existsSync(${JSON.stringify(p('stream.jsonl'))})) process.stdout.write(fs.readFileSync(${JSON.stringify(p('stream.jsonl'))}, 'utf8'));
 console.log('{}');
 `);
   chmodSync(p('bin', 'claude'), 0o755);
@@ -109,6 +111,7 @@ console.log('{}');
     },
     fixes: () => { sh('git pull -q --rebase origin main', tablet); return JSON.parse(readFileSync(join(tablet, 'fixes.json'), 'utf8')).fixes; },
     answer: (a) => writeFileSync(p('answer.json'), JSON.stringify(a)),
+    stream: (events) => writeFileSync(p('stream.jsonl'), events.map((e) => JSON.stringify(e)).join('\n') + '\n'),
     calls: () => (existsSync(p('claude-calls.jsonl')) ? readFileSync(p('claude-calls.jsonl'), 'utf8').trim().split('\n').map((l) => JSON.parse(l)) : []),
     status: () => { sh('git pull -q --rebase origin main', tablet); return JSON.parse(readFileSync(join(tablet, 'run-status.json'), 'utf8')); },
   };
@@ -155,6 +158,40 @@ test('poll.sh: a question gets its answer in answers.json, pushed with the statu
   assert.equal(w.status().state, 'done');
   const file = JSON.parse(readFileSync(w.p('tablet', 'answers.json'), 'utf8'));
   assert.deepEqual(file.answers.map((a) => [a.eventId, a.question, a.answer]), [['q-1', 'Why does he skip the songs?', 'He skips the songs longer than 5 minutes.']]);
+});
+
+// A short run as claude -p --output-format stream-json --verbose writes it: words, a test run, a release, the end.
+const STREAM = [
+  { type: 'system', subtype: 'init', model: 'claude-opus-5-5' },
+  { type: 'assistant', message: { content: [{ type: 'text', text: 'The note asks for Planned first. I change the default tab.' }] } },
+  { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't1', name: 'Bash', input: { command: 'npm test', description: 'Run the tests' } }] } },
+  { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't1', content: '# pass 280\n# fail 0' }] }, timestamp: '2026-10-13T10:01:00Z' },
+  { type: 'assistant', message: { content: [{ type: 'tool_use', id: 't2', name: 'Bash', input: { command: 'npm run ship -- -m x', description: 'Release' } }] } },
+  { type: 'user', message: { content: [{ type: 'tool_result', tool_use_id: 't2', content: 'ship: released 0.8.10: Quetta. token ghp_abcdefghijklmnopqrstuvwxyz0123' }] } },
+  { type: 'result', subtype: 'success', is_error: false, num_turns: 3, duration_ms: 120000, total_cost_usd: 0.42, result: 'done' },
+];
+
+test('poll.sh: a notes run leaves its report (every step, what changed, what to check); the status and the answers point to it', () => {
+  const w = world();
+  w.send([]);
+  w.poll();
+  w.answer({ summary: 'Parent mode opens on Planned (0.8.10).', runHelper: false, version: '0.8.10', answers: [{ eventId: 'q-2', answer: 'Yes.' }] });
+  w.stream(STREAM);
+  w.send([ev('q-2', '2026-10-13T10:00:00Z', 'wish', { list: 'settings', text: 'Can it open on Planned?', ask: true })], 'req-r');
+  w.poll();
+  const st = w.status();
+  assert.match(st.report, /^reports\/notes-\d{8}T\d{6}Z\.json$/);
+  const r = JSON.parse(readFileSync(w.p('tablet', st.report), 'utf8'));
+  assert.equal(r.kind, 'notes');
+  assert.equal(r.ok, true);
+  assert.equal(r.released, '0.8.10');
+  assert.deepEqual(r.tests, { pass: 280, fail: 0 });
+  assert.deepEqual(r.input.map((n) => n.title), ['Can it open on Planned?']);
+  assert.equal(r.said, 'Parent mode opens on Planned (0.8.10).');
+  assert.deepEqual(r.steps.map((s) => s.kind), ['say', 'test', 'release']);
+  assert.ok(r.forYou.some((x) => /New version 0\.8\.10/.test(x.text)));
+  assert.ok(!readFileSync(w.p('tablet', st.report), 'utf8').includes('ghp_'), 'no token in the report');
+  assert.equal(JSON.parse(readFileSync(w.p('tablet', 'answers.json'), 'utf8')).answers[0].report, st.report);
 });
 
 test('poll.sh: a note about the lists → the notes agent asks for a helper run, which runs after it', () => {
@@ -231,6 +268,8 @@ test('poll.sh: a problem the tablets reported wakes the fix agent once; its answ
   const log = sh('git log --format=%s -3', w.p('tablet'));
   assert.match(log, /helper: fixes \(1 problem\(s\)\)\nhelper: working on 1 problem\(s\)/, 'the tablets saw "working" while it ran');
   assert.equal(fixes[0].message, 'Kid waits for Orion to move the tab.');
+  assert.match(fixes[0].report, /^reports\/fix-\d{8}T\d{6}Z\.json$/, 'its Details opens the run’s report');
+  assert.equal(JSON.parse(readFileSync(w.p('tablet', fixes[0].report), 'utf8')).kind, 'fix');
   w.poll();
   assert.equal(w.calls().length, 1, 'nothing new: no second run');
   // The same problem again from a tablet that still has 0.10.4: fixed since, not worked on again.

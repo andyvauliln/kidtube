@@ -247,10 +247,10 @@ export function runStartChecks(reason) {
 
 // --- the messages: every answer is checked against what the message should have done ----------------------------
 // Reads answered every second (the state, playback time) are not steps; their failures still count.
-const QUIET = new Set(['state', 'tick', 'header', 'ping', 'frameReady', 'bridgeFrame', 'runStatus', 'version', 'heldNotes', 'getRules', 'status',
+const QUIET = new Set(['state', 'tick', 'header', 'runReport', 'ping', 'frameReady', 'bridgeFrame', 'runStatus', 'version', 'heldNotes', 'getRules', 'status',
   'parentData', 'videoDetail', 'helperData', 'contextData', 'talk', 'apps', 'checks', 'checkResult', 'details']);
 // How long the asking page waits (core/lib/ask.js 8 s or its WAIT; the apps header 15 s). An answer later than that never arrives.
-const HEADER_TYPES = new Set(['header', 'inbox', 'openApp', 'connect', 'plainSite', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings', 'devMode']);
+const HEADER_TYPES = new Set(['header', 'inbox', 'runReport', 'openApp', 'connect', 'plainSite', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings', 'devMode']);
 const waitOf = (type) => WAIT[type] ?? (HEADER_TYPES.has(type) ? 15000 : 8000);
 // Answers the page shows as they are: { ok: false } must say why, or the parent sees "That didn't work".
 const SAYS_WHY = new Set(['inbox', 'openApp', 'connect', 'plainSite', 'plainYouTube', 'connectGitHub', 'exportSettings', 'importSettings', 'runHelper', 'updateApp', 'setMode', 'devMode']);
@@ -409,7 +409,7 @@ export function problemsOf(reports, fixes, installed, now = Date.now()) {
     const { first, ...rest } = g;
     // tries: each version it was reported on is one request to the AI (the same version again only counts up).
     return { ...rest, ...wordsOf(g), tries: Math.max(1, g.versions.length),
-      fix: fix && { state: fix.state, version: fix.version ?? null, message: fix.message ?? '', at: fix.at ?? null }, ...stateOf(g, fix, installed, now) };
+      fix: fix && { state: fix.state, version: fix.version ?? null, message: fix.message ?? '', at: fix.at ?? null, report: fix.report ?? null }, ...stateOf(g, fix, installed, now) };
   });
   const order = ['working', 'needs-you', 'reload', 'unsent', 'late', 'retry', 'gave-up', 'waiting', 'fixed', 'checked', 'old'];
   return out.sort((a, x) => (order.indexOf(a.state) - order.indexOf(x.state)) || x.lastAt.localeCompare(a.lastAt));
