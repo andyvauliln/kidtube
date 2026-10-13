@@ -2,6 +2,14 @@
 
 Newest first. Each version is built from `extension/` with `build/build-orion.mjs` (see [ORION.md](https://github.com/andyvauliln/kidtube/blob/main/docs/ORION.md)).
 
+## 0.12.4 (2026-10-13)
+
+- **One notifications list in the header (🔔).** Each row shows the type (Error, Validation, Data update, My note, App update, System), the status (Not sent, Sent, Handling, Done…), the message, its buttons and how many times it happened. The number on the bell shows what still waits; red means something needs you.
+- **Your notes in the list.** Each note not sent yet has Edit, Delete (tap twice) and Send (sends only that note).
+- **Clearer problem messages.** For example "Tapping “Instagram” in the header did nothing", with what was expected and what happened.
+- **Repeats count up.** The same problem again only raises its counter. After a new version, the same problem is sent to the AI once more (try 2).
+- **No notifications at the bottom.** The bottom bar of the parent screens has only ↻ Update, Parent | Kid and 🎤.
+
 ## 0.12.3 (2026-10-13)
 
 - **No false problem after App | YouTube.** When YouTube moves the tab to its other address by itself (m.youtube.com → www.youtube.com), the app no longer reports it as a problem.
