@@ -1,7 +1,8 @@
 // Pieces shared by the parent screens and the settings view: elements, buttons, the toast,
 // and the notes for the AI (one 🎤 button and one notes card).
 import { ask } from '../../../core/lib/ask.js';
-import { recordAnswer, transcribeAnswer, listenKeys, NOTE_LISTEN_MODELS } from '../lib/voice.js';
+import { recordAnswer, transcribeAnswer, listenKeys, NOTE_LISTEN_MODELS, VOICE_TEXT } from '../lib/voice.js';
+import { bytesToBase64 } from '../../../core/lib/github.js';
 
 // Set by the page: what to redraw after an undo, and after asking for a run (the header's run status).
 export const hooks = { afterUndo: async () => {}, afterRun: () => {} };
@@ -100,9 +101,10 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabH
 
   const label = (n) => n.videoId ? `Video · ${n.title || n.videoId}` : n.doc ? `Context · ${docNames[n.doc] ?? n.doc}`
     : n.type === 'prompt' ? 'Prompt' : TYPE_LABEL[n.list] ?? 'Message';
-  const save = async (text, at = where()) => {
+  // more: what else goes with the note (voice: a recording for the server to write down).
+  const save = async (text, at = where(), more = {}) => {
     // The screen where the note started (a recording took it then), and the app's state now.
-    const extra = { ...(attach.screen ? { screen: at.shot ?? snapshot(at) } : {}), ...(attach.app ? { withApp: true } : {}), ...(asking ? { ask: true } : {}) };
+    const extra = { ...(attach.screen ? { screen: at.shot ?? snapshot(at) } : {}), ...(attach.app ? { withApp: true } : {}), ...(asking ? { ask: true } : {}), ...more };
     const r = at.videoId ? await ask({ type: 'note', videoId: at.videoId, comment: text, ...extra })
       : at.doc ? await ask({ type: 'contextNote', doc: at.doc, text, ...extra })
       : at.prompt ? await ask({ type: 'promptNote', action: 'add', text, ...extra })
@@ -221,17 +223,18 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabH
     500: 'error', 503: 'busy', refused: 'did not hear it', timeout: 'too slow', network: 'no connection' };
   let retry = null;          // a recording that could not be written down: { audio, at }, kept for Try again
 
-  // The self-check of dictation (an outside service: a probe): every model failed → a report with each one's reason,
-  // the recording's size and where each key comes from (typed here or from the data repo; never the key itself).
-  async function voiceCheck(heard, fails, audio) {
+  // The self-check of dictation (an outside service: a probe): every model failed and the recording could not go to
+  // the server either → a report with each one's reason, the recording's size and where each key comes from (typed
+  // here or from the data repo; never the key itself). toServer: the server writes it down (background/voice.js).
+  async function voiceCheck(heard, fails, audio, toServer) {
     const { geminiKey = '', voiceKey = '', groqKey = '', repoKeys = {} } = await chrome.storage.local.get(['geminiKey', 'voiceKey', 'groqKey', 'repoKeys']).catch(() => ({}));
     const from = (typed, repo) => (typed.trim() ? 'typed in Settings' : repo ? 'data repo' : 'none');
     globalThis.KidTubeWatch?.check({ id: 'voice.writeDown', kind: 'probe', area: 'notes',
-      expect: 'A dictated note is written down by one of the speech models (Groq Whisper, then Gemini, then OpenRouter)',
+      expect: 'A dictated note is written down by one of the speech models (Groq Whisper, then Gemini, then OpenRouter), or by the server when none answers on the tablet',
       code: ['apps/kidtube/lib/voice.js transcribeAnswer', 'apps/kidtube/parent/kit.js writeDown'] }, (t) => {
       t.note('fails', fails).note('audio', { bytes: audio?.length ?? 0, ...(audio?.info ?? {}) }).note('online', navigator.onLine)
-        .note('keys', { groq: from(groqKey, repoKeys.groq), gemini: from(geminiKey, repoKeys.gemini), openrouter: from(voiceKey, repoKeys.openrouter) });
-      t.ok('a model wrote the recording down', heard != null, fails.join('; ') || 'no model to ask', 'one model answered');
+        .note('server', toServer).note('keys', { groq: from(groqKey, repoKeys.groq), gemini: from(geminiKey, repoKeys.gemini), openrouter: from(voiceKey, repoKeys.openrouter) });
+      t.ok('a model wrote the recording down, or it went to the server', heard != null || toServer, fails.join('; ') || 'no model to ask', 'one model answered, or the server has it');
     });
   }
 
@@ -246,13 +249,23 @@ export function notesDock({ card, where, docNames = {}, onSaved = () => {}, fabH
       instruction: 'A parent dictates a note about their child\'s videos and learning, or about the app. Use punctuation.',
       onFail: (r, why, detail) => { fails.push(`${r.model}: ${WHY[why] ?? why}`); details.push(`${r.via}:${r.model}: ${why} ${detail ?? ''}`.trim()); } });
     writing = false;
-    voiceCheck(heard, details, audio);
+    if (heard) voiceCheck(heard, details, audio, false);
     if (heard?.length) { await save(heard[0], at); return; }
     if (heard) {
       const i = audio.info;
       notice = `Heard nothing${i ? ` (${i.seconds} s recorded, loudest ${Math.round(i.peak * 100)}%${i.state !== 'running' && i.state !== 'closed' ? `, sound ${i.state}` : ''})` : ''}. Try again closer to the tablet.`;
     }
     else {
+      // No speech service answered here (Google and Groq refuse some countries): the server writes it down
+      // (background/voice.js). Only if that can't be saved, the recording stays here for Try again.
+      const seconds = Math.round(audio.info?.seconds ?? Math.max(0, (audio.length - 44) / 32000));
+      const toServer = await save(VOICE_TEXT, at, { voice: { id: crypto.randomUUID(), audio: bytesToBase64(audio), seconds } });
+      voiceCheck(heard, details, audio, toServer);
+      if (toServer) {
+        notice = '';
+        toast('No speech service answered on this tablet: the server writes the recording down. It shows in 🔔 within a few minutes.');
+        return;
+      }
       retry = { audio, at };
       notice = `The recording could not be written down (${fails.join('; ') || 'no key'}). It is kept: tap Try again in a minute.`;
     }

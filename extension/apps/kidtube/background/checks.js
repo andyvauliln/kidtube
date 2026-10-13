@@ -179,7 +179,8 @@ export const KIDTUBE_CHECKS = {
       snap: ['outbox', 'data'],
       check(t, { answer, after }) {
         if (!answer?.ok) return refused(t, answer);
-        t.eq('notes still waiting', 0, held(after.outbox).length);
+        // A recorded note the server still writes down waits on purpose (background/voice.js).
+        t.eq('notes still waiting', 0, held(after.outbox).filter((e) => !e.voice).length);
         t.has('data.runRequest.id', after.data?.runRequest?.id);
       },
     },

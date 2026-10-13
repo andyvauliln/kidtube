@@ -582,7 +582,7 @@
         if (!o?.ok) say(o?.error ?? 'That didn’t work. Try again.', 'err');
         return;
       }
-      if (a.do === 'note.edit') { ui.edit = { id: r.note, text: r.title }; ui.sure = null; draw(); root.querySelector('textarea')?.focus(); return; }
+      if (a.do === 'note.edit') { ui.edit = { id: r.note, text: r.editText ?? r.title }; ui.sure = null; draw(); root.querySelector('textarea')?.focus(); return; }
       // Delete asks once more on the same button: a dictated note can be long.
       if (a.do === 'note.drop' && ui.sure !== r.id) { ui.sure = r.id; return draw(); }
       ui.sure = null;

@@ -278,6 +278,8 @@ The server uses a git clone (`~/.local/share/kidtube/kidtube-data`):
 | `posts.json`, `posts/<id>.json`, `notes/<id>.wav` (Instagram) | Tablet (the only writer) | Replaced: on a refused write the tablet reads the new `sha` once and writes again (`apps/instagram/background/sync.js putFile`) |
 | `problems/<day>.json` (top) | Tablet | One entry per `reportId`: the tablet replaces its own entry, keeps the others |
 | `queue.json`, `memory.json`, `helper.json`, `context/*.md` | Server (the helper) | A git rebase over the tablet's commits |
+| `voice/<id>.wav` (a recorded note no speech service answered on the tablet) | Tablet, once | Written once; the server deletes it after it writes it down |
+| `voice/<id>.json` (the server's words for that recording, or why not) | Server (`agent/notes.mjs voice`, from `poll.sh`) | A git rebase over the tablet's commits |
 | `run-status.json`, `notes-done.json`, `answers.json` | Server (`poll.sh`) | A git rebase over the tablet's commits |
 | `handled.json` (Instagram) | Server (the posts agent) | A git rebase |
 | `fixes.json` (top) | Server (`poll.sh`, from the fix agent's result) | A git rebase |

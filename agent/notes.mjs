@@ -8,11 +8,15 @@
 //   node agent/notes.mjs answers RESULT FILE [--data DIR]  → the agent's answers to the questions in FILE (RESULT's
 //                                                            "answers": [{ eventId, answer }]) into answers.json in the
 //                                                            data folder; the tablet shows each under its question
+//   node agent/notes.mjs voice [--data DIR]                → writes down the recorded notes the tablet could not
+//                                                            (voice/<id>.wav: no speech service answered there) with
+//                                                            Groq Whisper: voice/<id>.json { text } or { error }, and
+//                                                            deletes the .wav; the tablet gives the note those words
 // A note: a message or a note about a list / Settings (wish), a note about a video (parentNote with a comment),
 // a standing change to the helper's prompt (prompt add), a note on a context document (context). A note keeps the
 // context the parent attached on the tablet (context.screen, context.app). question: true when the parent asked
 // something (the ❓ switch, or a "?" in the words): the agent answers it.
-import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync } from 'node:fs';
+import { readFileSync, writeFileSync, readdirSync, existsSync, mkdirSync, rmSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
@@ -68,6 +72,30 @@ export function writeAnswers(dataDir, result, notes, now = new Date().toISOStrin
   return fresh.length;
 }
 
+// The recorded notes waiting in dataDir/voice: each .wav without its .json is written down (transcribe(file) →
+// { text }, agent/instagram.mjs transcribeFile), then the .wav is deleted. A failure is an answer too (error), so
+// the tablet stops waiting. Returns how many were done.
+export async function writeVoice(dataDir, transcribe, now = new Date().toISOString()) {
+  const dir = join(dataDir, 'voice');
+  if (!existsSync(dir)) return 0;
+  let n = 0;
+  for (const f of readdirSync(dir).filter((x) => /^[A-Za-z0-9-]{8,64}\.wav$/.test(x))) {
+    const id = f.slice(0, -4);
+    const out = join(dir, `${id}.json`);
+    if (!existsSync(out)) {
+      let r;
+      try {
+        const t = await transcribe(join(dir, f));
+        r = t?.text ? { text: t.text.slice(0, 4000), model: t.model ?? null } : { error: 'The server heard no words in it.' };
+      } catch (e) { r = { error: `The server could not write it down: ${String(e.message ?? e).slice(0, 300)}` }; }
+      writeFileSync(out, JSON.stringify({ schemaVersion: 1, id, at: now, ...r }, null, 2) + '\n');
+      n++;
+    }
+    rmSync(join(dir, f));
+  }
+  return n;
+}
+
 function save(handled) {
   mkdirSync(STATE, { recursive: true });
   writeFileSync(HANDLED, JSON.stringify(handled, null, 2) + '\n');
@@ -96,8 +124,12 @@ if (process.argv[1] === fileURLToPath(import.meta.url)) {
     console.log(`done ${done.length}`);
   } else if (cmd === 'answers' && file && positionals[2]) {
     console.log(`answers ${writeAnswers(DATA, readJson(file, {}), readJson(positionals[2], []))}`);
+  } else if (cmd === 'voice') {
+    const { transcribeFile, readEnv } = await import('./instagram.mjs');
+    const env = { ...readEnv(home(config.envFile ?? '~/.config/kidtube/agent.env')), ...process.env };
+    console.log(`voice ${await writeVoice(DATA, (file) => transcribeFile(file, { key: env.GROQ_API_KEY }))}`);
   } else {
-    console.error('usage: notes.mjs new | mark FILE | done FILE | answers RESULT FILE');
+    console.error('usage: notes.mjs new | mark FILE | done FILE | answers RESULT FILE | voice');
     process.exit(2);
   }
 }

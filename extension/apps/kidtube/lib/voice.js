@@ -227,6 +227,9 @@ export const GROQ_LISTEN_MODELS = ['whisper-large-v3', 'whisper-large-v3-turbo']
 // The parent's notes (parent/kit.js): Gemini's speech-to-text model first. Measured 2026-10-08: ~1.3 s for 50 s of
 // noisy speech, no errors, Russian and Russian with English words right. It takes no instructions (a prompt is
 // ignored, a system instruction refused) and the free tier allows only 3 a minute, so not for the quiz answers.
+// The words of a recorded note until the server has written it down (apps/kidtube/background/voice.js).
+export const VOICE_TEXT = '🎤 A recorded note: the server writes it down…';
+
 export const NOTE_LISTEN_MODELS = ['gemini-3.5-transcribe', ...FREE_LISTEN_MODELS];
 
 // Never the quiz question in the prompt: given it, the models write down the right answer instead of his.

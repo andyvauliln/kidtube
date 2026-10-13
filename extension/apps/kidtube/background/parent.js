@@ -26,6 +26,11 @@ function trackQuestion(s, ev) {
   s.notes.questions = qs.slice(-30);
 }
 
+// A recorded note no speech service on the tablet could write down (they refuse some countries): its recording goes
+// to the server, which writes it down (background/voice.js). Until then the note has a stand-in text and ev.voice
+// = { id, state: upload | server | failed, seconds, error }; it can't be sent or edited.
+const voiceOf = (msg) => (msg.voice?.id ? { voice: { id: msg.voice.id, state: 'upload', seconds: msg.voice.seconds ?? 0 } } : {});
+
 function addNote(list, ev) {
   list.push({ id: ev.eventId, at: ev.at, text: ev.comment ?? ev.text });
   list.splice(0, Math.max(0, list.length - 20));
@@ -50,7 +55,7 @@ export async function heldNotes(s) {
     id: e.eventId, at: e.at, type: e.type, text: e.comment ?? e.text,
     ...(e.list ? { list: e.list } : {}), ...(e.doc ? { doc: e.doc } : {}),
     ...(e.videoId ? { videoId: e.videoId, title: titleOf(e.videoId) } : {}),
-    ...(e.context ? { attached: Object.keys(e.context) } : {}), ...(e.ask ? { ask: true } : {}),
+    ...(e.context ? { attached: Object.keys(e.context) } : {}), ...(e.ask ? { ask: true } : {}), ...(e.voice ? { voice: e.voice } : {}),
   }));
   return { ok: true, notes };
 }
@@ -60,6 +65,15 @@ export function editHeld(s, id, text) {
   const words = String(text ?? '').trim().slice(0, 2000);
   const ev = s.outbox.find((e) => e.held && e.eventId === id && (e.comment || e.text));
   if (!ev || !words) return { ok: false, error: ev ? 'The note is empty: type something, or delete it.' : 'This note was sent already: it can’t be changed now.' };
+  if (ev.voice && ev.voice.state !== 'failed') return { ok: false, error: 'The server is still writing this recording down: wait for its words.' };
+  return setWords(s, ev, words);
+}
+
+// The note's words, everywhere it shows (the outbox, the tabs' lists, the questions). Also the server's words for a
+// recorded note (background/voice.js).
+export function setWords(s, ev, words) {
+  const id = ev.eventId;
+  delete ev.voice;
   if (ev.comment) ev.comment = words; else ev.text = words;
   const n = s.notes ?? {};
   for (const box of [n.lists, n.videos]) for (const list of Object.values(box ?? {})) for (const x of list) if (x.id === id) x.text = words;
@@ -142,7 +156,7 @@ async function appState(s) {
 // 👍 / 👎 / a note for the AI about one video. ctx: noteContext's answer.
 export function noteVideo(s, msg, ctx = null) {
   if (!isVideoId(msg.videoId)) return { ok: false };
-  const ev = newEvent('parentNote', { videoId: msg.videoId });
+  const ev = { ...newEvent('parentNote', { videoId: msg.videoId }), ...voiceOf(msg) };
   if (typeof msg.liked === 'boolean') ev.liked = msg.liked;
   if (msg.comment) ev.comment = String(msg.comment).trim().slice(0, 2000);
   if (ev.liked === undefined && !ev.comment) return { ok: false };
@@ -160,7 +174,7 @@ export function wish(s, msg, ctx = null) {
   const text = String(msg.text ?? '').trim().slice(0, 2000);
   if (!text) return { ok: false };
   const list = ['today', 'planned', 'history', 'settings'].includes(msg.list) ? msg.list : null;
-  const ev = { ...newEvent('wish', { text, ...(list ? { list } : {}), ...(ctx ? { context: ctx } : {}), ...(isQuestion(msg, text) ? { ask: true } : {}) }), held: true };
+  const ev = { ...newEvent('wish', { text, ...(list ? { list } : {}), ...(ctx ? { context: ctx } : {}), ...(isQuestion(msg, text) ? { ask: true } : {}) }), held: true, ...voiceOf(msg) };
   s.outbox.push(ev);
   trackQuestion(s, ev);
   if (list) addNote((((s.notes ??= {}).lists ??= {})[list] ??= []), ev);
@@ -172,7 +186,7 @@ export function contextNote(s, msg, docs, ctx = null) {
   if (!parentMode(s)) return { ok: false };
   const text = String(msg.text ?? '').trim().slice(0, 2000);
   if (!text || !docs.includes(msg.doc)) return { ok: false };
-  const ev = { ...newEvent('context', { doc: msg.doc, text, ...(ctx ? { context: ctx } : {}), ...(isQuestion(msg, text) ? { ask: true } : {}) }), held: true };
+  const ev = { ...newEvent('context', { doc: msg.doc, text, ...(ctx ? { context: ctx } : {}), ...(isQuestion(msg, text) ? { ask: true } : {}) }), held: true, ...voiceOf(msg) };
   s.outbox.push(ev);
   trackQuestion(s, ev);
   ((s.notes ??= {}).contextNotes ??= []).push(ev);
@@ -187,7 +201,7 @@ export function promptNote(s, msg, ctx = null) {
   if (msg.action === 'add' && !text) return { ok: false };
   if (msg.action === 'remove' && !/^[A-Za-z0-9-]{8,64}$/.test(msg.noteId ?? '')) return { ok: false };
   const ev = newEvent('prompt', { action: msg.action });
-  Object.assign(ev, msg.action === 'add' ? { noteId: ev.eventId, text, held: true, ...(ctx ? { context: ctx } : {}), ...(isQuestion(msg, text) ? { ask: true } : {}) } : { noteId: msg.noteId });
+  Object.assign(ev, msg.action === 'add' ? { noteId: ev.eventId, text, held: true, ...(ctx ? { context: ctx } : {}), ...(isQuestion(msg, text) ? { ask: true } : {}), ...voiceOf(msg) } : { noteId: msg.noteId });
   s.outbox.push(ev);
   trackQuestion(s, ev);
   ((s.notes ??= {}).promptOps ??= []).push(ev);

@@ -14,6 +14,7 @@ import { loadBundled, effective, contextDocsOf } from './config.js';
 import { dropDoneNotes, getMemory, runView } from './parent.js';
 import { uploadTranscripts } from './transcripts.js';
 import { syncAudio, loadCharacter, syncAvatar } from './media.js';
+import { syncVoice } from './voice.js';
 
 export const okConfig = (c) => c && c.schemaVersion === 1 && typeof c === 'object' && !Array.isArray(c);
 export const okQueue = (q) => q && q.schemaVersion === 1 && Array.isArray(q.videos) && q.videos.every((v) => isVideoId(v.videoId) && Number.isFinite(v.durationSeconds));
@@ -121,6 +122,7 @@ export async function syncKidTube({ loc, token, data, status, acct }) {
   try { await flushOutbox(loc, token); } catch (e) { if (token) report('Saving what he watched: ', String(e.message ?? e)); }
   if (token) {
     try { await pullPlan(loc, token, acct); } catch (e) { report('Changes from other devices: ', String(e.message ?? e)); }
+    try { await syncVoice(loc, token, acct); } catch (e) { report('Recorded notes: ', String(e.message ?? e)); }
     try { await uploadTranscripts(loc, token); } catch (e) { report('Transcripts: ', String(e.message ?? e)); }
     try { await loadCharacter(loc, token); } catch (e) { report('Talking friend picture: ', String(e.message ?? e)); }
     try { await syncAudio(loc, token); } catch (e) { report('Talking friend recordings: ', String(e.message ?? e)); }
@@ -171,7 +173,8 @@ async function pullPlan(loc, token, acct) {
 // Notes for the AI wait on the tablet (held) until the parent taps ↻ Update; then they all go together,
 // and the server's notes agent (agent/notes.sh) reads them within a minute. ids: only these notes (the header's Send).
 export async function releaseNotes(ids = null) {
-  await withState((s) => { for (const e of s.outbox) if (!ids || ids.includes(e.eventId)) delete e.held; });
+  // A recorded note the server is still writing down waits (background/voice.js).
+  await withState((s) => { for (const e of s.outbox) if ((!ids || ids.includes(e.eventId)) && !e.voice) delete e.held; });
 }
 
 // Parent mode → Update. Sends what is waiting (notes, what he watched), then writes requests/run.json;

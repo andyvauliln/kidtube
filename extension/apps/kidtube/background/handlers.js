@@ -13,6 +13,7 @@ import { todayPlayed, lockNow, videoInfo, fullLang, newEvent, sessionUnlocked, e
   isOpenable, pickQuiz, openTalk } from './rules.js';
 import { heldNotes, dropHeld, noteContext, noteVideo, wish, contextNote, promptNote, parentData, videoDetail, helperData, contextData, planChange, runView } from './parent.js';
 import { requestRun, saveRules } from './sync.js';
+import { keepRecording, dropRecording } from './voice.js';
 import { Expect } from '../../../core/checks/kit.js';
 import { probe } from '../../../core/checks/runner.js';
 
@@ -33,6 +34,20 @@ const DEFAULT_LINES = {
 };
 
 // ctx: { tabId, host, sender } of the message.
+// A note can come with a recording no speech service on the tablet could write down (msg.voice: { id, audio, seconds },
+// parent/kit.js): the recording is kept, the note waits with a stand-in text, and a sync sends the recording to the
+// server (background/voice.js).
+const VOICE_ID = /^[A-Za-z0-9-]{8,64}$/;
+const voiced = (handle) => async (msg, sender) => {
+  const v = msg.voice;
+  if (!v) return handle(msg, sender);
+  if (!VOICE_ID.test(v.id ?? '') || typeof v.audio !== 'string' || !v.audio) return { ok: false, error: 'The recording did not arrive.' };
+  await keepRecording(v.id, v.audio);
+  const r = await handle({ ...msg, voice: { id: v.id, seconds: Math.round(Number(v.seconds) || 0) } }, sender);
+  if (r?.ok) sync(); else await dropRecording(v.id);
+  return r;
+};
+
 export const HANDLERS = {
   // The home iframe loaded; the content script may not hear its postMessage (Orion).
   frameReady: (msg, { tabId }) => {
@@ -202,10 +217,10 @@ export const HANDLERS = {
 
   // 👍 / 👎 / a note for the AI about one video (the 👍 goes to GitHub now; a note waits for ↻ Update).
   // Every note can carry what the parent attached: screen (the page's snapshot) and withApp (noteContext).
-  note: (msg) => withState(async (s) => noteVideo(s, msg, await noteContext(s, msg))).then((r) => { if (r.ok) sync(); return r; }),
+  note: voiced((msg) => withState(async (s) => noteVideo(s, msg, await noteContext(s, msg))).then((r) => { if (r.ok) sync(); return r; })),
 
   // "message to the helper", or a note for the AI about a whole list.
-  wish: (msg) => withState(async (s) => wish(s, msg, await noteContext(s, msg))),
+  wish: voiced((msg) => withState(async (s) => wish(s, msg, await noteContext(s, msg)))),
 
   // Parent screens: open the video in this tab, no rules (parent mode).
   watchHere: (msg, { tabId }) => {
@@ -223,7 +238,7 @@ export const HANDLERS = {
   helperData: () => withState((s) => helperData(s)),
 
   // Add a standing instruction for the helper, or remove one (the Prompt tab).
-  promptNote: (msg) => withState(async (s) => promptNote(s, msg, await noteContext(s, msg))).then((r) => { if (r.ok) sync(); return r; }),
+  promptNote: voiced((msg) => withState(async (s) => promptNote(s, msg, await noteContext(s, msg))).then((r) => { if (r.ok) sync(); return r; })),
 
   // Parent mode → Update: send everything, then ask the server to run the helper now.
   runHelper: () => requestRun(),
@@ -231,10 +246,10 @@ export const HANDLERS = {
 
   // Parent mode → Context: the documents and your notes the helper hasn't read yet.
   contextData: () => withState((s) => contextData(s)),
-  contextNote: async (msg) => {
+  contextNote: voiced(async (msg) => {
     const docs = await contextDocsOf();
     return withState(async (s) => contextNote(s, msg, docs, await noteContext(s, msg))).then((r) => { if (r.ok) sync(); return r; });
-  },
+  }),
 
   // The notes card: every note for the AI still on this tablet (Apply notes sends them).
   heldNotes: () => withState((s) => heldNotes(s)),

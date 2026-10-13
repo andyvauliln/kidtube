@@ -6,6 +6,7 @@ import { HANDLERS, PAGE_ONLY } from './handlers.js';
 import { syncKidTube, releaseNotes, requestRun } from './sync.js';
 import { KIDTUBE_CHECKS } from './checks.js';
 import { runView, heldNotes, editHeld, dropHeld, questionsView, dismissQuestion } from './parent.js';
+import { voicePending, dropRecording } from './voice.js';
 
 // What a note is about, in the header's list (the parent screens' tabs and context documents).
 const LISTS = { today: 'the Today list', planned: 'the Planned list', history: 'the History list', settings: 'the settings' };
@@ -43,7 +44,11 @@ export default {
   notes: {
     list: async (s) => (await heldNotes(s)).notes.map((n) => ({ ...n, about: aboutOf(n) })),
     edit: (s, id, text) => editHeld(s, id, text),
-    drop: (s, id) => dropHeld(s, id),
+    drop: (s, id) => {
+      const v = s.outbox.find((e) => e.eventId === id)?.voice;
+      if (v) dropRecording(v.id);
+      return dropHeld(s, id);
+    },
     send: (ids) => requestRun({ ids }),
   },
   // The questions already sent: waiting, answered, or no answer (the header's Question rows).
@@ -51,8 +56,8 @@ export default {
     list: (s) => questionsView(s).map((q) => ({ ...q, about: aboutOf(q) })),
     dismiss: (s, id) => dismissQuestion(s, id),
   },
-  // Something waits for the server (a question, the run): the core syncs again in a minute, not in 15.
-  waiting: (s) => questionsView(s).some((q) => q.state === 'waiting') || ['queued', 'running'].includes(runView(s).state),
+  // Something waits for the server (a question, the run, a recorded note): the core syncs again in a minute, not in 15.
+  waiting: (s) => questionsView(s).some((q) => q.state === 'waiting') || ['queued', 'running'].includes(runView(s).state) || voicePending(s),
   sync: syncKidTube,
   beforeSync: (msg) => (msg.notes ? releaseNotes() : undefined),
   async siteRules(stored) {

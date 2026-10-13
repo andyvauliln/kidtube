@@ -26,7 +26,7 @@ const home = (p) => p.replace(/^~/, process.env.HOME);
 const IG = { perRun: 10, maxVideos: 5, maxVideoMB: 200, models: ['whisper-large-v3', 'whisper-large-v3-turbo'], ...(config.instagram ?? {}) };
 const GROQ = 'https://api.groq.com/openai/v1/audio/transcriptions';
 
-function readEnv(path) {
+export function readEnv(path) {
   if (!existsSync(path)) return {};
   return Object.fromEntries(readFileSync(path, 'utf8').split('\n')
     .map((l) => l.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/)).filter(Boolean).map((m) => [m[1], m[2].replace(/^["']|["']$/g, '')]));

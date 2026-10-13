@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import { execFileSync } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
 import { publicKeyDer } from '../../build/crx.mjs';
-import { noteOf, allNotes, writeAnswers } from '../../agent/notes.mjs';
+import { noteOf, allNotes, writeAnswers, writeVoice } from '../../agent/notes.mjs';
 
 const sh = (cmd, cwd) => execFileSync('bash', ['-c', cmd], { cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t' } });
 const ev = (id, at, type, extra) => ({ eventId: id, at, type, ...extra });
@@ -344,4 +344,42 @@ test('poll.sh: the server could not release it either → the parent reads that 
   w.poll();
   assert.equal(released(w).version, '0.1.0');
   assert.match(w.fixes()[0].message, /^Kid waits\. The new version could not be published yet/);
+});
+
+test('a recorded note the tablet could not write down: the server writes it down into voice/<id>.json, the .wav goes', async () => {
+  const dir = mkdtempSync(join(tmpdir(), 'kt-voice-'));
+  mkdirSync(join(dir, 'voice'));
+  writeFileSync(join(dir, 'voice', 'rec-0001-aaaa.wav'), 'RIFF');
+  writeFileSync(join(dir, 'voice', 'rec-0002-bbbb.wav'), 'RIFF');
+  writeFileSync(join(dir, 'voice', '..bad.wav'), 'RIFF');
+  const said = { 'rec-0001-aaaa': { text: 'Bigger buttons, please.', model: 'whisper-large-v3' }, 'rec-0002-bbbb': { text: '' } };
+  assert.equal(await writeVoice(dir, async (f) => said[f.split('/').pop().slice(0, -4)], '2026-10-13T12:00:00Z'), 2);
+  assert.deepEqual(JSON.parse(readFileSync(join(dir, 'voice', 'rec-0001-aaaa.json'), 'utf8')),
+    { schemaVersion: 1, id: 'rec-0001-aaaa', at: '2026-10-13T12:00:00Z', text: 'Bigger buttons, please.', model: 'whisper-large-v3' });
+  assert.match(JSON.parse(readFileSync(join(dir, 'voice', 'rec-0002-bbbb.json'), 'utf8')).error, /heard no words/);
+  assert.ok(!existsSync(join(dir, 'voice', 'rec-0001-aaaa.wav')), 'the recording is deleted');
+  assert.ok(existsSync(join(dir, 'voice', '..bad.wav')), 'a name that is not an id is left alone');
+  // Whisper failing is an answer too, so the tablet stops waiting.
+  writeFileSync(join(dir, 'voice', 'rec-0003-cccc.wav'), 'RIFF');
+  await writeVoice(dir, async () => { throw new Error('Whisper refused it (429).'); });
+  assert.match(JSON.parse(readFileSync(join(dir, 'voice', 'rec-0003-cccc.json'), 'utf8')).error, /could not write it down: Whisper refused it \(429\)/);
+});
+
+test('poll.sh: a recording the tablet pushed is answered in voice/<id>.json within the minute, with no AI', () => {
+  const w = world({ GROQ_API_KEY: '' });   // no key: the answer is the reason (the real key is never used in tests)
+  const root = w.p('root');
+  copyFileSync('agent/instagram.mjs', join(root, 'agent', 'instagram.mjs'));
+  mkdirSync(join(root, 'extension', 'apps', 'instagram', 'lib'), { recursive: true });
+  copyFileSync('extension/apps/instagram/lib/posts.js', join(root, 'extension', 'apps', 'instagram', 'lib', 'posts.js'));
+  w.poll();
+  const tablet = w.p('tablet');
+  sh('git pull -q --rebase origin main', tablet);
+  mkdirSync(join(tablet, 'voice'));
+  writeFileSync(join(tablet, 'voice', 'rec-0001-aaaa.wav'), 'RIFF');
+  sh('git add -A && git commit -qm "tablet: a recorded note" && git push -q origin HEAD:main', tablet);
+  w.poll();
+  sh('git pull -q --rebase origin main', tablet);
+  assert.ok(!existsSync(join(tablet, 'voice', 'rec-0001-aaaa.wav')));
+  assert.match(JSON.parse(readFileSync(join(tablet, 'voice', 'rec-0001-aaaa.json'), 'utf8')).error, /GROQ_API_KEY is missing/);
+  assert.equal(w.calls().length, 0, 'no AI');
 });

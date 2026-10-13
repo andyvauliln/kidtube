@@ -495,6 +495,65 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
   }
 });
 
+test('a recording no speech service on the tablet could write down: the server writes it down, then it is a note', async () => {
+  const files = {};
+  const realFetch = globalThis.fetch;
+  globalThis.fetch = async (url, init = {}) => {
+    const m = String(url).match(/api\.github\.com\/repos\/[^/]+\/[^/]+\/contents\/(.+)$/);
+    if (!m) return realFetch(url, init);
+    const path = decodeURIComponent(m[1]).slice(`${fake.store.account.app}/${fake.store.account.folder}/`.length);
+    if (init.method === 'PUT') {
+      const body = JSON.parse(init.body);
+      if (files[path] && !body.sha) return { ok: false, status: 422, json: async () => ({}) };
+      files[path] = path.endsWith('.wav') ? { raw: body.content } : { json: JSON.parse(Buffer.from(body.content, 'base64').toString('utf8')) };
+      return { ok: true, status: 200, json: async () => ({}) };
+    }
+    if (!files[path]) return { ok: false, status: 404, json: async () => ({}), headers: { get: () => null } };
+    if (init.method === 'HEAD') return { ok: true, status: 200 };
+    return { ok: true, status: 200, json: async () => ({ sha: 's', content: Buffer.from(JSON.stringify(files[path].json)).toString('base64') }), headers: { get: () => null } };
+  };
+  try {
+    fake.store.settings = { ...fake.store.settings, token: 'ghp_test', repo: 'me/kidtube-data' };
+    fake.store.outbox = [];
+    const voice = { id: 'rec-0001-aaaa', audio: Buffer.from('RIFF-fake-wav').toString('base64'), seconds: 8 };
+    assert.equal((await fromPage({ type: 'wish', list: 'settings', text: '🎤 A recorded note: the server writes it down…', voice })).ok, true);
+    await fromPage({ type: 'sync' });
+    assert.equal(files['voice/rec-0001-aaaa.wav']?.raw, voice.audio, 'the recording is in the profile’s folder');
+    assert.equal(fake.store['voice:rec-0001-aaaa'], undefined, 'and no longer kept on the tablet');
+    const row = async () => (await fromPage({ type: 'header' })).inbox.find((r) => r.type === 'note');
+    let r = await row();
+    assert.deepEqual([r.title, r.status.text, r.actions.map((a) => a.label).join()], ['🎤 A recorded note (8 s) about the settings', 'Writing down', 'Delete']);
+    assert.equal(fake.alarms.set.soon?.delayInMinutes, 1, 'waiting for the server: the next sync in a minute');
+    // Not sent and not changed until it has words.
+    assert.equal((await send({ type: 'inbox', do: 'note.edit', id: r.note, text: 'x' })).ok, false);
+    await fromPage({ type: 'runHelper' });
+    assert.ok(fake.store.outbox.some((e) => e.eventId === r.note && e.held), 'still waits on the tablet');
+    // The server's words (agent/notes.mjs voice): the note is a note like any other.
+    files['voice/rec-0001-aaaa.json'] = { json: { schemaVersion: 1, id: 'rec-0001-aaaa', text: 'Show bigger buttons on the Today tab.' } };
+    await fromPage({ type: 'sync' });
+    r = await row();
+    assert.deepEqual([r.title, r.status.text, r.actions.map((a) => a.label).join()], ['Show bigger buttons on the Today tab.', 'Not sent', 'Edit,Delete,Send']);
+    assert.equal(fake.store.notes.lists.settings.at(-1).text, 'Show bigger buttons on the Today tab.', 'the tab’s list too');
+    // The server could not: Failed, with its reason; Edit types the note instead.
+    await fromPage({ type: 'dropNote', all: true });
+    await fromPage({ type: 'wish', list: 'today', text: '🎤 …', voice: { ...voice, id: 'rec-0002-bbbb' } });
+    await fromPage({ type: 'sync' });
+    files['voice/rec-0002-bbbb.json'] = { json: { schemaVersion: 1, id: 'rec-0002-bbbb', error: 'The server heard no words in it.' } };
+    await fromPage({ type: 'sync' });
+    r = await row();
+    assert.deepEqual([r.status.text, r.actions.map((a) => a.label).join(), r.editText], ['Failed', 'Edit,Delete', '']);
+    assert.match(r.detail, /heard no words in it/);
+    assert.equal((await send({ type: 'inbox', do: 'note.edit', id: r.note, text: 'More trains' })).ok, true);
+    assert.equal((await row()).title, 'More trains');
+    await fromPage({ type: 'dropNote', all: true });
+    // A bad recording is refused, and nothing is kept.
+    assert.equal((await fromPage({ type: 'wish', text: 'x', voice: { id: '../x', audio: 'AA' } })).ok, false);
+  } finally {
+    globalThis.fetch = realFetch;
+    fake.store.settings = { ...fake.store.settings, token: '' };
+  }
+});
+
 test('profile folders: the email’s name part, given once; a clash adds the domain', () => {
   assert.equal(profileFolder({ email: 'JohnnyPitt.Ind@gmail.com' }), 'johnnypitt.ind');
   assert.equal(profileFolder({ email: 'kid@school.org' }, ['kid']), 'kid-school');

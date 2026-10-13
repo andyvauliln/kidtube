@@ -3,6 +3,7 @@
 //   error       the code broke (a script error, a dead button, no answer)     validation  a self-check failed
 //   data        the server's AI run on the notes, posts in an app's list        note        a note not sent yet
 //   question    a note that asks something: not sent yet (like a note), waiting for the AI, then its answer
+//   (a recorded note the server still writes down is a note row too: Uploading, Writing down, Failed)
 //   (the header adds its own: update, a newer version; system, what its last action said)
 // The same problem again is not a new row: its count goes up (core/checks/runner.js counts it and does not send it
 // again). A new version that still has it sends it once more: its try goes up (one try per version).
@@ -55,8 +56,25 @@ function runRow(a) {
 }
 
 // n.about: what the note is about, in the app's words (KidTube: a video, a list, a context document, the prompt).
+// A recorded note the tablet could not write down (the speech services refuse this country): the server writes it
+// down (apps/kidtube/background/voice.js); only Delete until it has words, then it is a note like any other.
+const VOICE = {
+  upload: [['Uploading', 'wait'], 'No speech service answered on this tablet, so the recording goes to the server. It uploads now.'],
+  server: [['Writing down', 'wait'], 'The server writes the recording down (usually within 2 minutes). This row changes by itself; then you can edit and send it.'],
+  failed: [['Failed', 'bad'], 'The server could not write it down either'],
+};
+function voiceRow(n, about) {
+  const [st, words] = VOICE[n.voice.state] ?? VOICE.server;
+  const failed = n.voice.state === 'failed';
+  return { id: `note:${n.id}`, note: n.id, type: n.ask ? 'question' : 'note', status: status(st), at: n.at, count: null,
+    editText: '', title: `🎤 A recorded ${n.ask ? 'question' : 'note'}${n.voice.seconds ? ` (${n.voice.seconds} s)` : ''} about ${about}`,
+    detail: failed ? `${words}: ${n.voice.error ?? 'no reason given'}. Type the note with Edit, or delete it.` : words,
+    actions: failed ? [{ do: 'note.edit', label: 'Edit' }, { do: 'note.drop', label: 'Delete' }] : [{ do: 'note.drop', label: 'Delete' }] };
+}
+
 function noteRow(n) {
   const about = n.about ?? 'the app';
+  if (n.voice) return voiceRow(n, about);
   const attached = (n.attached ?? []).map((a) => (a === 'screen' ? 'the screen' : a === 'app' ? 'the app data' : a));
   return { id: `note:${n.id}`, note: n.id, type: n.ask ? 'question' : 'note', status: status(['Not sent', 'wait']), title: n.text,
     detail: `Your ${n.ask ? 'question' : 'note'} about ${about}${attached.length ? `, with ${attached.join(' and ')}` : ''}. It waits on this tablet until you send it.${n.ask ? ' The AI answers it here.' : ''}`,

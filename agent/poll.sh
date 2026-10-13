@@ -7,6 +7,7 @@
 #   and can ask for a helper run.
 # - a run asked for from parent mode (requests/run.json, a new id) with no new notes → the helper (agent/daily.sh).
 # - Instagram posts waiting in the app's list → the posts agent (agent/instagram.mjs), no AI but Whisper.
+# - KidTube's recorded notes the tablet could not write down (voice/*.wav) → Whisper (agent/notes.mjs voice).
 # Each profile (config.json profiles: kidtube/<folder>, see agent/lib/profile.mjs) has its own requests, notes,
 # run-status.json and state folder; they are looked at one after another. No profiles: the old layout (repo root).
 # Progress goes to run-status.json, which parent mode shows. Cheap when idle: one `git ls-remote`, no pull,
@@ -142,6 +143,16 @@ mkdir -p "$STATE"
 if [ -n "$PROFILE" ] && [ -f "$DATA/profile.json" ] && [ ! -f "$DATA/queue.json" ]; then
   echo "=== $(date -u +%FT%TZ) new profile $PROFILE: starter files" >> "$SROOT/helper.log"
   KIDTUBE_PROFILE="$PROFILE" node agent/kt.mjs init-profile >> "$SROOT/helper.log" 2>&1
+fi
+# Recorded notes the tablet could not write down (voice/<id>.wav: no speech service answered there; Google and Groq
+# refuse some countries): Groq Whisper here, the words in voice/<id>.json, the .wav deleted. No AI; the tablet looks
+# every minute while one waits (apps/kidtube/background/voice.js).
+if ls "$DATA"/voice/*.wav >/dev/null 2>&1; then
+  node agent/notes.mjs voice --data "$DATA" --state "$STATE" >> "$SROOT/notes.log" 2>&1
+  git -C "$DATA" add -A voice
+  if git -C "$DATA" -c user.name="KidTube helper" commit --quiet -m "helper: recorded notes written down"; then
+    for i in 1 2 3; do git -C "$DATA" push --quiet origin HEAD && break; git -C "$DATA" pull --quiet --rebase origin HEAD; done
+  fi
 fi
 # What is there to do: a new run request, new notes, or both.
 id=""
