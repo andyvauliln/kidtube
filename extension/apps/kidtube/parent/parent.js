@@ -3,7 +3,7 @@
 import { ask } from '../../../core/lib/ask.js';
 import { APPS } from '../../registry.js';
 import { say, listen, recordedUrl } from '../lib/voice.js';
-import { el, btn, toast, runNow, notesDock, promptNotesBox, hooks } from './kit.js';
+import { el, btn, toast, runNow, notesDock, promptNotesBox, hooks, upDown, slideIn } from './kit.js';
 import { mountSettings, settingsBox } from './settings.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { renderMarkdown, promptSteps } from './markdown.js';
@@ -468,7 +468,7 @@ async function renderPrompt() {
 
 // --- Context: the documents the helper plans from (kidtube-data context/*.md) ---------------------------
 // The parent's note (2026-10-13): no "Your notes on this document" box (a chip still counts the notes waiting), and
-// 🔳 Full screen as in Settings: the document fills the screen, a swipe (or ‹ ›) goes to the next document.
+// 🔳 Full screen as in Settings: the document fills the screen, a swipe up (or ↓) goes to the next document.
 const CONTEXT = [['kid', 'About him'], ['strategy', 'Strategy'], ['math', 'Math'], ['letters', 'Letters'], ['world', 'World']];
 let contextDoc = 'kid';
 let contextFull = false;
@@ -479,7 +479,7 @@ async function renderContext() {
   const at = CONTEXT.findIndex(([id]) => id === contextDoc);
   const chips = el('div', 'chips noswipe');
   const full = btn(contextFull ? '✕ Exit full screen' : '🔳 Full screen', () => { contextFull = !contextFull; renderContext(); }, contextFull ? 'small slidebtn on' : 'small slidebtn');
-  full.title = 'The document on the whole screen: swipe to the next document';
+  full.title = 'The document on the whole screen: swipe up for the next document';
   chips.append(full);
   for (const [id, name] of CONTEXT) {
     const n = c.notes.filter((x) => x.doc === id).length;
@@ -492,14 +492,10 @@ async function renderContext() {
   view.classList.toggle('noswipe', contextFull);
   if (!contextFull) { view.replaceChildren(chips, body); return; }
   const pager = el('div', 'pager');
-  const prev = btn('‹', () => goContext(at - 1));
-  const next = btn('›', () => goContext(at + 1));
-  prev.setAttribute('aria-label', 'The document before');
-  next.setAttribute('aria-label', 'The next document');
-  prev.disabled = at === 0;
-  next.disabled = at === CONTEXT.length - 1;
-  pager.append(prev, el('span', '', `${at + 1} of ${CONTEXT.length} · ${CONTEXT[at][1]}`), next);
+  pager.append(el('span', '', `${at + 1} of ${CONTEXT.length} · ${CONTEXT[at][1]}${at < CONTEXT.length - 1 ? ' · swipe up for the next' : ''}`));
   view.replaceChildren(chips, pager, body);
+  if (contextStep) slideIn(body, contextStep);
+  contextStep = 0;
   globalThis.KidTubeWatch?.check({ id: 'parent.context.full', area: 'parent', expect: '🔳 Full screen shows the chosen document on the whole screen, its chip marked',
     code: ['apps/kidtube/parent/parent.js renderContext'] }, (t) => {
     if (route().tab !== 'context' || !contextFull) return t.skip('left the mode');
@@ -507,29 +503,19 @@ async function renderContext() {
     t.eq('the marked chip', CONTEXT.find(([id]) => id === contextDoc)[1], view.querySelector('.chips .primary')?.textContent.replace(/ · \d+$/, '') ?? null);
     t.ok('fills the screen', view.querySelector('.box.doc')?.getBoundingClientRect().height >= innerHeight * 0.5, 'small', 'at least half the screen');
     t.eq('no notes box', 0, [...view.querySelectorAll('h2')].filter((h) => /Your notes/.test(h.textContent)).length);
+    t.eq('no ‹ › buttons (a swipe up or down)', 0, view.querySelectorAll('.pager button').length);
   }, 1500);
 }
-function goContext(i) {
+let contextStep = 0;
+// A swipe up (or ↓): the next document; down (or ↑): the one before (only in 🔳 Full screen; the parent's note, 2026-10-13).
+upDown(view, { on: () => contextFull && route().tab === 'context' && !route().video, box: () => view.querySelector('.box.doc'), skip: '.chips', go: (step) => {
+  const i = CONTEXT.findIndex(([id]) => id === contextDoc) + step;
   if (i < 0 || i >= CONTEXT.length) return;
-  animate(i > CONTEXT.findIndex(([id]) => id === contextDoc) ? 1 : -1);
   contextDoc = CONTEXT[i][0];
+  contextStep = step;
   scrollTo(0, 0);
   renderContext();
-}
-// A swipe left: the next document; right: the one before (only in 🔳 Full screen).
-let docTouch = null;
-view.addEventListener('touchstart', (e) => {
-  const t = e.touches[0];
-  docTouch = contextFull && route().tab === 'context' && e.touches.length === 1 && !e.target.closest?.('textarea, input, select, pre, .chips') ? { x: t.clientX, y: t.clientY } : null;
-}, { passive: true });
-view.addEventListener('touchend', (e) => {
-  if (!docTouch) return;
-  const t = e.changedTouches[0];
-  const dx = t.clientX - docTouch.x, dy = t.clientY - docTouch.y;
-  docTouch = null;
-  if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
-  goContext(CONTEXT.findIndex(([id]) => id === contextDoc) + (dx < 0 ? 1 : -1));
-}, { passive: true });
+} });
 
 // --- Settings: its own view here (settings.js; no second PIN in parent mode) ---------------------
 

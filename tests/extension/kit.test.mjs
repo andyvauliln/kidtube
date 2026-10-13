@@ -376,3 +376,23 @@ test('the notifications: a note’s checkboxes (This screen, App data, Question)
   assert.ok(text(row('Remove update box')).includes('Removed it in 0.12.14.'));
   delete answers.header; delete answers.version; delete answers.inbox;
 });
+
+// The parent's note (2026-10-13): Settings' 🔳 One box (and Context's 🔳 Full screen) go up and down as in Reels, no ‹ ›.
+test('up and down through boxes: a swipe up or ↓ is the next box; a swipe only from the end of a long box', async () => {
+  const { swipeStep, keyStep } = await import('../../extension/apps/kidtube/parent/kit.js');
+  const ends = { top: true, bottom: true };
+  assert.equal(swipeStep(ends, 0, -120), 1, 'swipe up: the next box');
+  assert.equal(swipeStep(ends, 10, 120), -1, 'swipe down: the box before');
+  assert.equal(swipeStep(ends, -120, 0), 0, 'left: nothing');
+  assert.equal(swipeStep(ends, 120, 10), 0, 'right: nothing');
+  assert.equal(swipeStep(ends, 0, -40), 0, 'too short');
+  assert.equal(swipeStep({ top: true, bottom: false }, 0, -120), 0, 'a long box scrolls to its end first');
+  assert.equal(swipeStep({ top: false, bottom: true }, 0, 120), 0, 'and back to its top');
+  const key = (k, extra = {}) => ({ key: k, target: { closest: () => null }, ...extra });
+  assert.equal(keyStep(key('ArrowDown')), 1);
+  assert.equal(keyStep(key('PageDown')), 1);
+  assert.equal(keyStep(key('ArrowUp')), -1);
+  assert.equal(keyStep(key('ArrowLeft')), 0, 'no left / right');
+  assert.equal(keyStep(key('ArrowDown', { ctrlKey: true })), 0);
+  assert.equal(keyStep(key('ArrowDown', { target: { closest: () => ({}) } })), 0, 'not in a field');
+});

@@ -29,12 +29,11 @@
 .settings section.closed > :not(h2) { display: none !important; }
 .settings section > h2:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
 
-/* 🔳 One box: one box on the whole screen, a swipe or ‹ › goes to the next one */
+/* 🔳 One box: one box on the whole screen, a swipe up or ↓ goes to the next one (no buttons) */
 .settings .secnav .slidebtn { font-weight: 600; }
 .settings .pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 10px; }
 .settings .pager[hidden] { display: none; }
 .settings .pager span { flex: 1; text-align: center; color: var(--muted); font-size: 14px; }
-.settings .pager button { margin: 0; min-width: 48px; font-size: 20px; padding: 4px 12px; }
 .settings.slides { display: flex; flex-direction: column; }
 .settings.slides section { min-height: calc(100vh - 260px); margin-bottom: 12px; }
 .settings.slides section > h2 { cursor: default; }

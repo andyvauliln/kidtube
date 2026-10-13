@@ -148,6 +148,12 @@ details.step > summary::-webkit-details-marker { display: none; }
 @keyframes from-right { from { transform: translateX(36px); opacity: .3; } }
 @keyframes from-left { from { transform: translateX(-36px); opacity: .3; } }
 @media (prefers-reduced-motion: reduce) { #view.from-right, #view.from-left { animation: none; } }
+/* up and down through boxes (Settings' One box, Context's Full screen; kit.js upDown) */
+.from-below { animation: from-below .25s ease-out; }
+.from-above { animation: from-above .25s ease-out; }
+@keyframes from-below { from { transform: translateY(60px); opacity: .3; } }
+@keyframes from-above { from { transform: translateY(-60px); opacity: .3; } }
+@media (prefers-reduced-motion: reduce) { .from-below, .from-above { animation: none; } }
 
 /* --- notes for the AI: the 🎤 bottom right, and the card on top of every tab -------------------------------------- */
 .notefab { position: fixed; right: 20px; bottom: 20px; z-index: 9; width: 60px; height: 60px; padding: 0; border-radius: 50%;

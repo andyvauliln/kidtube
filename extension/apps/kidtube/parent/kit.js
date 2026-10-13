@@ -23,6 +23,56 @@ export function btn(text, onClick, cls = '') {
   return b;
 }
 
+// --- up and down through boxes, as in Reels (the parent's note, 2026-10-13) -------------------------------
+// Settings' 🔳 One box and Context's 🔳 Full screen: a swipe up goes to the next box, a swipe down to the one before,
+// ↓ ↑ (and Page Down / Page Up) on a keyboard always. A box longer than the screen scrolls first: only from its end does
+// the next swipe go on. A swipe left or right does nothing there.
+// The step for a swipe of dx, dy from a start that was (or not) at the box's top and its end: 1, -1 or 0.
+export function swipeStep(start, dx, dy) {
+  if (Math.abs(dy) < 70 || Math.abs(dx) > Math.abs(dy) * 0.6) return 0;
+  if (dy < 0) return start.bottom ? 1 : 0;
+  return start.top ? -1 : 0;
+}
+// The step for a key: 1, -1 or 0 (not in a field, and not with Ctrl, Alt or ⌘).
+export function keyStep(e) {
+  if (e.ctrlKey || e.altKey || e.metaKey || e.target?.closest?.('textarea, input, select, [contenteditable]')) return 0;
+  if (e.key === 'ArrowDown' || e.key === 'PageDown') return 1;
+  if (e.key === 'ArrowUp' || e.key === 'PageUp') return -1;
+  return 0;
+}
+// on(): the mode is on here; box(): the box on the screen; go(step): show the next (1) or the one before (-1).
+// The keys stop with the host's page.
+export function upDown(host, { on, box, go, skip = '' }) {
+  let start = null;
+  host.addEventListener('touchstart', (e) => {
+    const t = e.touches[0];
+    const r = box()?.getBoundingClientRect();
+    start = on() && r && e.touches.length === 1 && !e.target.closest?.(`textarea, input, select, pre${skip ? `, ${skip}` : ''}`)
+      ? { x: t.clientX, y: t.clientY, top: scrollY <= 2, bottom: r.bottom <= innerHeight + 2 } : null;
+  }, { passive: true });
+  host.addEventListener('touchend', (e) => {
+    if (!start) return;
+    const t = e.changedTouches[0];
+    const step = swipeStep(start, t.clientX - start.x, t.clientY - start.y);
+    start = null;
+    if (step) go(step);
+  }, { passive: true });
+  const key = (e) => {
+    if (!host.isConnected) return removeEventListener('keydown', key);
+    const step = on() ? keyStep(e) : 0;
+    if (!step) return;
+    e.preventDefault();
+    go(step);
+  };
+  addEventListener('keydown', key);
+}
+// The box comes in from below (step 1) or from above (-1).
+export function slideIn(node, step) {
+  node.classList.remove('from-below', 'from-above');
+  void node.offsetWidth;
+  node.classList.add(step > 0 ? 'from-below' : 'from-above');
+}
+
 // --- toast with undo (made on first use, so any page can show it) --------------------------------------
 let toastBox = null, toastText = null, toastUndo = null, toastTimer = null, undoFn = null;
 export function toast(text, undo) {

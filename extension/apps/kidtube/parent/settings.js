@@ -4,11 +4,11 @@
 import { hashPin } from '../../../core/lib/pin.js';
 import { say, listen, recordAnswer, transcribeAnswer, FREE_LISTEN_MODELS, PAID_LISTEN_MODELS } from '../lib/voice.js';
 import { ask as send } from '../../../core/lib/ask.js';
-import { el as make } from './kit.js';
+import { el as make, upDown, slideIn } from './kit.js';
 
 const MARKUP = `
   <nav class="secnav noswipe" aria-label="Settings sections">
-    <button type="button" id="slideMode" class="slidebtn" title="One box at a time, full screen: swipe to the next box">🔳 One box</button>
+    <button type="button" id="slideMode" class="slidebtn" title="One box at a time, full screen: swipe up for the next box">🔳 One box</button>
     <button type="button" data-sec="sec-status">Status</button>
     <button type="button" data-sec="sec-time">Time and list</button>
     <button type="button" data-sec="sec-sites">Websites</button>
@@ -16,11 +16,7 @@ const MARKUP = `
     <button type="button" data-sec="sec-hearing">Hearing</button>
     <button type="button" data-sec="sec-pin">PIN</button>
   </nav>
-  <div class="pager" id="pager" hidden>
-    <button type="button" id="prevBox" aria-label="The box before">‹</button>
-    <span id="boxOf"></span>
-    <button type="button" id="nextBox" aria-label="The next box">›</button>
-  </div>
+  <div class="pager" id="pager" hidden><span id="boxOf"></span></div>
 
   <section id="sec-status" data-bridge="no">
     <h2>Status</h2>
@@ -164,7 +160,8 @@ async function patchSettings(patch) {
 const el = (tag, text, cls) => make(tag, cls, text);
 
 // The boxes fold (2026-10-13, the parent's wish): only the first one (Status) is open at first. 🔳 One box shows one box
-// at a time on the whole screen; a swipe (or ‹ ›) goes to the next one, and a 🎤 note started there is about that box.
+// at a time on the whole screen; a swipe up (or ↓) goes to the next one, as in Reels (kit.js upDown), and a 🎤 note
+// started there is about that box.
 // Kept while the parent page is open, so coming back to the tab finds it as it was left.
 const shown = { open: new Set(['sec-status']), slides: false, at: 0, title: null };
 // The box a note is about: its title while 🔳 One box is on, else null (parent.js noteTarget).
@@ -273,9 +270,7 @@ export function mountSettings(root) {
       sec.querySelector('h2').setAttribute('aria-expanded', String(open));
     });
     if (shown.slides) {
-      $('boxOf').textContent = `${shown.at + 1} of ${secs.length} · ${shown.title}`;
-      $('prevBox').disabled = shown.at === 0;
-      $('nextBox').disabled = shown.at === secs.length - 1;
+      $('boxOf').textContent = `${shown.at + 1} of ${secs.length} · ${shown.title}${shown.at < secs.length - 1 ? ' · swipe up for the next' : ''}`;
       for (const c of chips) c.classList.toggle('on', c.dataset.sec === secs[shown.at].id);
     }
   }
@@ -304,23 +299,13 @@ export function mountSettings(root) {
     goBox(shown.at);
     if (!shown.slides) secs[shown.at].scrollIntoView({ block: 'start' });
   });
-  $('prevBox').addEventListener('click', () => goBox(shown.at - 1));
-  $('nextBox').addEventListener('click', () => goBox(shown.at + 1));
-  // A swipe left: the next box; right: the one before. Not on a field, so text can still be selected.
-  let touch = null;
-  root.addEventListener('touchstart', (e) => {
-    const t = e.touches[0];
-    touch = shown.slides && e.touches.length === 1 && !e.target.closest?.('textarea, input, select, .secnav') ? { x: t.clientX, y: t.clientY } : null;
-  }, { passive: true });
-  root.addEventListener('touchend', (e) => {
-    if (!touch) return;
-    const t = e.changedTouches[0];
-    const dx = t.clientX - touch.x, dy = t.clientY - touch.y;
-    touch = null;
-    if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
-    const i = shown.at + (dx < 0 ? 1 : -1);
-    if (i >= 0 && i < secs.length) goBox(i);
-  }, { passive: true });
+  // A swipe up (or ↓): the next box; down (or ↑): the one before (a long box scrolls to its end first). Not on a field, so text can still be selected.
+  upDown(root, { on: () => shown.slides, box: () => secs[shown.at], skip: '.secnav', go: (step) => {
+    const i = shown.at + step;
+    if (i < 0 || i >= secs.length) return;
+    goBox(i);
+    slideIn(secs[i], step);
+  } });
   // 🔳 One box: one box on the screen, the one its chip and the 🎤 note name.
   function checkSlides() {
     if (!shown.slides) return;
@@ -333,6 +318,7 @@ export function mountSettings(root) {
       t.ok('it is open', !seen[0]?.classList.contains('closed'), 'folded', 'open');
       t.eq('the marked chip', secs[shown.at].id, root.querySelector('.secnav button[data-sec].on')?.dataset.sec ?? null);
       t.eq('the box a note is about', titleOf(secs[shown.at]), settingsBox());
+      t.eq('no ‹ › buttons (a swipe up or down)', 0, root.querySelectorAll('.pager button').length);
     }, 1500);
   }
   // The chip tapped stays marked: a sign the tap worked even when the page is already at that section. Its box opens.

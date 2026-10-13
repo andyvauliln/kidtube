@@ -994,13 +994,18 @@ test('a note made in a Settings box names the box: in the event, the header’s 
 });
 
 // The parent's note (2026-10-13): Context has no "Your notes on this document" box, and 🔳 Full screen as in Settings.
-test('Context: no notes box, a 🔳 Full screen button with ‹ › and a swipe to the next document', async () => {
+// Then (the parent's note, 2026-10-13): up and down as in Reels, no ‹ › buttons, ↓ ↑ on a keyboard (kit.js upDown).
+test('Context: no notes box, a 🔳 Full screen button and a swipe up to the next document', async () => {
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../../extension/apps/kidtube/parent/parent.js', import.meta.url), 'utf8');
   const ctx = src.slice(src.indexOf('async function renderContext'), src.indexOf('// --- Settings: its own view here'));
   assert.doesNotMatch(ctx, /Your notes on this document/);
   assert.match(ctx, /🔳 Full screen/);
   assert.match(ctx, /id: 'parent\.context\.full'/, 'its check in the app');
-  assert.match(ctx, /view\.addEventListener\('touchend'/, 'the swipe goes to the next document');
+  assert.match(src, /upDown\(view, \{ on: \(\) => contextFull/, 'a swipe up or ↓ goes to the next document');
+  assert.doesNotMatch(ctx, /btn\('[‹›]'/, 'no ‹ › buttons');
+  const set = readFileSync(new URL('../../extension/apps/kidtube/parent/settings.js', import.meta.url), 'utf8');
+  assert.match(set, /upDown\(root, \{ on: \(\) => shown\.slides/, 'Settings: a swipe up or ↓ goes to the next box');
+  assert.doesNotMatch(set, /prevBox|nextBox|touchend/, 'Settings: no ‹ › and no swipe left / right');
   assert.match(src, /view\.classList\.remove\('noswipe'\)/, 'other tabs get their swipe back');
 });
