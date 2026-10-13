@@ -270,7 +270,10 @@ export function mountSettings(root) {
   for (const sec of root.querySelectorAll('section.rules')) {
     for (const t of ['input', 'change']) sec.addEventListener(t, () => { if (!drawing) sayRules('Unsaved changes'); });
   }
-  root.querySelectorAll('.secnav button').forEach((b) => b.addEventListener('click', () => {
+  // The chip tapped stays marked: a sign the tap worked even when the page is already at that section.
+  const chips = [...root.querySelectorAll('.secnav button')];
+  chips.forEach((b) => b.addEventListener('click', () => {
+    for (const c of chips) c.classList.toggle('on', c === b);
     $(b.dataset.sec).scrollIntoView({ behavior: 'smooth', block: 'start' });
   }));
 

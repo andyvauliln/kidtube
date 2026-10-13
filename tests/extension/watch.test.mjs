@@ -17,7 +17,7 @@ function load() {
     getAttribute(k) { return this.attrs[k] ?? null; }
     getClientRects() { return { length: this.rects }; }
   }
-  const listeners = {};
+  const listeners = {}, win = {};
   const ctx = {
     Element,
     location: { href: 'https://www.instagram.com/an_dreidel/saved/all-posts/', pathname: '/an_dreidel/saved/all-posts/', hash: '' },
@@ -25,7 +25,7 @@ function load() {
     innerWidth: 1788, innerHeight: 833,
     performance: { now: () => 0 },
     setTimeout: (fn) => { timers.push(fn); return timers.length; }, clearTimeout() {},
-    addEventListener() {}, removeEventListener() {},
+    addEventListener: (type, fn) => { (win[type] ??= new Set()).add(fn); }, removeEventListener: (type, fn) => { win[type]?.delete(fn); },
     MutationObserver: class { observe() {} disconnect() {} },   // nothing changes inside the header's own root
     chrome: { runtime: { getURL: (p) => BASE + p, sendMessage: (m, cb) => { sent.push(m); cb?.({ ok: true }); } }, storage: { onChanged: { addListener() {} } } },
   };
@@ -38,7 +38,8 @@ function load() {
   const tap = (b) => listeners.click({ composedPath: () => [b, root] });
   const later = () => { while (timers.length) timers.shift()(); };
   const dead = () => sent.filter((m) => m.result?.id?.startsWith('rule.deadButton.'));
-  return { ctx, tap, later, dead, button: (label) => Object.assign(new ctx.Element('button'), { textContent: label }) };
+  const fire = (type) => { for (const fn of win[type] ?? []) fn({ type }); };
+  return { ctx, tap, later, dead, fire, button: (label) => Object.assign(new ctx.Element('button'), { textContent: label }) };
 }
 
 // Report rule.deadButton.Instagram|quetta (0.12.0): in the Instagram app's view the header's App | Instagram
@@ -59,4 +60,14 @@ test('a tap after which nothing changes is still a dead button', () => {
   w.later();
   assert.equal(w.dead().length, 1);
   assert.equal(w.dead()[0].result.id, 'rule.deadButton.Instagram');
+});
+
+// Report rule.deadButton.Time-and-list|quetta (0.12.10): the Settings chips (Update, Status, Time and list…) only
+// scroll the page to their section (apps/kidtube/parent/settings.js): nothing in the page changes, but the screen does.
+test('a tap that scrolls the page is not a dead button', () => {
+  const w = load();
+  w.tap(w.button('Time and list'));
+  w.fire('scroll');
+  w.later();
+  assert.deepEqual(w.dead(), []);
 });

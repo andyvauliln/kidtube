@@ -3,7 +3,7 @@
 // It reports to the background (the 'checkResult' message, core/checks/runner.js), which keeps the results and
 // turns a failure into a report with the browser, the profile, the mode and the last steps:
 //   check(def, test, within)   a screen check: test(t) must pass now, or within `within` ms (asked again every 250 ms)
-//   watchTaps(root, where)     the rule "no dead buttons": after a tap, something on the page must change within 5 s
+//   watchTaps(root, where)     the rule "no dead buttons": after a tap, something on the page must change (or scroll) within 5 s
 //   noAnswer(msg, ms)          the rule "the background answers": an ask that got nothing back
 //   step(s)                    something the parent or he did (a tap, a page shown), sent with a failure
 //   banner(alert)              a new report, for 15 s (pulled from the background where the parent is, on a page
@@ -111,9 +111,12 @@
       obs.observe(root === document ? document.documentElement : root, OPTS);
       const href = location.href;
       addEventListener('beforeunload', mark, { once: true });
+      // A scroll is a change too: the page or a list moved (2026-10-13: Settings' “Time and list” scrolls to its section).
+      addEventListener('scroll', mark, { capture: true, passive: true });
       setTimeout(() => {
         obs.disconnect();
         removeEventListener('beforeunload', mark);
+        removeEventListener('scroll', mark, { capture: true });
         // The button gone from the screen is a change too: the tap hid the layer around the watched root (2026-10-12:
         // the Instagram app's App | Instagram hides the app's whole layer, the header in it unchanged).
         if (changed || gone || location.href !== href || !b.isConnected || !b.getClientRects().length) return;
