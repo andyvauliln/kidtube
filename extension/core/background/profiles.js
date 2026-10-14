@@ -163,12 +163,27 @@ export async function siteAccount(msg, host) {
 }
 
 // The profiles in the data repo: <app>/<folder>/profile.json says whose folder it is (email, or username).
-// Read again after 10 minutes.
-export async function repoProfiles(force = false) {
+// Read again after 10 minutes. soon: the header's pages wait 15 s, and on a bad network one GitHub request can hang
+// for 2 minutes (a tablet saw 133 s): after REPO_MS they get the last list with why, and the reading goes on into the cache.
+const REPO_MS = 6000;
+let reading = null;
+export async function repoProfiles(force = false, { soon = false } = {}) {
   const { settings = {}, repoProfiles: cached } = await chrome.storage.local.get(['settings', 'repoProfiles']);
   const repo = settings.repo || DEFAULT_REPO, token = settings.token || '';
   if (!token) return { list: [], error: null };
   if (!force && cached?.repo === repo && cached.at > Date.now() - 10 * 60000 && !cached.error) return cached;
+  const key = `${repo}|${token}`;
+  if (reading?.key !== key) {
+    const p = readRepoProfiles(repo, token).finally(() => { if (reading?.p === p) reading = null; });
+    reading = { key, p };
+  }
+  if (!soon) return reading.p;
+  let timer;
+  const late = new Promise((r) => { timer = setTimeout(() => r({ repo, at: cached?.at ?? 0, list: cached?.repo === repo ? cached.list ?? [] : [],
+    error: `GitHub did not answer in ${REPO_MS / 1000} s: the list of profiles is the last one this tablet read.` }), REPO_MS); });
+  return Promise.race([reading.p, late]).finally(() => clearTimeout(timer));
+}
+async function readRepoProfiles(repo, token) {
   const list = [];
   let error = null;
   try {
@@ -211,7 +226,7 @@ export async function headerView(force, host) {
     github, switch: switchOf(running, site), apps: [], error: null, inbox: null, dev: await devView() };
   if (out.open) out.inbox = await inboxOf(running ? cur : null);
   if (!github.connected) return out;
-  const remote = await repoProfiles(force);
+  const remote = await repoProfiles(force, { soon: true });
   out.error = remote.error;
   const accounts = g.accounts ?? {};
   out.apps = Object.values(APPS).map((a) => {

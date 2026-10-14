@@ -1180,3 +1180,31 @@ test('the version answer has what each newer release changed and what to test, a
   assert.match(hdr, /\.\.\.\(coming\.length \? changeSections\(coming\) : \[\]\)/, 'the update’s Details');
   assert.match(hdr, /else if \(ver\?\.changes\?\.here\) rows\.push\(installedRow\(ver\)\);/, 'after the update: the installed one');
 });
+
+// A report (rule.slowAnswer.header, 0.12.30): on a bad network GitHub's answer hung, and "header" answered after 133 s.
+test('the header answers in time when GitHub hangs: the last list of profiles, with why; the reading fills the cache later', async () => {
+  const realFetch = globalThis.fetch;
+  fake.store.settings = { ...fake.store.settings, repo: 'me/slow', token: 't-slow' };
+  fake.store.repoProfiles = { repo: 'me/slow', at: Date.now() - 60 * 60000, error: null, list: [{ app: 'kidtube', folder: 'old', email: 'x@example.com', username: null }] };
+  let calls = 0, answer;
+  const hung = new Promise((r) => { answer = r; });
+  globalThis.fetch = async (url, init) => {
+    if (!String(url).includes('api.github.com')) return realFetch(url, init);
+    if (/\/repos\/me\/slow\/contents\/kidtube$/.test(String(url))) calls++;
+    await hung;
+    return { ok: false, status: 404, json: async () => ({}), headers: { get: () => null } };
+  };
+  try {
+    const t0 = Date.now();
+    const [h, h2] = await Promise.all([send({ type: 'header' }), send({ type: 'header' })]);
+    assert.ok(Date.now() - t0 < 8000, `answered in ${Date.now() - t0} ms`);
+    assert.equal(h.ok, true);
+    assert.match(h.error, /GitHub did not answer/);
+    assert.equal(h2.ok, true);
+    assert.equal(calls, 1, 'one reading for both');
+    answer();
+    await new Promise((r) => setTimeout(r, 20));
+    assert.deepEqual(fake.store.repoProfiles.list, [], 'the reading ended: the cache has its answer');
+    assert.equal(fake.store.repoProfiles.error, null);
+  } finally { answer(); globalThis.fetch = realFetch; delete fake.store.repoProfiles; }
+});
