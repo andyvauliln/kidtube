@@ -1,10 +1,10 @@
 {
-  "version": "0.12.31",
+  "version": "0.12.32",
   "target": "quetta",
-  "sourceCommit": "54d3ea2c0879bf000faca0487c3d99b6fa67ebf0",
+  "sourceCommit": "ff64bf46c9cef5335a4bf441e231c62db6e0ea90",
   "id": "mpgpgldgfogdipaaaobleoppocmhlidp",
-  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.31.crx",
-  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.31.zip",
+  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.32.crx",
+  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.32.zip",
   "quizTypes": [
     "text",
     "choice",
@@ -12,6 +12,16 @@
     "voice"
   ],
   "changes": [
+    {
+      "version": "0.12.32",
+      "at": "2026-10-14",
+      "changed": [
+        "The apps header answers in time on a bad network: it waits for GitHub 6 s at most and shows the last list of profiles"
+      ],
+      "test": [
+        "Parent mode, Today: open the notifications (🔔) with a weak network: the header shows within a few seconds"
+      ]
+    },
     {
       "version": "0.12.31",
       "at": "2026-10-14",
