@@ -1,10 +1,10 @@
 {
-  "version": "0.12.34",
+  "version": "0.12.35",
   "target": "quetta",
-  "sourceCommit": "96bf43a3262caec3573c448e258672882ff3f45e",
+  "sourceCommit": "67219277383b2dc9611d6cacec30ab1e37fe7e58",
   "id": "mpgpgldgfogdipaaaobleoppocmhlidp",
-  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.34.crx",
-  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.34.zip",
+  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.35.crx",
+  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.35.zip",
   "quizTypes": [
     "text",
     "choice",
@@ -12,6 +12,16 @@
     "voice"
   ],
   "changes": [
+    {
+      "version": "0.12.35",
+      "at": "2026-10-14",
+      "changed": [
+        "The apps header shows even when the app restarts for an update just as a page opens"
+      ],
+      "test": [
+        "Parent mode: tap the new version next to the logo to install it, then open a parent page: the header shows with your profile, and no header.loads problem comes in the 🔔"
+      ]
+    },
     {
       "version": "0.12.34",
       "at": "2026-10-14",
