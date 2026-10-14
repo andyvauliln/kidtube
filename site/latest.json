@@ -1,14 +1,34 @@
 {
-  "version": "0.12.30",
+  "version": "0.12.31",
   "target": "quetta",
-  "sourceCommit": "832fa8fc373ce89a81bdbc64c110f535815fc433",
+  "sourceCommit": "54d3ea2c0879bf000faca0487c3d99b6fa67ebf0",
   "id": "mpgpgldgfogdipaaaobleoppocmhlidp",
-  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.30.crx",
-  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.30.zip",
+  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.31.crx",
+  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.31.zip",
   "quizTypes": [
     "text",
     "choice",
     "audio",
     "voice"
+  ],
+  "changes": [
+    {
+      "version": "0.12.31",
+      "at": "2026-10-14",
+      "changed": [
+        "A tap anywhere on a video's row opens its Details page",
+        "Full size on a video's Details page: at the end of the page swipe up for the next video of the list, at the top swipe down for the one before",
+        "▶ Play intro plays the clips where the video's picture is, inside the app; if YouTube refuses there, the picture comes back with the reason and ▶ Intro on YouTube",
+        "Your notes' Details (🔔) show where each note came from: the screen, the page, the part you pressed, and what was sent with it",
+        "Each new version says what changed and what to test: in the App update's Details, and after the update in an Installed row"
+      ],
+      "test": [
+        "Today: tap a video's title or its words: its Details page opens",
+        "Turn on Full size, open a video, scroll to the end, swipe up: the next video of Today opens; at the top swipe down: the one before",
+        "On a Today video's Details tap ▶ Play intro: 3 s clips play in place of the picture. If it says YouTube refuses, tap ▶ Intro on YouTube",
+        "Make a note with 🎤 or a long press, send it, open it in 🔔: About shows Made on, Page, Pressed and Sent with it",
+        "Open 🔔: the row Custom Apps <version> is installed lists these changes and these checks"
+      ]
+    }
   ]
 }
