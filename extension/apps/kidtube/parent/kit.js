@@ -153,13 +153,14 @@ const LONG_NOTE_MINUTES = 15;   // the browser's recognition
 const CLOUD_NOTE_MINUTES = 5;   // Gemini / OpenRouter: 5 min of 16 kHz WAV is ~13 MB sent, under Gemini's 20 MB
 const TYPE_LABEL = { today: 'Today', planned: 'Planned', history: 'History', settings: 'Settings' };
 
-// The screen as the parent sees it now, for a note's This screen. at: where() when the note started.
+// The screen as the parent sees it now, for a note's This screen. at: where() when the note started (with element: the
+// part a long press was on).
 function snapshot(at) {
   const view = document.getElementById('view') ?? document.querySelector('main') ?? document.body;
   const where = at.videoId ? `video ${at.videoId}` : at.doc ? `context document ${at.doc}` : at.prompt ? 'the Prompt tab'
     : `the ${TYPE_LABEL[at.list] ?? 'Settings'} tab${at.section ? `, box “${at.section}”` : ''}`;
   return {
-    where, title: document.title, path: `${location.pathname.replace(/^\/+/, '')}${location.hash}`,
+    where: at.element ? `${where}, ${at.element.label}` : where, ...(at.element ? { element: elementText({ ...at.element, path: `${where} › ${at.element.path}` }) } : {}), title: document.title, path: `${location.pathname.replace(/^\/+/, '')}${location.hash}`,
     text: (view.innerText ?? '').replace(/\n{3,}/g, '\n\n').trim().slice(0, 8000),
     viewport: `${innerWidth}×${innerHeight}`, userAgent: navigator.userAgent,
   };
@@ -186,13 +187,15 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
   const save = async (text, at = where(), more = {}) => {
     // The screen where the note started (a recording took it then) and the app's state now: kept with the note,
     // sent only when its row in 🔔 ticks them (offer).
-    const extra = { screen: at.shot ?? shot(at), withApp: true, offer: true, ...more };
+    // A long press: the part pressed goes with the note at once (pointed: 📄 This screen ticked).
+    const extra = { screen: at.shot ?? shot(at), withApp: true, offer: true, ...(at.element ? { pointed: true } : {}), ...more };
     const r = at.videoId ? await ask({ type: 'note', videoId: at.videoId, comment: text, ...extra })
       : at.doc ? await ask({ type: 'contextNote', doc: at.doc, text, ...extra })
       : at.prompt ? await ask({ type: 'promptNote', action: 'add', text, ...extra })
       : await ask({ type: 'wish', list: at.list ?? 'settings', ...(at.section ? { section: at.section } : {}), text, ...extra });
     if (!r?.ok) { toast('Could not save the note. Is parent mode still on?'); return false; }
     notice = '';
+    pointed = null;
     expanded = false;
     card.classList.remove('open');
     await draw();
@@ -213,13 +216,16 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
   typed.maxLength = 2000;
   typed.rows = 1;
   typed.placeholder = 'Or type a note…';
-  const addTyped = btn('Add', async () => { const t = typed.value.trim(); if (t && (await save(t))) typed.value = ''; }, 'small');
+  const here = () => ({ ...where(), ...(pointed ? { element: pointed.element } : {}) });
+  const addTyped = btn('Add', async () => { const t = typed.value.trim(); if (t && (await save(t, here()))) typed.value = ''; }, 'small');
 
   async function draw() {
     const busy = rec || writing;
     card.hidden = !busy && !retry && !notice && !expanded && !card.classList.contains('open');
     fab.textContent = rec ? '⏹' : writing ? '…' : '🎤';
     fab.classList.toggle('on', !!rec);
+    if (card.hidden && pointed) pointed = null;
+    if (!pointed) mark.hide();
     if (card.hidden) return;
     const head = el('div', 'nchead');
     head.append(el('h2', '', 'Note for the AI'));
@@ -228,6 +234,7 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
     close.addEventListener('click', () => { expanded = false; notice = ''; card.classList.remove('open'); if (!busy) card.hidden = true; else draw(); });
     if (!busy) head.append(close);
     const parts = [head];
+    if (pointed) parts.push(el('p', 'pointed', `About: ${pointed.element.path}`));
     if (rec) {
       const s = Math.round((Date.now() - started) / 1000);
       parts.push(el('p', 'recline', `● Recording ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} · pauses are fine · tap ⏹ to stop${cloud ? ` (it stops by itself at ${CLOUD_NOTE_MINUTES}:00)` : ''}`));
@@ -311,7 +318,7 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
 
   async function record() {
     const lang = navigator.language || 'en-US';
-    const at = where();      // the screen where the note started, even if you move on while it records
+    const at = here();       // the screen where the note started, even if you move on while it records
     at.shot = shot(at);
     const keys = await listenKeys();
     const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -387,8 +394,160 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
     if (writing) return;
     record();
   });
+  // A long press on any part of the page: a note about that part (pressToNote below).
+  if (document.addEventListener) {
+    pressToNote(document, {
+      can: () => !rec && !writing,
+      pick: (node) => {
+        pointed = { node, element: describeElement(node) };
+        mark.show(node);
+        navigator.vibrate?.(30);
+        record();
+        globalThis.KidTubeWatch?.check({ id: 'notes.longPress', area: 'notes', expect: 'A long press on a part of the page outlines it and starts a note about it',
+          code: ['apps/kidtube/parent/kit.js pressToNote', 'apps/kidtube/parent/kit.js notesDock'] }, (t) => {
+          t.ok('the part is outlined', !!document.querySelector('.pressmark:not([hidden])'), 'no outline', 'outlined');
+          t.ok('the note is open', !card.hidden, 'the notes card is closed', 'open');
+        }, 1500);
+      },
+    });
+  }
   draw();
   return { refresh: draw };
+}
+
+// --- a long press on anything: a note about that part (the parent's note, 2026-10-14) --------------------------------
+// Hold a finger (or the mouse) still on any part of a parent screen: a ring under the finger fills and the part under
+// it is outlined. When the ring is full (PRESS_MS), the tablet buzzes and the 🎤 records a note about that part. The
+// note keeps where it is (tab › box › the part), its words and its place, and goes with 📄 This screen ticked.
+// Moving the finger (a scroll, a swipe) or lifting it early cancels. Not on a field (a long press there selects text).
+export const PRESS_MS = 800;
+const PRESS_SHOW_MS = 200;   // a quick tap shows nothing
+const PRESS_MOVE = 12;       // px the finger may move
+// The part a press is about: the nearest thing with a name of its own.
+const PICKABLE = 'button, a, select, label, img, video, li, p, h1, h2, h3, h4, h5, h6, pre, .row, .stat, .chip, .box, section';
+const TYPING = 'textarea, input:not([type=checkbox]):not([type=radio]):not([type=range]), [contenteditable], .notefab, #notesCard';
+// The element under the finger, also inside the apps header (its shadow root).
+const under = (e) => e.composedPath?.()[0] ?? e.target;
+const up = (n) => n.parentElement ?? n.getRootNode?.()?.host ?? null;
+const words = (n, max = 60) => {
+  const t = (n.getAttribute?.('aria-label') || n.title || n.alt || n.innerText || n.textContent || n.value || n.placeholder || '').replace(/\s+/g, ' ').trim();
+  return t.length > max ? `${t.slice(0, max)}…` : t;
+};
+const KIND = { DT: 'label', TD: 'cell', BUTTON: 'button', A: 'link', SELECT: 'choice', LABEL: 'setting', IMG: 'picture', VIDEO: 'video player', LI: 'list item', P: 'paragraph', PRE: 'text', INPUT: 'field' };
+// One step of the path in plain words (null: a step with no name of its own).
+function stepOf(n) {
+  const cls = typeof n.className === 'string' ? n.className : '';
+  const head = () => n.querySelector?.(':scope > h2, :scope > h3, :scope > summary');
+  if (n.dataset?.source) return `text of ${n.dataset.source}`;
+  if (/\brow\b/.test(cls)) return `video “${words(n.querySelector?.('.title') ?? n)}”`;
+  if (/\b(box|card)\b/.test(cls) || n.tagName === 'SECTION' || n.tagName === 'DETAILS') return head() ? `box “${words(head())}”` : null;
+  if (n.id === 'notesCard') return 'the notes card';
+  if (n.tagName === 'HEADER' || n.tagName === 'NAV') return n.tagName === 'NAV' ? 'the tabs' : 'the top bar';
+  if (/^H[1-6]$/.test(n.tagName)) return `heading “${words(n)}”`;
+  // A value in a list of facts: with its label (Version: 0.12.27).
+  if (n.tagName === 'DD') return `value of “${words(n.previousElementSibling ?? n)}”: “${words(n)}”`;
+  if (KIND[n.tagName]) return `${KIND[n.tagName]} “${words(n)}”`;
+  return null;
+}
+// What a note says about the part: its path in plain words, a selector for the code, its words and its place.
+export function describeElement(node) {
+  const path = [], sel = [];
+  let inHeader = false;
+  for (let n = node, i = 0; n && n.tagName && n.tagName !== 'BODY' && n.tagName !== 'HTML' && i < 30; n = up(n), i++) {
+    const s = stepOf(n);
+    if (s && path[0] !== s) path.unshift(s);
+    if (sel.length < 6) sel.unshift(`${n.tagName.toLowerCase()}${n.id ? `#${n.id}` : ''}${typeof n.className === 'string' && n.className.trim() ? `.${n.className.trim().split(/\s+/).slice(0, 2).join('.')}` : ''}`);
+    if (!n.parentElement && n.getRootNode?.()?.host) inHeader = true;
+  }
+  if (inHeader) path.unshift('the apps header');
+  const label = stepOf(node) ?? `${node.tagName.toLowerCase()} “${words(node)}”`;
+  if (path.at(-1) !== label) path.push(label);
+  const r = node.getBoundingClientRect?.();
+  return {
+    label, path: path.join(' › '), selector: sel.join(' > '), text: words(node, 400),
+    place: r ? `${Math.round(r.left)},${Math.round(r.top)} ${Math.round(r.width)}×${Math.round(r.height)} px` : '',
+  };
+}
+// The element as one text for the note's screen (cut to 1500 in the background).
+export const elementText = (d) => [`Path: ${d.path}`, `Selector: ${d.selector}`, d.text && `Words: ${d.text}`, d.place && `Place: ${d.place}`].filter(Boolean).join('\n');
+
+// The outline around the pressed part and the ring under the finger: fixed boxes on top of the page (they reach into
+// the apps header too). The outline follows the part while the page scrolls.
+function pressMarks() {
+  let box = null, ring = null, node = null;
+  const make = () => {
+    if (box) return;
+    box = el('div', 'pressmark'); box.hidden = true;
+    ring = el('div', 'pressring'); ring.hidden = true;
+    document.body.append(box, ring);
+    document.addEventListener?.('scroll', () => { if (node) place(); }, true);
+  };
+  const place = () => {
+    const r = node?.getBoundingClientRect?.();
+    if (!r || !node.isConnected) return hide();
+    Object.assign(box.style, { left: `${r.left - 4}px`, top: `${r.top - 4}px`, width: `${r.width + 8}px`, height: `${r.height + 8}px` });
+  };
+  // The page moves without a scroll too (the notes card opens above): the outline follows.
+  let timer = null;
+  const hide = () => { node = null; clearInterval(timer); timer = null; if (box) box.hidden = true; if (ring) ring.hidden = true; };
+  return {
+    show(n) { make(); node = n; place(); box.hidden = false; timer ??= setInterval(() => { if (node) place(); }, 200); },
+    ring(x, y, p) {
+      make();
+      if (p == null) { ring.hidden = true; return; }
+      Object.assign(ring.style, { left: `${x - 28}px`, top: `${y - 28}px` });
+      ring.style.setProperty('--p', String(p));
+      ring.hidden = false;
+    },
+    hide,
+  };
+}
+const mark = pressMarks();
+let pointed = null;          // the part a long press is about: { node, element }, until its note is saved or closed
+
+// root: where to listen (the page); can(): a press may start a note now; pick(node): the press is full.
+export function pressToNote(root, { can, pick, ms = PRESS_MS }) {
+  let p = null;   // the press: { x, y, node, t0, timer, raf }
+  let fired = 0;
+  const stop = (keep) => {
+    if (!p) return;
+    clearTimeout(p.timer); cancelAnimationFrame?.(p.raf);
+    mark.ring(0, 0, null);
+    if (!keep && pointed?.node !== p.node) mark.hide();
+    p = null;
+  };
+  root.addEventListener('pointerdown', (e) => {
+    stop();
+    if (e.button > 0 || !e.isPrimary || !can()) return;
+    const t = under(e);
+    if (!t?.closest || t.closest(TYPING)) return;
+    // A short text of its own (a value, a word): itself; else the nearest part with a name.
+    const own = !t.children?.length && (t.textContent ?? '').trim() && (t.textContent ?? '').length < 200;
+    const node = (own && !t.closest('button, a, label') ? t : t.closest(PICKABLE)) ?? t;
+    p = { x: e.clientX, y: e.clientY, node, t0: performance.now(), pid: e.pointerId };
+    const frame = () => {
+      if (!p) return;
+      const k = (performance.now() - p.t0 - PRESS_SHOW_MS) / (ms - PRESS_SHOW_MS);
+      if (k >= 0) { if (k < 0.05) mark.show(node); mark.ring(p.x, p.y, Math.min(1, k)); }
+      p.raf = requestAnimationFrame(frame);
+    };
+    p.raf = requestAnimationFrame(frame);
+    p.timer = setTimeout(() => {
+      if (!p) return;
+      const n = p.node;
+      stop(true);
+      fired = Date.now();
+      pick(n);
+    }, ms);
+  }, true);
+  root.addEventListener('pointermove', (e) => {
+    if (p && e.pointerId === p.pid && Math.hypot(e.clientX - p.x, e.clientY - p.y) > PRESS_MOVE) stop();
+  }, true);
+  for (const type of ['pointerup', 'pointercancel', 'scroll']) root.addEventListener(type, () => stop(), true);
+  // The press's own tap and the browser's long-press menu do nothing.
+  const swallow = (e) => { if (p || Date.now() - fired < 800) { e.preventDefault(); e.stopPropagation(); } };
+  root.addEventListener('click', swallow, true);
+  root.addEventListener('contextmenu', swallow, true);
 }
 
 // --- a double tap on a text makes it editable (the parent's note, 2026-10-13) ----------------------------------

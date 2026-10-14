@@ -198,6 +198,14 @@ html.updown #appHeader { display: none; }
 .nchead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .nclose { padding: 4px 10px; }
 .recline { margin: 8px 0 0; color: #d93025; font-weight: 600; font-size: 14px; }
+/* A long press: the outline around the part pressed, the ring under the finger that fills, and the card's "About:". */
+.pressmark { position: fixed; z-index: 2147483646; pointer-events: none; border: 3px solid var(--accent); border-radius: 10px;
+  background: #ff7a3d1f; box-shadow: 0 0 0 4px #ff7a3d40; }
+.pressring { position: fixed; z-index: 2147483647; pointer-events: none; width: 56px; height: 56px; border-radius: 50%;
+  background: conic-gradient(var(--accent) calc(var(--p, 0) * 1turn), #0003 0);
+  -webkit-mask: radial-gradient(circle, transparent 19px, #000 20px); mask: radial-gradient(circle, transparent 19px, #000 20px); }
+.pressmark[hidden], .pressring[hidden] { display: none; }
+.pointed { margin: 8px 0 0; font-size: 13px; color: var(--muted); }
 .ncacts { display: flex; justify-content: flex-end; gap: 8px; margin-top: 10px; }
 .noterow { display: flex; gap: 6px; margin-top: 8px; align-items: flex-end; }
 .noterow textarea { min-height: 40px; flex: 1; }

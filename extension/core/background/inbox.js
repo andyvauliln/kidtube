@@ -127,7 +127,7 @@ function noteView(n, about, extra = []) {
   const goes = checksOf(n).filter((c) => c.on).map((c) => c.label.replace(/^\S+ /, ''));
   return { sections: [
     { title: n.ask ? 'Your question' : 'Your note', text: n.text || '(no words yet)' },
-    { title: 'About', rows: [['About', about], ['Made', n.at, 'time'], ['Sent with it', goes.join(', ') || 'only the words'], ...extra] },
+    { title: 'About', rows: [['About', about], ['Pressed', n.pressed ?? ''], ['Made', n.at, 'time'], ['Sent with it', goes.join(', ') || 'only the words'], ...extra] },
     { title: 'What happens', steps: [n.ask ? 'Tap Send: the AI answers here, under the question.' : 'Tap Send (or ↻ Update): the AI works on it in its next run.',
       'The row then says Waiting, and Done or Answered when the AI is ready. Tap it again to read what the AI did.'] },
   ] };

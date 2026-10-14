@@ -531,6 +531,11 @@
               "maxLength": 200,
               "description": "the screen: a tab, a video, a context document, the prompt"
             },
+            "element": {
+              "type": "string",
+              "maxLength": 1500,
+              "description": "a note made with a long press: the part pressed — its path in plain words (tab › box › part), a selector, its words and its place"
+            },
             "title": {
               "type": "string",
               "maxLength": 200

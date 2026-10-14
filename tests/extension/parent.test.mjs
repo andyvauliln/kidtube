@@ -495,6 +495,14 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
     assert.deepEqual([n.type, ...n.checks.map((c) => c.on)], ['question', true, false, true]);
     assert.equal((await send({ type: 'inbox', do: 'note.attach', id: n.note, what: 'ask', on: false })).ok, true);
     assert.equal((await send({ type: 'inbox', do: 'note.attach', id: 'gone', what: 'app', on: true })).ok, false);
+    // A long press on a part of the page (pointed): This screen is ticked at once, with the part pressed (2026-10-14).
+    await fromPage({ type: 'wish', list: 'settings', text: 'This one is too small', screen: { where: 'the Settings tab, button “Remove”',
+      element: 'Path: the Settings tab › box “Status” › button “Remove”', text: 'Status' }, withApp: true, offer: true, pointed: true });
+    const lp = (await noteRows()).find((x) => x.title === 'This one is too small');
+    assert.deepEqual(lp.checks.map((c) => [c.key, c.on]), [['screen', true], ['app', false], ['ask', false]]);
+    const lpEv = (await fromPage({ type: 'heldNotes' })).notes?.find((x) => x.id === lp.note);
+    assert.equal(lpEv?.pressed, 'the Settings tab › box “Status” › button “Remove”', 'its Details say which part was pressed');
+    await fromPage({ type: 'dropNote', id: lp.note });
     // Send all: every note that can go now.
     await fromPage({ type: 'wish', list: 'today', text: 'Second one' });
     assert.equal((await send({ type: 'inbox', do: 'run' })).ok, true);

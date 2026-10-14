@@ -61,7 +61,8 @@ export async function heldNotes(s) {
     ...(e.list ? { list: e.list } : {}), ...(e.section ? { section: e.section } : {}), ...(e.doc ? { doc: e.doc } : {}),
     ...(e.videoId ? { videoId: e.videoId, title: titleOf(e.videoId) } : {}),
     ...((e.context ?? e.offer)?.app?.version ? { version: (e.context ?? e.offer).app.version } : {}),
-    ...(e.context ? { attached: Object.keys(e.context) } : {}), ...(e.offer ? { offered: Object.keys(e.offer) } : {}), ...(e.ask ? { ask: true } : {}), ...(e.voice ? { voice: e.voice } : {}),
+    ...(e.context ? { attached: Object.keys(e.context) } : {}), ...(e.offer ? { offered: Object.keys(e.offer) } : {}),
+    ...((e.context ?? e.offer)?.screen?.element ? { pressed: (e.context ?? e.offer).screen.element.split('\n')[0].replace(/^Path: /, '') } : {}), ...(e.ask ? { ask: true } : {}), ...(e.voice ? { voice: e.voice } : {}),
   }));
   return { ok: true, notes };
 }
@@ -120,7 +121,11 @@ export async function madeWith(s, msg, make) {
   const n = s.outbox.length;
   const r = make(null);
   const ev = s.outbox[n];
-  if (r?.ok && ctx && ev?.held) ev.offer = ctx;
+  if (r?.ok && ctx && ev?.held) {
+    // A long press on a part of the page (msg.pointed): that part is what the note is about, so This screen is ticked.
+    const { screen, ...rest } = ctx;
+    if (msg.pointed && screen) { ev.context = { screen }; if (Object.keys(rest).length) ev.offer = rest; } else ev.offer = ctx;
+  }
   return r;
 }
 
@@ -185,7 +190,7 @@ export async function noteContext(s, msg) {
   const out = {};
   const sc = msg.screen && typeof msg.screen === 'object' ? msg.screen : null;
   if (sc) {
-    const cut = { where: 200, title: 200, path: 300, text: 8000, viewport: 40, userAgent: 400 };
+    const cut = { where: 200, element: 1500, title: 200, path: 300, text: 8000, viewport: 40, userAgent: 400 };
     out.screen = Object.fromEntries(Object.entries(cut).filter(([k]) => typeof sc[k] === 'string' && sc[k]).map(([k, n]) => [k, sc[k].slice(0, n)]));
   }
   if (msg.withApp) out.app = await appState(s);

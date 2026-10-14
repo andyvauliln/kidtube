@@ -309,6 +309,25 @@ test('the notifications: a row swiped away stays away until its status changes; 
   delete local.inboxHidden; delete answers.header; delete answers.version;
 });
 
+test('the notifications: Hide on the right of the footer hides them, like the bell (the parent’s note, 2026-10-14)', async () => {
+  const inbox = [{ id: 'problem:a', type: 'error', status: { text: 'AI did not reply', tone: 'bad' }, title: 'A problem', actions: [], count: 1, tries: 1 }];
+  answers.header = () => ({ ok: true, open: true, mode: 'parent', running: 'kidtube', site: null, here: null, connected: null, github: { connected: true }, apps: [], inbox });
+  answers.version = () => ({ ok: true, installed: '0.12.27', latest: '0.12.27', newer: false, kind: 'quetta' });
+  delete local.headerUi;
+  const h = new FakeEl('div');
+  globalThis.KidTubeHeader.mount(h, { dark: false });
+  await tick(); await tick();
+  const foot = find(h.shadowRoot, (n) => n.className === 'nfoot');
+  assert.ok(foot, 'the footer shows');
+  const last = foot.children.at(-1);
+  assert.equal(text(last).trim(), 'Hide', 'Hide is the footer’s last item: on the right');
+  last.click();
+  await tick();
+  assert.ok(!find(h.shadowRoot, (n) => n.className === 'inbox'), 'the notifications are hidden');
+  assert.deepEqual(local.headerUi, { inboxClosed: true }, 'remembered, like the bell');
+  delete local.headerUi; delete answers.header; delete answers.version;
+});
+
 test('the notifications: rows swiped one after another all stay away (2026-10-13: the first came back when the second went)', async () => {
   const row = (id, title) => ({ id, type: 'error', status: { text: 'AI did not reply', tone: 'bad' }, title, actions: [], count: 1, tries: 1 });
   const inbox = [row('problem:a', 'First problem'), row('problem:b', 'Second problem'), row('problem:c', 'Third problem')];
@@ -578,4 +597,65 @@ test('a double tap on a text: a note with the file, the old words and the new; o
   const free = { closest: (sel) => (sel === '[data-source]' ? null : undefined), classList: { contains: () => { opened.push('free'); return true; } } };
   tap(free, 5000); tap(free, 5100);
   assert.deepEqual(opened, ['b']);
+});
+
+// A long press on any part of a parent screen: a note about that part (the parent's note, 2026-10-14).
+// A tiny tree: the Settings tab's box “Status” with a button “Remove”, and a field.
+function node(tag, { cls = '', id = '', text = '', kids = [], data = {} } = {}) {
+  const n = { tagName: tag, className: cls, id, textContent: text, innerText: text, dataset: data, children: kids, parentElement: null,
+    getAttribute: () => null, getBoundingClientRect: () => ({ left: 10, top: 20, width: 80, height: 30 }) };
+  for (const k of kids) k.parentElement = n;
+  const is = (m, sel) => sel.split(',').map((x) => x.trim()).some((x) => x === m.tagName.toLowerCase() || (x.startsWith('.') && m.className.split(' ').includes(x.slice(1)))
+    || (x.startsWith('#') && m.id === x.slice(1)) || (x.startsWith('input:') && m.tagName === 'INPUT'));
+  n.closest = (sel) => { for (let m = n; m; m = m.parentElement) if (is(m, sel)) return m; return null; };
+  n.querySelector = (sel) => (sel.includes('h2') ? kids.find((k) => k.tagName === 'H2') ?? null : sel === '.title' ? kids.find((k) => k.className === 'title') ?? null : null);
+  return n;
+}
+const removeBtn = node('BUTTON', { cls: 'small', text: 'Remove' });
+const field = node('INPUT', { text: '' });
+const statusBox = node('DIV', { cls: 'box', id: 'status', kids: [node('H2', { text: 'Status' }), removeBtn, field] });
+node('DIV', { id: 'view', kids: [statusBox] });
+
+test('a long press: the part pressed in plain words (tab › box › part), a selector, its words and its place', async () => {
+  const { describeElement, elementText } = await import('../../extension/apps/kidtube/parent/kit.js');
+  const d = describeElement(removeBtn);
+  assert.equal(d.path, 'box “Status” › button “Remove”');
+  assert.equal(d.label, 'button “Remove”');
+  assert.equal(d.selector, 'div#view > div#status.box > button.small');
+  assert.equal(d.place, '10,20 80×30 px');
+  assert.match(elementText(d), /^Path: box “Status” › button “Remove”\nSelector: .*\nWords: Remove\nPlace: /);
+});
+
+test('a long press: the ring fills while the finger stays; a full press picks the part, an early lift or a move does nothing; fields are left alone', async (t) => {
+  const { pressToNote } = await import('../../extension/apps/kidtube/parent/kit.js');
+  t.mock.timers.enable({ apis: ['setTimeout'] });
+  globalThis.requestAnimationFrame = () => 0; globalThis.cancelAnimationFrame = () => {};
+  const page = new FakeEl('document');
+  const picked = [];
+  let free = true;
+  pressToNote(page, { can: () => free, pick: (n) => picked.push(n), ms: 800 });
+  const ev = (type, target, x = 50, y = 50) => {
+    const e = { type, target, clientX: x, clientY: y, pointerId: 1, isPrimary: true, button: 0, prevented: false, preventDefault() { this.prevented = true; }, stopPropagation() {} };
+    page.dispatchEvent(e);
+    return e;
+  };
+  try {
+    ev('pointerdown', removeBtn); t.mock.timers.tick(799);
+    assert.equal(picked.length, 0, 'not yet');
+    t.mock.timers.tick(1);
+    assert.deepEqual(picked, [removeBtn], 'held still: the button is picked');
+    assert.equal(ev('click', removeBtn).prevented, true, 'the press’s own tap does not press the button');
+    ev('pointerup', removeBtn);
+    ev('pointerdown', removeBtn); t.mock.timers.tick(400); ev('pointerup', removeBtn); t.mock.timers.tick(1000);
+    ev('pointerdown', removeBtn); t.mock.timers.tick(400); ev('pointermove', removeBtn, 50, 90); t.mock.timers.tick(1000);
+    assert.equal(picked.length, 1, 'lifted early or moved (a scroll): nothing');
+    ev('pointerdown', field); t.mock.timers.tick(1000);
+    assert.equal(picked.length, 1, 'a field: its own long press (select text)');
+    free = false;
+    ev('pointerdown', statusBox); t.mock.timers.tick(1000);
+    assert.equal(picked.length, 1, 'while a note records: nothing');
+    free = true;
+    ev('pointerdown', statusBox.children[0]); t.mock.timers.tick(1000);
+    assert.equal(picked[1].tagName, 'H2', 'the nearest part with a name of its own');
+  } finally { t.mock.timers.reset(); delete globalThis.requestAnimationFrame; delete globalThis.cancelAnimationFrame; }
 });

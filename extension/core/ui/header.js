@@ -187,6 +187,7 @@
     .msg .ndet span.k { color: var(--muted); font-size: 12px; font-weight: 600; }
     .nfoot { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-top: 1px solid var(--line); }
     .nfoot .nhint { flex: 1; padding: 0; border: 0; }
+    .nfoot button.nhide { background: transparent; color: var(--ink); border: 1px solid var(--line); }
     .nfoot button { height: 28px; padding: 0 12px; border-radius: 14px; background: var(--ink); color: var(--bg); font-size: 13px; font-weight: 500; white-space: nowrap; }
     @media (max-width: 600px) {
       .who .email, .brand .name, .who > svg, .bar > .btn.primary span { display: none; }
@@ -984,6 +985,12 @@
       }
       return v;
     }
+    // The bell and the footer's Hide: show or hide the notifications (remembered on this tablet).
+    function showInbox(on) {
+      ui.inbox = on;
+      chrome.storage.local.set({ headerUi: { inboxClosed: !on } }).catch(() => {});
+      draw();
+    }
     function inboxList(rows) {
       const box = el('div', 'inbox');
       box.setAttribute('role', 'list');
@@ -1002,6 +1009,16 @@
         all.disabled = !!busy;
         foot.append(all);
       }
+      // Hide, on the right: the same as the bell (the parent's note, 2026-10-14).
+      const hideAll = button('nhide', 'Hide', () => {
+        showInbox(false);
+        W?.check({ id: 'header.inboxHide', area: 'header', expect: 'Hide in the notifications’ footer hides the notifications',
+          code: ['core/ui/header.js inboxList (Hide)', 'core/ui/header.js showInbox'] }, (t) => {
+          t.eq('the notifications on the screen', 0, root.querySelectorAll('.inbox').length);
+        }, 1000);
+      });
+      hideAll.title = 'Hide the notifications (the bell shows them again)';
+      foot.append(hideAll);
       box.append(foot);
       return box;
     }
@@ -1043,11 +1060,7 @@
         const shownInbox = h.inbox != null || rows.length > 0;
         if (shownInbox) {
           const n = waiting(rows);
-          const bell = button('round bell', '', () => {
-            ui.inbox = !ui.inbox;
-            chrome.storage.local.set({ headerUi: { inboxClosed: !ui.inbox } }).catch(() => {});
-            draw();
-          }, PATH.bell);
+          const bell = button('round bell', '', () => showInbox(!ui.inbox), PATH.bell);
           bell.title = `${ui.inbox ? 'Hide' : 'Show'} the notifications${n ? ` (${n} waiting)` : ''}`;
           bell.setAttribute('aria-label', bell.title);
           bell.setAttribute('aria-pressed', String(ui.inbox));
