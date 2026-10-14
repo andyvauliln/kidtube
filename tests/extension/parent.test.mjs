@@ -1072,3 +1072,45 @@ test('➤ Stop and send: the saved note has its id, and only that note is sent',
   assert.equal(q.id, r.eventId);
   assert.equal(typeof q.version, 'string', 'the version it was made in');
 });
+
+// The parent's notes (2026-10-14): "remove any other blocks from the video list (the statistics, What he sees today)…
+// and from the other video tabs the same; in full mode this view should be the same as on Details"; and a recording
+// started off the screen (the card was at the top of a long page), so ✕ Cancel and ➤ Stop and send were not seen.
+test('video tabs: only the videos; Full size shows one video as its Details page; the note card floats above the bottom bar', async () => {
+  const { readFileSync } = await import('node:fs');
+  const read = (f) => readFileSync(new URL(`../../extension/apps/kidtube/parent/${f}`, import.meta.url), 'utf8');
+  const src = read('parent.js'), css = read('parent.css'), kit = read('kit.js');
+  const lists = src.slice(src.indexOf('// --- the three lists'), src.indexOf('// --- Prompt: how the helper works'));
+  assert.doesNotMatch(lists, /statsRow|What he sees today|Planned and ideas|What he watched|el\('div', 'box'\)/, 'no stats and no explanation boxes');
+  assert.doesNotMatch(css, /\.stats \{|\.stat \{/, 'their styles went too');
+  assert.match(lists, /const parts = await detailParts\(v\.videoId\);/, 'Full size: the video’s Details page');
+  assert.match(src, /async function detailParts\(videoId\)/);
+  assert.match(src, /view\.replaceChildren\(btn\('‹ Back'[^\n]*\.\.\.parts\)/, 'the Details page is the same parts with ‹ Back');
+  assert.match(src, /'\.one \.hero'/, 'the Full size check looks for the Details view');
+  assert.match(css, /\.notecard \{ position: fixed;[^}]*bottom: calc\(76px/, 'the card floats above the bottom bar');
+  assert.match(kit, /id: 'notes\.inSight'/, 'its check in the app');
+  assert.match(kit, /clock = setInterval\(draw, 1000\);\n    checkInSight\(\);/, 'checked when a recording starts');
+});
+
+// The parent's note (2026-10-14): "on a video's page I want a button Play intro: it plays clips of 3 seconds of the
+// video… only for today's list for now".
+test('▶ Play intro: on a video of today’s list, YouTube plays 3 s clips of it one after another (parent mode only)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../../extension/apps/kidtube/parent/parent.js', import.meta.url), 'utf8');
+  const yt = readFileSync(new URL('../../extension/apps/kidtube/content/youtube.js', import.meta.url), 'utf8');
+  assert.match(src, /if \(d\.where === 'today'\) more\.append\(btn\('▶ Play intro', \(\) => playIntro\(videoId\)\)\);/, 'only on today’s list');
+  assert.match(src, /id: 'parent\.playIntro'/, 'its check in the app');
+  assert.match(yt, /if \(parentOn\) \{ showParentView\(\); if \(vid === introFor\) playIntro\(vid\); return; \}/, 'parent mode only');
+  assert.match(yt, /const INTRO_CLIPS = 8, INTRO_SECONDS = 3;/);
+  assert.match(yt, /id: 'yt\.intro'/, 'its check in the app');
+  // The clips' starts: the middle of each part of the video, fewer for a short one.
+  const points = new Function(`const INTRO_CLIPS = 8, INTRO_SECONDS = 3; ${yt.match(/function introPoints\(duration\) \{[\s\S]*?\n  \}/)[0]}; return introPoints;`)();
+  assert.deepEqual(points(160), [9, 29, 49, 69, 89, 109, 129, 149]);
+  assert.deepEqual(points(20), [2, 9, 15]);
+  assert.deepEqual(points(4), [1]);
+  fake.store.settings.mode = 'parent';
+  assert.equal((await fromPage({ type: 'watchHere', videoId: ids[0], intro: true })).ok, true);
+  assert.equal(fake.nav.updates.at(-1), `https://m.youtube.com/watch?v=${ids[0]}&kidtube=intro`);
+  assert.equal((await fromPage({ type: 'watchHere', videoId: ids[0] })).ok, true);
+  assert.equal(fake.nav.updates.at(-1), `https://m.youtube.com/watch?v=${ids[0]}`, 'Watch it yourself as before');
+});

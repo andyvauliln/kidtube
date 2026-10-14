@@ -124,7 +124,8 @@
     .offer { display: flex; flex-direction: column; gap: 8px; }
     .offer[hidden] { display: none; }
     .offer .row button { height: 32px; padding: 0 14px; border-radius: 16px; border: 0; font: inherit; cursor: pointer; background: #efefef; color: #262626; }
-    .offer .row .yes { background: #0095f6; color: #fff; }`;
+    .offer .row .yes { background: #0095f6; color: #fff; }
+    .row[hidden] { display: none; }`;
   function connectBar() {
     const host = h('span');
     host.style.cssText = 'position:fixed;left:12px;bottom:72px;z-index:2147483647';
@@ -168,11 +169,13 @@
         if (me.username) t.ok('it has Switch to the app', !!offerBox.querySelector('.yes'), 'no button', 'Switch to the app');
       });
     };
-    root.append(h('style', { text: SWITCH_CSS + BAR_CSS }), h('div', { class: 'bar' }, msg, offerBox, h('div', { class: 'row' },
+    // The App | Instagram and Connect row: hidden while the apps header is on top (it has both; siteHeader).
+    host.row = h('div', { class: 'row' },
       h('span', { class: 'seg', role: 'group', 'aria-label': 'App or Instagram' },
         h('button', { type: 'button', title: 'Your saved posts, notes and the list', onclick: openIt }, 'App'),
         h('a', { class: 'on', 'aria-current': 'page' }, 'Instagram')),
-      go)));
+      go);
+    root.append(h('style', { text: SWITCH_CSS + BAR_CSS }), h('div', { class: 'bar' }, msg, offerBox, host.row));
     return host;
   }
   if (window.top !== window) return;
@@ -926,10 +929,51 @@
   function update() {
     const app = view.get() === 'app' && !!savedUser() && site?.open !== false;
     showView(app);
-    if (!site?.open || !document.documentElement) return;
+    siteHeader(!app && !!site?.open);
+    if (!site?.open || !document.documentElement) { if (bar) bar.style.display = 'none'; return; }
     if (!bar) bar = connectBar();
     if (!bar.isConnected) document.documentElement.append(bar);
     bar.style.display = app ? 'none' : '';
+  }
+
+  // --- Instagram's own pages: the apps header on top, as on YouTube ----------------------------------------------------
+  // The parent's note (2026-10-14): after signing in on Instagram nothing of the app showed, so there was no way back.
+  // While the header may show (parent mode, or the apps header: igSite open), it sits on top of every Instagram page:
+  // App | Instagram, Connect, the apps (KidTube too) and the notifications. Instagram's page moves down under it. The
+  // Connect bar (bottom left) then keeps only its messages and the tile's offer.
+  let topHost = null, topHeader = null, topSize = null;
+  const topStyle = document.createElement('style');
+  topStyle.textContent = 'html.ktig-top body { margin-top: var(--kidtube-h, 0px) !important; }';
+  function siteHeader(on) {
+    if (on && !topHost && globalThis.KidTubeHeader && document.documentElement) {
+      topHost = document.createElement('div');
+      topHost.id = 'kidtube-header';
+      topHost.style.cssText = 'position:fixed!important;top:0!important;left:0!important;right:0!important;z-index:2147483647!important;display:block!important;margin:0!important';
+      topHeader = globalThis.KidTubeHeader.mount(topHost);
+      topSize = new ResizeObserver(() => document.documentElement.style.setProperty('--kidtube-h', `${topHost?.offsetHeight ?? 0}px`));
+      topSize.observe(topHost);
+      checkSiteHeader();
+    }
+    if (on && topHost) {
+      if (!topHost.isConnected) document.documentElement.append(topHost);
+      if (!topStyle.isConnected) (document.head || document.documentElement).append(topStyle);
+      document.documentElement.classList.add('ktig-top');
+    } else if (!on && topHost) {
+      topHeader.destroy(); topSize.disconnect(); topHost.remove();
+      topHost = topHeader = topSize = null;
+      document.documentElement.classList.remove('ktig-top');
+      document.documentElement.style.removeProperty('--kidtube-h');
+    }
+    bar?.row?.toggleAttribute('hidden', !!topHost);
+  }
+  function checkSiteHeader() {
+    globalThis.KidTubeWatch?.check({ id: 'instagram.siteHeader', area: 'instagram', expect: 'On Instagram’s own pages the apps header is on top while the header may show, so the parent can always go back to an app',
+      code: ['apps/instagram/content/app.js siteHeader', 'apps/instagram/background/handlers.js igSite'] }, (t) => {
+      if (shown() || !site?.open) return t.skip('the app’s view, or the header is closed (kid mode)');
+      const r = topHost?.getBoundingClientRect();
+      t.ok('the apps header is on the page', !!topHost?.isConnected, 'missing', 'on top');
+      t.ok('it is at the top and has a height', !!r && r.top <= 1 && r.height > 20, r ? `top ${Math.round(r.top)}, height ${Math.round(r.height)}` : 'none', 'top 0');
+    }, 3000);
   }
   document.documentElement?.classList.add('ktig');
   // The app's view at once (before Instagram draws its page), when this tab was in it.
@@ -944,14 +988,24 @@
     bar.offer(me.loggedIn && me.username ? me : { username: null });
     if (me.username) site.offer = false;   // asked once on this page
   }
-  ask({ type: 'igSite' }).then(async (r) => {
-    site = r?.ok ? r : { open: false };
-    if (r?.rules) useRules(r.rules);
+  // igSite again when the mode or the profile changes (parent mode on or off, Connect), and every 5 s while the
+  // background did not answer (a service worker that was starting): before, one lost answer left the page without
+  // any way back to the app (the parent's note, 2026-10-14).
+  let siteAsked = 0;
+  async function askSite() {
+    siteAsked = Date.now();
+    const r = await ask({ type: 'igSite' });
+    const first = !site || site.retry;
+    site = r?.ok ? { ...r, offer: r.offer && (first ? true : site.offer) } : { open: false, retry: true };
+    if (r?.rules && first) useRules(r.rules);
     update();
-    if (site.offer) offer(await meFirst);
-  });
+    if (first && site.offer) offer(await meFirst);
+  }
+  askSite();
+  chrome.storage.onChanged.addListener((ch) => { if (ch.shell || ch.settings || ch.account) askSite(); });
   setInterval(() => {
     update();
+    if (site?.retry && Date.now() - siteAsked > 5000) askSite();
     if (site?.offer && offerAt != null && offerAt !== location.pathname) { offerAt = location.pathname; reportMe().then(offer); }
   }, 700);
   addEventListener('popstate', update);

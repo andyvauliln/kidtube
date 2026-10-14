@@ -12,6 +12,10 @@
   let page = null;             // 'home' | 'watch'
   let videoId = null;
   let frames = {};             // our screens by name: extension iframes, or in-page panels (below)
+  // ▶ Play intro (playIntro below): the video this page was opened for with …&kidtube=intro, its clips, the one playing.
+  const INTRO_CLIPS = 8, INTRO_SECONDS = 3;
+  const introFor = (() => { const u = new URL(location.href); return u.searchParams.get('kidtube') === 'intro' ? u.searchParams.get('v') : null; })();
+  let intro = null;   // { vid, at: [start s…], i, timer, box }
 
   const style = document.createElement('style');
   // Links and suggestions drawn inside the player, and YouTube's bottom tabs: hidden while KidTube runs.
@@ -244,7 +248,7 @@
     const vid = u.pathname === '/watch' ? u.searchParams.get('v') : null;
     if (vid) {
       if (page !== 'watch' || vid !== videoId) { page = 'watch'; videoId = vid; drop('home'); drop('lock'); played = 0; maxReached = 0; S.refresh(); checkPlayer(vid); }
-      if (parentOn) return showParentView();
+      if (parentOn) { showParentView(); if (vid === introFor) playIntro(vid); return; }
       document.documentElement.classList.add('kidtube-on');
       layoutWatch();
     } else {
@@ -281,6 +285,88 @@
       t.note('page', { videos: document.querySelectorAll('video').length, moviePlayer: !!document.querySelector('#movie_player'),
         html5Player: !!document.querySelector('.html5-video-player'), mobilePlayer: !!document.querySelector('ytm-player, #player-container-id'), path: location.pathname });
     }, 10000);
+  }
+
+  // --- ▶ Play intro (the parent's note, 2026-10-14) ------------------------------------------------------------------
+  // The parent's ▶ Play intro on a video's page (parent.js, background watchHere: …&kidtube=intro): YouTube plays 3 s
+  // from INTRO_CLIPS points spread over the video, one after another, then pauses. Nothing is made or kept: the real
+  // video jumps. Parent mode only. The address is read once (at the top): YouTube may tidy it afterwards.
+  // The clips' starts: the middle of each equal part of the video, fewer for a short one (at least 2 s apart).
+  function introPoints(duration) {
+    const n = Math.max(1, Math.min(INTRO_CLIPS, Math.floor(duration / (INTRO_SECONDS * 2))));
+    return Array.from({ length: n }, (_, i) => Math.max(0, Math.round((duration * (i + 0.5)) / n - INTRO_SECONDS / 2)));
+  }
+  function introLabel(text, done = false) {
+    if (!intro.box) {
+      const host = document.createElement('div');
+      host.style.cssText = `position:fixed!important;left:50%!important;bottom:24px!important;transform:translateX(-50%)!important;z-index:${Z}!important`;
+      const root = host.attachShadow({ mode: 'closed' });
+      globalThis.KidTubeWatch?.shadow?.(root);
+      const css = document.createElement('style');
+      css.textContent = `.b { display: flex; gap: 10px; align-items: center; padding: 10px 14px; border-radius: 12px; background: #222; color: #fff;
+        font: 500 15px system-ui, sans-serif; box-shadow: 0 4px 16px #0006; } button { font: inherit; border: 0; border-radius: 16px; padding: 6px 12px;
+        background: #fff; color: #222; font-weight: 600; } button.x { background: transparent; color: #fff; }`;
+      const b = document.createElement('div');
+      b.className = 'b';
+      root.append(css, b);
+      intro.box = { host, b };
+    }
+    const { host, b } = intro.box;
+    const span = document.createElement('span');
+    span.textContent = text;
+    const kids = [span];
+    if (done) {
+      const all = document.createElement('button');
+      all.textContent = '▶ Watch it all';
+      all.addEventListener('click', () => { const v = player(); host.remove(); if (v) { v.currentTime = 0; v.play().catch(() => {}); } });
+      kids.push(all);
+    }
+    const x = document.createElement('button');
+    x.className = 'x';
+    x.textContent = '✕';
+    x.title = 'Stop the intro';
+    x.addEventListener('click', () => { stopIntro(); host.remove(); });
+    kids.push(x);
+    b.replaceChildren(...kids);
+    if (!host.isConnected) document.documentElement.appendChild(host);
+  }
+  function stopIntro() { if (intro) { clearInterval(intro.timer); intro.timer = null; } }
+  function playIntro(vid) {
+    if (intro?.vid === vid) return;
+    intro = { vid, at: null, i: 0, timer: null, box: null, played: 0, asked: Date.now() };
+    introLabel('Intro: getting the video…');
+    intro.timer = setInterval(() => {
+      const v = player();
+      if (videoId !== vid || !parentOn) { stopIntro(); intro.box?.host.remove(); return; }
+      if (!v || adOn || adPlayer() || !(v.duration > 0)) return;
+      if (!intro.at) {
+        intro.at = introPoints(v.duration);
+        v.currentTime = intro.at[0];
+        v.play().catch(() => introLabel('Tap ▶ on the video: the intro starts.'));
+        introLabel(`Intro: clip 1 of ${intro.at.length}`);
+        return;
+      }
+      if (v.paused) return;   // waiting for a tap on ▶ (a browser that does not play by itself)
+      const from = intro.at[intro.i];
+      if (v.currentTime < from + INTRO_SECONDS && v.currentTime >= from - 1) return;
+      if (v.currentTime >= from + INTRO_SECONDS) intro.played++;
+      intro.i++;
+      if (intro.i >= intro.at.length) {
+        v.pause();
+        stopIntro();
+        introLabel(`That was the intro: ${intro.at.length} clips of ${INTRO_SECONDS} s.`, true);
+        return;
+      }
+      v.currentTime = intro.at[intro.i];
+      introLabel(`Intro: clip ${intro.i + 1} of ${intro.at.length}`);
+    }, 200);
+    globalThis.KidTubeWatch?.check({ id: 'yt.intro', kind: 'probe', area: 'youtube', expect: '▶ Play intro: the video plays its 3 s clips, one after another',
+      code: ['apps/kidtube/content/youtube.js playIntro'] }, (t) => {
+      if (intro?.vid !== vid) return t.skip('another video now');
+      if (intro.at && player()?.paused && intro.i === 0) return t.skip('waiting for a tap on ▶');
+      t.ok('the clips started', !!intro.at, 'no video length after 20 s', 'the clips’ starts');
+      t.ok('a clip played', intro.played > 0 || intro.i > 0 || (player()?.currentTime ?? 0) > (intro.at?.[0] ?? 0), 'still at the start', 'at least one clip');
+    }, 20000);
   }
 
   // --- ads -------------------------------------------------------------------------------------------------------

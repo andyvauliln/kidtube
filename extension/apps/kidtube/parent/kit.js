@@ -139,7 +139,7 @@ export async function runNow() {
   return true;
 }
 
-// --- notes for the AI: one 🎤 button (in the bottom bar, right) and one notes card (top of the page) ---------
+// --- notes for the AI: one 🎤 button (in the bottom bar, right) and one notes card (above the bottom bar) --------
 // The 🎤 records a note about what is on the screen (where()): a tab, a video, a context document or the prompt.
 // Pauses don't end it: it records until ⏹. The card shows the recording and has a box to type a note instead.
 // While it records (the parent's note, 2026-10-14): ⏹ Stop keeps the note in 🔔 as before; ➤ Stop and send sends it to
@@ -378,6 +378,7 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
     card.classList.add('open');
     started = Date.now();
     clock = setInterval(draw, 1000);
+    checkInSight();
     const stopClock = () => { clearInterval(clock); clock = null; };
     cloud = !!(keys.groq || keys.gemini || keys.openrouter);
     if (cloud) {
@@ -421,6 +422,18 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
       else if (said) await save(said, at); else await draw();
     };
     try { r.start(); await draw(); } catch { rec = null; stopClock(); notice = 'Dictation isn’t available here: type the note.'; await draw(); }
+  }
+
+  // A recording started: its card, with ✕ Cancel and ➤ Stop and send, is on the screen wherever the page was scrolled.
+  function checkInSight() {
+    globalThis.KidTubeWatch?.check({ id: 'notes.inSight', area: 'notes', expect: 'While a note records, its card (● Recording, ✕ Cancel, ➤ Stop and send) is on the screen',
+      code: ['apps/kidtube/parent/kit.js notesDock record', 'apps/kidtube/parent/parent.css .notecard'] }, (t) => {
+      if (!rec) return t.skip('not recording now');
+      const r = card.getBoundingClientRect();
+      t.ok('the card is on the screen', !card.hidden && r.height > 0 && r.top >= 0 && r.bottom <= innerHeight,
+        card.hidden ? 'hidden' : `top ${Math.round(r.top)}, bottom ${Math.round(r.bottom)} of ${innerHeight}`, 'inside the screen');
+      t.ok('✕ Cancel and ➤ Stop and send', /Cancel/.test(card.textContent) && /Stop and send/.test(card.textContent), card.textContent.slice(0, 80), 'both buttons');
+    }, 1500);
   }
 
   // ➤ Stop and send: the note left the 🔔 list's "Not sent" (sent, or the run asked for).

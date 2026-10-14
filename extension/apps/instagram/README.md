@@ -11,7 +11,7 @@ The app is Instagram's own Saved page of the profile's account (`/<username>/sav
 | View | What you see |
 | --- | --- |
 | **App** | The app over the page, in its own layer (a closed shadow root): the apps header, the tabs, the post sheet |
-| **Instagram** | The page itself. The Connect bar (bottom left) has App \| Instagram and **Connect** |
+| **Instagram** | The page itself, with the apps header on top while the header may show (parent mode, the apps header): App \| site, **Connect**, the apps, the notifications. The Connect bar (bottom left) keeps its messages and the tile's offer; without the header it also has App \| Instagram and **Connect** |
 
 The App | Instagram switch (top right in the app) changes the view without loading a page; the tab keeps its view
 (`sessionStorage`). YouTube and the header's tile send the tab to the launch address `robots.txt?kidtube=app` (`home`

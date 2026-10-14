@@ -228,7 +228,8 @@ export const HANDLERS = {
     if (!isVideoId(msg.videoId)) return { ok: false };
     return withState(async (s) => {
       if (!parentMode(s)) return { ok: false };
-      await chrome.tabs.update(tabId, { url: watchUrl(live.host, msg.videoId) });
+      // intro: ▶ Play intro (parent.js): the YouTube page plays 3 s clips of it (content/youtube.js playIntro).
+      await chrome.tabs.update(tabId, { url: `${watchUrl(live.host, msg.videoId)}${msg.intro ? '&kidtube=intro' : ''}` });
       return { ok: true };
     });
   },

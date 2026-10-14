@@ -26,6 +26,7 @@ class El {
   getAttribute(k) { return this.attrs[k] ?? null; }
   hasAttribute(k) { return k in this.attrs; }
   removeAttribute(k) { delete this.attrs[k]; }
+  toggleAttribute(k, on) { if (on) this.attrs[k] = ''; else delete this.attrs[k]; }
   addEventListener(t, fn) { this.listeners[t] = fn; }
   removeEventListener() {}
   attachShadow() { return new El('shadow'); }
@@ -35,19 +36,21 @@ class El {
 }
 
 // view: the tab's view ('app' or 'instagram'). state: igState's answer. fetch(path): Instagram's web API.
-function load({ view = 'instagram', state, fetch }) {
-  const sent = [], listeners = {};
+// site(): igSite's answer (undefined: none). path: the Instagram page. header: the apps header (core/ui/header.js).
+function load({ view = 'instagram', state, fetch, site = () => ({ ok: true, open: true, rules: readerRules() }), path = '/an_dreidel/saved/all-posts/', header = undefined }) {
+  const sent = [], listeners = {}, timers = [];
   const answer = (m) => {
-    if (m.type === 'igSite') return { ok: true, open: true, rules: readerRules() };
+    if (m.type === 'igSite') return site();
     if (m.type === 'igState') return state;
     return { ok: true };
   };
   const ctx = {
-    location: { href: 'https://www.instagram.com/an_dreidel/saved/all-posts/', pathname: '/an_dreidel/saved/all-posts/', search: '', hash: '', origin: 'https://www.instagram.com' },
+    location: { href: `https://www.instagram.com${path}`, pathname: path, search: '', hash: '', origin: 'https://www.instagram.com' },
     document: { documentElement: new El('html'), visibilityState: 'visible', cookie: 'ds_user_id=42', createElement: (t) => new El(t), createElementNS: (_, t) => new El(t), querySelectorAll: () => [] },
     sessionStorage: { getItem: () => view, setItem() {} },
     history: { replaceState() {} },
-    setTimeout, clearTimeout, setInterval: () => 0, clearInterval() {},
+    setTimeout, clearTimeout, setInterval: (fn) => { timers.push(fn); return timers.length; }, clearInterval() {},
+    KidTubeHeader: header, ResizeObserver: class { observe() {} disconnect() {} },
     addEventListener: (t, fn) => { (listeners[t] ??= []).push(fn); }, removeEventListener() {},
     postMessage() {},
     fetch: async (path) => {
@@ -55,7 +58,7 @@ function load({ view = 'instagram', state, fetch }) {
       return { status, ok: status < 400, url: `https://www.instagram.com${path}`, text: async () => JSON.stringify(body) };
     },
     chrome: { runtime: { sendMessage: (m, cb) => { sent.push(m); cb?.(answer(m)); }, lastError: null }, storage: { onChanged: { addListener() {} } } },
-    URL, URLSearchParams, Headers: class {}, FormData: class {}, JSON, Promise, Error,
+    URL, URLSearchParams, Headers: class {}, FormData: class {}, JSON, Promise, Error, Date,
   };
   ctx.globalThis = ctx; ctx.window = ctx; ctx.top = ctx;
   vm.createContext(ctx);
@@ -63,7 +66,7 @@ function load({ view = 'instagram', state, fetch }) {
   // A message from the page world (content/net.js).
   const page = vm.runInContext('window', ctx);   // the context's own global, as the page world's messages say
   const fromPage = (m) => { for (const fn of listeners.message) fn({ source: page, data: { 'kidtube-ig': true, ...m } }); };
-  return { ctx, sent, fromPage };
+  return { ctx, sent, fromPage, timers };
 }
 
 const STATE = { ok: true, who: '@an_dreidel', posts: [], collections: [{ id: COL, name: 'Cooking', count: 1 }], defaultCollection: 'all', complete: true, github: true, sync: { errors: [] } };
@@ -100,4 +103,36 @@ test('a collection the web API does not give: a way to get it, and a report by i
   assert.equal(report.result.id, 'ig.read');
   assert.match(report.result.mismatch[0].actual, /\/api\/v1\/feed\/collection\/.*404/);
   assert.match(report.result.mismatch[0].actual, /open it on Instagram/i);
+});
+
+// The parent's note (2026-10-14): after signing in on Instagram nothing of the app showed (no header, no way back). On
+// Instagram's own pages the apps header is now on top while the header may show, as on YouTube; a lost igSite answer
+// is asked again; in kid mode (the header closed) there is none.
+test('Instagram’s own pages: the apps header on top while the header may show; asked again when the background did not answer', async () => {
+  const mounted = [];
+  const header = { mount: (host) => { mounted.push(host); return { destroy() { host.gone = true; } }; } };
+  let answers = [undefined, { ok: true, open: true, rules: readerRules(), offer: false }];
+  const w = load({ state: STATE, fetch: () => [404, {}], path: '/', header, site: () => answers.shift() });
+  await tick(20);
+  assert.equal(mounted.length, 0, 'no answer yet: nothing to show');
+  const realNow = Date.now;
+  Date.now = () => realNow() + 6000;   // 6 s later: the page asks again
+  try { for (const fn of w.timers) fn(); } finally { Date.now = realNow; }
+  await tick(20);
+  assert.equal(w.sent.filter((m) => m.type === 'igSite').length, 2, 'igSite asked again');
+  assert.equal(mounted.length, 1, 'the apps header is on the page');
+  assert.match(mounted[0].style.cssText, /position:fixed!important;top:0!important/, 'fixed at the top');
+  for (const fn of w.timers) fn();
+  assert.equal(mounted.length, 1, 'only one header');
+
+  // Kid mode: the header is closed, so Instagram has none.
+  answers = [{ ok: true, open: false, rules: readerRules() }];
+  const k = load({ state: STATE, fetch: () => [404, {}], path: '/', header, site: () => answers.shift() });
+  await tick(20);
+  for (const fn of k.timers) fn();
+  assert.equal(mounted.length, 1, 'no header in kid mode');
+
+  const src = SRC.app;
+  assert.match(src, /id: 'instagram\.siteHeader'/, 'its check in the app');
+  assert.match(src, /bar\?\.row\?\.toggleAttribute\('hidden', !!topHost\)/, 'the bar keeps only its messages and the offer under the header');
 });

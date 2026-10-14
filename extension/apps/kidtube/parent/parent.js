@@ -119,7 +119,7 @@ addEventListener('hashchange', render);
 const fullSw = $('fullSize');
 const drawSwitch = () => fullSw.setAttribute('aria-checked', String(isFull()));
 fullSw.addEventListener('click', () => setFull(!isFull(), true));
-addEventListener('kidtube-fullsize', () => { drawSwitch(); if (route().tab !== 'settings') render(); checkFull(); });
+addEventListener('kidtube-fullsize', () => { oneShown = null; drawSwitch(); if (route().tab !== 'settings') render(); checkFull(); });
 drawSwitch();
 holdPage(isFull());
 function checkFull() {
@@ -134,9 +134,11 @@ function checkFull() {
     t.eq('no apps header on top', on ? 'none' : 'block', getComputedStyle($('appHeader')).display === 'none' ? 'none' : 'block');
     t.eq('a swipe down is the box before, not a reload', on ? 'none' : 'auto', getComputedStyle(document.documentElement).overscrollBehaviorY);
     if (on && LISTS.includes(r.tab) && listOf(r.tab).length) {
-      t.eq('videos on the screen', 1, view.querySelectorAll('.row').length);
-      t.eq('no other boxes (stats, headings, days)', 0, view.querySelectorAll('.box, .stats, .day').length);
+      t.eq('videos on the screen, as on its Details page', 1, view.querySelectorAll('.one .hero').length);
+      t.eq('no list rows, headings or days', 0, view.querySelectorAll('.row, .stats, .day').length);
     }
+    // Out of Full size: the list is only its videos (the parent's note, 2026-10-14).
+    if (!on && LISTS.includes(r.tab)) t.eq('boxes above the videos (stats, explanations)', 0, view.querySelectorAll(':scope > .box, :scope > .stats').length);
   }, 1500);
 }
 
@@ -305,53 +307,35 @@ function syncLine() {
 }
 
 // --- the three lists -------------------------------------------------------------------------------
+// Only the videos (the parent's note, 2026-10-14: "remove any other blocks… on every video tab"): no day at a glance,
+// no box that explains the tab. A sync problem or a missing GitHub token still shows, as one line (syncLine).
 
-// The day at a glance: videos watched, minutes used, must-watch videos left.
-function stat(value, unit, label, { bar = null, tone = '' } = {}) {
-  const box = el('div', `stat${tone ? ` ${tone}` : ''}`);
-  const b = el('b', '', String(value));
-  if (unit) b.append(el('small', '', ` ${unit}`));
-  box.append(b, el('span', '', label));
-  if (bar != null) { const track = el('div', 'bar'); const fill = el('i'); fill.style.width = `${Math.round(Math.max(0, Math.min(1, bar)) * 100)}%`; track.append(fill); box.append(track); }
-  return box;
-}
-function statsRow() {
-  const vs = data.today;
-  const watched = vs.filter((v) => v.watchedAt).length;
-  const stars = vs.filter((v) => v.required), starsLeft = stars.filter((v) => !v.watchedAt).length;
-  const m = data.minutes ?? { played: 0, max: 0 };
-  const used = m.max ? m.played / m.max : 0;
-  const row = el('div', 'stats');
-  row.append(
-    stat(watched, `of ${vs.length}`, 'videos watched today', { bar: vs.length ? watched / vs.length : 0 }),
-    stat(m.played, m.max ? `of ${m.max} min` : 'min', m.stopped ? 'minutes · stopped for today' : m.max ? 'minutes of screen time' : 'minutes, no limit set',
-      { bar: m.max ? used : null, tone: m.stopped || used >= 1 ? 'bad' : used >= .8 ? 'warn' : '' }),
-    stat(starsLeft, stars.length ? `of ${stars.length}` : '', 'must-watch ⭐ left', { bar: stars.length ? 1 - starsLeft / stars.length : null }),
-  );
-  return row;
-}
-
-// Full size on Today, Planned and History: only the videos, one at a time, big; a swipe up (or ↓) for the next one,
-// down (or ↑) for the one before (the parent's note, 2026-10-14: "same like for videos… only videos should be left").
+// Full size on Today, Planned and History: one video at a time, the same as its Details page (the parent's note,
+// 2026-10-14); a swipe up (or ↓) for the next one, down (or ↑) for the one before.
 const LISTS = ['today', 'planned', 'history'];
 const listAt = { today: 0, planned: 0, history: 0 };
-let listStep = 0;
+let listStep = 0, oneFor = 0, oneShown = null;
 const listOf = (tab) => (tab === 'today' ? data?.today : tab === 'planned' ? data?.planned
   : (data?.history ?? []).flatMap((d) => d.items.map((v) => ({ ...v, day: d.date })))) ?? [];
-function renderOne(where) {
+async function renderOne(where) {
   const vs = listOf(where);
   if (!vs.length) { view.replaceChildren(el('p', 'muted', { today: 'Nothing on today’s list.', planned: 'Nothing planned yet.', history: 'Nothing watched yet.' }[where])); return; }
   const at = listAt[where] = Math.max(0, Math.min(vs.length - 1, listAt[where]));
   const v = vs[at];
-  const card = row(v, where);
-  card.classList.add('one');
+  const mine = ++oneFor, step = listStep;
+  listStep = 0;
+  const parts = await detailParts(v.videoId);
+  if (mine !== oneFor || route().tab !== where || !isFull()) return;
+  const card = el('div', 'one');
+  card.append(...(parts ?? [el('p', 'err', 'Could not load this video.')]));
   const pager = el('div', 'pager');
   pager.append(el('span', '', `${at + 1} of ${vs.length}${v.day ? ` · ${dayLabel(v.day)}` : ''} · ${at < vs.length - 1 ? 'swipe up for the next' : 'the last one: swipe down for the one before'}`));
   view.replaceChildren(pager, card);
-  if (listStep) slideIn(card, listStep);
-  listStep = 0;
+  // Another video (or Full size just turned on): from its top. The same one drawn again (a sync) stays where it was.
+  if (oneShown !== v.videoId) { oneShown = v.videoId; scrollTo(0, 0); }
+  if (step) slideIn(card, step);
 }
-upDown(view, { on: () => isFull() && LISTS.includes(route().tab) && !route().video, box: () => view.querySelector('.row.one'), go: (step) => {
+upDown(view, { on: () => isFull() && LISTS.includes(route().tab) && !route().video, box: () => view.querySelector('.one'), go: (step) => {
   const tab = route().tab;
   const i = listAt[tab] + step;
   if (i < 0 || i >= listOf(tab).length) return;
@@ -361,31 +345,24 @@ upDown(view, { on: () => isFull() && LISTS.includes(route().tab) && !route().vid
   renderOne(tab);
 } });
 
+// The list itself: a sync line only when there is something to say, then the videos.
+const listTop = () => { const s = syncLine(); return s.textContent ? [s] : []; };
+
 function renderToday() {
   if (isFull()) return renderOne('today');
   const vs = data.today;
-  const head = el('div', 'box');
-  head.append(el('h2', '', 'What he sees today'),
-    el('p', 'muted', 'His list in his order: the first unwatched videos, then the ones he watched. Removing a video brings the next planned one in.'),
-    syncLine());
-  view.replaceChildren(statsRow(), head, ...(vs.length ? vs.map((v) => row(v, 'today')) : [el('p', 'muted', 'Nothing on today’s list.')]));
+  view.replaceChildren(...listTop(), ...(vs.length ? vs.map((v) => row(v, 'today')) : [el('p', 'muted', 'Nothing on today’s list.')]));
 }
 
 function renderPlanned() {
   if (isFull()) return renderOne('planned');
-  const head = el('div', 'box');
-  head.append(el('h2', '', 'Planned and ideas'),
-    el('p', 'muted', data.hasMemory ? 'The helper’s next picks, in its order. Approve, make a must-watch, move to today or remove. The helper reads your changes on its next run.'
-      : 'Planned videos show here once the tablet has the helper’s notes (memory.json; needs the GitHub token).'),
-    syncLine());
-  view.replaceChildren(head, ...(data.planned.length ? data.planned.map((v) => row(v, 'planned')) : [el('p', 'muted', 'Nothing planned yet.')]));
+  const empty = data.hasMemory ? 'Nothing planned yet.' : 'Planned videos show here once the tablet has the helper’s notes (memory.json; needs the GitHub token).';
+  view.replaceChildren(...listTop(), ...(data.planned.length ? data.planned.map((v) => row(v, 'planned')) : [el('p', 'muted', empty)]));
 }
 
 function renderHistory() {
   if (isFull()) return renderOne('history');
-  const head = el('div', 'box');
-  head.append(el('h2', '', 'What he watched'), el('p', 'muted', 'By day. Tap a video to see its questions and how he answered.'));
-  const parts = [head];
+  const parts = [];
   for (const d of data.history) {
     const h = el('div', 'day');
     h.append(el('h2', '', dayLabel(d.date)), el('span', 'muted', `${d.items.length} video${d.items.length === 1 ? '' : 's'}${d.minutes ? ` · ${d.minutes} min` : ''}`));
@@ -684,11 +661,18 @@ function renderSettings() {
 let detailFor = null;
 async function renderDetail(videoId) {
   detailFor = videoId;
-  const d = await ask({ type: 'videoDetail', videoId });
+  const parts = await detailParts(videoId);
   if (detailFor !== videoId) return;
   scrollTo(0, 0);
-  if (!d?.ok) { view.replaceChildren(el('p', 'err', 'Could not load this video.')); return; }
-  const back = btn('‹ Back', () => { location.hash = lastTab; }, 'back ghost');
+  if (!parts) { view.replaceChildren(el('p', 'err', 'Could not load this video.')); return; }
+  view.replaceChildren(btn('‹ Back', () => { location.hash = lastTab; }, 'back ghost'), ...parts);
+}
+
+// A video's page without ‹ Back: its picture, buttons and boxes. Also Full size on Today, Planned and History
+// (renderOne). null: the background did not answer.
+async function detailParts(videoId) {
+  const d = await ask({ type: 'videoDetail', videoId });
+  if (!d?.ok) return null;
 
   const hero = el('div', 'hero');
   const t = thumbOf(d, true);
@@ -703,6 +687,9 @@ async function renderDetail(videoId) {
   if (['today', 'planned', 'history'].includes(where)) side.append(actionsFor(d, where, { onDone: again }));
   const more = el('div', 'actions');
   if (d.where === 'removed') more.append(btn('Put back in the plan', async () => { if (await plan('restore', videoId)) { toast('Back in the plan.'); await again(); } }));
+  // ▶ Play intro (the parent's note, 2026-10-14; today's list for now): YouTube plays 3 s from several points of the
+  // video, one after another (apps/kidtube/content/youtube.js playIntro).
+  if (d.where === 'today') more.append(btn('▶ Play intro', () => playIntro(videoId)));
   more.append(btn('▶ Watch it yourself', () => ask({ type: 'watchHere', videoId }), 'primary'));
   side.append(more);
   hero.append(t, side);
@@ -736,7 +723,16 @@ async function renderDetail(videoId) {
   }
   if (d.helperNotes.length) section('Your earlier comments the helper has', list(d.helperNotes));
 
-  view.replaceChildren(back, hero, ...sections);
+  return [hero, ...sections];
+}
+
+async function playIntro(videoId) {
+  const r = await ask({ type: 'watchHere', videoId, intro: true });
+  if (!r?.ok) return toast('Could not open the video. Is parent mode still on?');
+  W?.check({ id: 'parent.playIntro', area: 'parent', expect: '▶ Play intro opens the video on YouTube, where 3 s clips of it play one after another',
+    code: ['apps/kidtube/parent/parent.js playIntro', 'apps/kidtube/background/handlers.js watchHere'] }, (t) => {
+    t.ok('the background took the tab to the video', r.ok, 'refused', 'ok');
+  });
 }
 
 // The questions, and a try of the quiz the way he gets it (without the friend's screen).
@@ -816,7 +812,7 @@ chrome.storage.onChanged.addListener((ch) => {
   if (ch.settings && route().tab !== 'settings') refresh();
   else if (ch.settings) ask({ type: 'parentData' }).then((r) => { if (r && !r.parentMode) refresh(); });
 });
-// --- notes for the AI: the 🎤 bottom right, the card on top. A note is about the screen it starts on. ----------
+// --- notes for the AI: the 🎤 bottom right, the card above it. A note is about the screen it starts on. -------
 function noteTarget() {
   const r = route();
   if (r.video) return { videoId: r.video };

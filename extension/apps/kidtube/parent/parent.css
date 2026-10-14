@@ -63,17 +63,6 @@ textarea { min-height: 70px; resize: vertical; }
 .info .grow { min-width: 8px; }
 [hidden] { display: none !important; }
 
-/* --- the day at a glance (Today) ---------------------------------------------------------------------------- */
-.stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
-.stat { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; min-width: 0; }
-.stat b { display: block; font-size: 24px; font-weight: 600; line-height: 1.1; }
-.stat b small { font-size: 14px; color: var(--muted); font-weight: 500; }
-.stat span { display: block; color: var(--muted); font-size: 13px; margin-top: 2px; }
-.stat .bar { height: 6px; border-radius: 3px; background: var(--chip); margin-top: 8px; overflow: hidden; }
-.stat .bar i { display: block; height: 100%; background: var(--ok); border-radius: inherit; }
-.stat.warn .bar i { background: var(--accent); }
-.stat.bad .bar i { background: var(--bad); }
-
 /* --- video rows ---------------------------------------------------------------------------------------------- */
 .row { background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 10px; margin-bottom: 10px;
   display: grid; grid-template-columns: 156px 1fr; gap: 12px; align-items: start; }
@@ -183,17 +172,20 @@ html.updown, html.updown body { overscroll-behavior-y: none; }
 /* and no apps header (its notifications) on top of the box (the parent's note, 2026-10-13); the tabs stay, with the
    Full size switch at their right end to leave it (the parent's note, 2026-10-14) */
 html.updown #appHeader { display: none; }
-/* Full size on Today, Planned, History: only the videos, one at a time, big (parent.js renderOne) */
-.row.one { grid-template-columns: 1fr; min-height: calc(100vh - 150px); align-content: start; }
-.row.one .title { -webkit-line-clamp: 4; font-size: 18px; }
+/* Full size on Today, Planned, History: one video at a time, as on its Details page (parent.js renderOne) */
+.one { min-height: calc(100vh - 150px); }
 
-/* --- notes for the AI: the 🎤 bottom right, and the card on top of every tab -------------------------------------- */
+/* --- notes for the AI: the 🎤 bottom right, and the card above the bottom bar on every tab ---------------------------- */
 .notefab { position: fixed; right: 20px; bottom: 20px; z-index: 9; width: 60px; height: 60px; padding: 0; border-radius: 50%;
   font-size: 26px; border: 0; background: var(--primary); color: var(--on-primary); box-shadow: 0 6px 20px #0004; }
 .notefab:not(:disabled):hover { background: var(--primary); opacity: .9; }
 .notefab.on { background: #d93025; animation: rec 1.4s ease-in-out infinite; }
 .notefab.docked { position: static; width: 48px; height: 48px; font-size: 22px; box-shadow: none; }
 @keyframes rec { 50% { box-shadow: 0 0 0 10px #d9302533, 0 6px 20px #0004; } }
+/* The card floats above the bottom bar, not at the top of the page (the parent's notes, 2026-10-14: on a long page,
+   scrolled down, a recording started off the screen): ● Recording, ✕ Cancel and ➤ Stop and send are always in sight. */
+.notecard { position: fixed; left: 12px; right: 12px; bottom: calc(76px + env(safe-area-inset-bottom)); z-index: 9; max-width: 720px;
+  margin: 0 auto; max-height: 60vh; overflow-y: auto; box-shadow: 0 6px 24px #0003; }
 .notecard h2 { margin: 0; }
 .nchead { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .nclose { padding: 4px 10px; }
