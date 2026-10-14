@@ -1085,7 +1085,7 @@ test('video tabs: only the videos; Full size shows one video as its Details page
   assert.doesNotMatch(css, /\.stats \{|\.stat \{/, 'their styles went too');
   assert.match(lists, /const parts = await detailParts\(v\.videoId\);/, 'Full size: the video’s Details page');
   assert.match(src, /async function detailParts\(videoId\)/);
-  assert.match(src, /view\.replaceChildren\(btn\('‹ Back'[^\n]*\.\.\.parts\)/, 'the Details page is the same parts with ‹ Back');
+  assert.match(src, /const box = el\('div', 'detail'\);\n  box\.append\(\.\.\.parts\);/, 'the Details page is the same parts, with ‹ Back above');
   assert.match(src, /'\.one \.hero'/, 'the Full size check looks for the Details view');
   assert.match(css, /\.notecard \{ position: fixed;[^}]*bottom: calc\(76px/, 'the card floats above the bottom bar');
   assert.match(kit, /id: 'notes\.inSight'/, 'its check in the app');
@@ -1098,7 +1098,8 @@ test('▶ Play intro: on a video of today’s list, YouTube plays 3 s clips of i
   const { readFileSync } = await import('node:fs');
   const src = readFileSync(new URL('../../extension/apps/kidtube/parent/parent.js', import.meta.url), 'utf8');
   const yt = readFileSync(new URL('../../extension/apps/kidtube/content/youtube.js', import.meta.url), 'utf8');
-  assert.match(src, /if \(d\.where === 'today'\) more\.append\(btn\('▶ Play intro', \(\) => playIntro\(videoId\)\)\);/, 'only on today’s list');
+  assert.match(src, /if \(d\.where === 'today'\) more\.append\(btn\('▶ Play intro', \(\) => introHere\(d, pic\)\)\);/, 'only on today’s list, where the picture is');
+  assert.match(src, /btn\('▶ Intro on YouTube', \(\) => playIntro\(d\.videoId\)\)/, 'YouTube’s page only when YouTube refuses');
   assert.match(src, /id: 'parent\.playIntro'/, 'its check in the app');
   assert.match(yt, /if \(parentOn\) \{ showParentView\(\); if \(vid === introFor\) playIntro\(vid\); return; \}/, 'parent mode only');
   assert.match(yt, /const INTRO_CLIPS = 8, INTRO_SECONDS = 3;/);
@@ -1113,4 +1114,69 @@ test('▶ Play intro: on a video of today’s list, YouTube plays 3 s clips of i
   assert.equal(fake.nav.updates.at(-1), `https://m.youtube.com/watch?v=${ids[0]}&kidtube=intro`);
   assert.equal((await fromPage({ type: 'watchHere', videoId: ids[0] })).ok, true);
   assert.equal(fake.nav.updates.at(-1), `https://m.youtube.com/watch?v=${ids[0]}`, 'Watch it yourself as before');
+});
+
+// The parent's notes (2026-10-14): a tap anywhere on a row opens its Details; Full size on a Details page swipes to the
+// next video of its list; ▶ Play intro plays where the picture is; a finger that does not scroll a long page is reported.
+test('rows open their Details; Details swipes in Full size; Play intro in the page; the scroll probe', async () => {
+  const { readFileSync } = await import('node:fs');
+  const read = (f) => readFileSync(new URL(`../../extension/apps/kidtube/parent/${f}`, import.meta.url), 'utf8');
+  const src = read('parent.js'), css = read('parent.css');
+  const row = src.slice(src.indexOf('function row(v, where)'), src.indexOf('function checkOpened'));
+  assert.match(row, /r\.addEventListener\('click', \(e\) => \{\n    const b = e\.target\.closest\?\.\('button'\);\n    if \(b && b !== t\) return;\n    open\(v\);/, 'the whole row, its own buttons aside');
+  assert.match(src, /id: 'parent\.rowOpens'/);
+  assert.match(src, /upDown\(view, \{ on: \(\) => isFull\(\) && !!route\(\)\.video && detailList\(\)\.some/, 'Details: up and down in Full size');
+  assert.match(src, /location\.hash = `v=\$\{vs\[i\]\.videoId\}`;/);
+  assert.match(src, /frame\.src = `https:\/\/www\.youtube\.com\/embed\/\$\{d\.videoId\}\?enablejsapi=1/, 'YouTube’s player in the page');
+  assert.match(src, /initiatorDomains: \[chrome\.runtime\.id\]/, 'the referrer rule: only this extension’s requests');
+  assert.match(src, /resourceTypes: \['sub_frame'\]/, 'only the player’s page');
+  assert.match(src, /id: 'parent\.introHere'/);
+  assert.match(src, /id: 'parent\.fingerScroll'/);
+  assert.match(css, /\.heropic \.player \{/);
+  const { introPoints, INTRO_CLIPS } = await import('../../extension/apps/kidtube/parent/kit.js');
+  assert.equal(introPoints(300).length, INTRO_CLIPS);
+  assert.deepEqual(introPoints(300).slice(0, 2), [17, 55], 'the middle of each part');
+  assert.equal(introPoints(10).length, 1, 'a short video: fewer clips');
+});
+
+// The parent's note (2026-10-14): "in my notes, in the details, I want to see from where it came".
+test('a note shows where it came from: before it is sent and after, with what went with it', async () => {
+  const { releaseNotes } = await import('../../extension/apps/kidtube/background/sync.js');
+  const screen = { where: 'the Today tab, button “✕ Remove”', path: 'apps/kidtube/parent/parent.html#today', text: 'the list', viewport: '800×1200', userAgent: 'test',
+    element: 'Path: the Today tab › video “A” › button “✕ Remove”\nSelector: button' };
+  const r = await fromPage({ type: 'wish', list: 'today', text: 'Where from?', screen, withApp: true, offer: true, pointed: true });
+  assert.equal(r.ok, true);
+  const held = (await fromPage({ type: 'heldNotes' })).notes.find((n) => n.id === r.eventId);
+  assert.equal(held.from, screen.where);
+  assert.equal(held.page, screen.path);
+  assert.equal(held.pressed, 'the Today tab › video “A” › button “✕ Remove”');
+  const rowsOf = (row) => Object.fromEntries(row.view.sections.find((x) => x.title === 'About').rows.map(([k, v]) => [k, v]));
+  let row = (await fromPage({ type: 'header' })).inbox.find((x) => x.id === `note:${r.eventId}`);
+  assert.equal(rowsOf(row)['Made on'], screen.where);
+  assert.equal(rowsOf(row)['Sent with it'], 'This screen', 'a long press ticks This screen');
+  await releaseNotes([r.eventId]);
+  const q = fake.store.notes.questions.find((x) => x.id === r.eventId);
+  assert.deepEqual([q.from, q.page, q.sentWith], [screen.where, screen.path, ['screen']]);
+  row = (await fromPage({ type: 'header' })).inbox.find((x) => x.id === `question:${r.eventId}`);
+  assert.equal(rowsOf(row)['Made on'], screen.where);
+  assert.equal(rowsOf(row)['Pressed'], 'the Today tab › video “A” › button “✕ Remove”');
+  assert.equal(rowsOf(row)['Sent with it'], 'This screen');
+});
+
+// The parent's note (2026-10-14): "for every update I wanna know what is fixed there… and what to test".
+test('the version answer has what each newer release changed and what to test, and the installed one’s', async () => {
+  const { changesOf } = await import('../../extension/core/background/updates.js');
+  const latest = { version: '0.1.2', changes: [
+    { version: '0.1.2', at: '2026-10-14', changed: ['Rows open their Details'], test: ['Tap a row'] },
+    { version: '0.1.1', at: '2026-10-13', changed: ['Play intro'], test: [] },
+    { version: '0.1.0', at: '2026-10-12', changed: ['Start'], test: ['x', 5] },
+    { nothing: true }] };
+  const c = changesOf(latest, '0.1.0');
+  assert.deepEqual(c.coming.map((x) => x.version), ['0.1.2', '0.1.1']);
+  assert.deepEqual(c.here.test, ['x'], 'only words');
+  assert.deepEqual(changesOf(latest, '0.1.2').coming, []);
+  assert.deepEqual(changesOf({ version: '0.1.2' }, '0.1.0'), { coming: [], here: null }, 'an older latest.json: nothing');
+  const hdr = (await import('node:fs')).readFileSync(new URL('../../extension/core/ui/header.js', import.meta.url), 'utf8');
+  assert.match(hdr, /\.\.\.\(coming\.length \? changeSections\(coming\) : \[\]\)/, 'the update’s Details');
+  assert.match(hdr, /else if \(ver\?\.changes\?\.here\) rows\.push\(installedRow\(ver\)\);/, 'after the update: the installed one');
 });

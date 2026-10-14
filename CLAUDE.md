@@ -7,6 +7,9 @@ one command; details: `docs/UPDATES.md` section 9.
   this server), rebases on `origin/main`, gives `extension/` the next free version, runs `npm test`, pushes the code,
   then makes the Quetta release on top of it and pushes that. It stops when a rebase or a test needs you: solve it
   (keep both changes), then run it again. Never force-push.
+- **Say what changed and what to test, for the parent:** one `-m` per change and one `-t "<what to test>"` per check,
+  in plain words (`-m "A tap on a row opens its Details" -t "Today: tap a row's words: its Details opens"`). The app
+  shows them in the update's Details and after the update (`site/latest.json` changes).
 - **Don't** change the version in `extension/manifest.json` or the release files in `site/` (`latest.json`,
   `updates.xml`, `.crx`, `.zip`, `site/orion/`) yourself: `ship` makes them. The hook `.githooks/pre-push` refuses a
   push that breaks this (`npm install` turns it on: `git config core.hooksPath .githooks`).

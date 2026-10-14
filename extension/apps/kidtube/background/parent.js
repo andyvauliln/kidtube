@@ -28,6 +28,17 @@ function trackQuestion(s, ev) {
     ...(ev.list ? { list: ev.list } : {}), ...(ev.section ? { section: ev.section } : {}), ...(ev.videoId ? { videoId: ev.videoId } : {}), ...(ev.doc ? { doc: ev.doc } : {}) });
   s.notes.questions = qs.slice(-30);
 }
+// Where a note came from, for its Details in 🔔 (the parent's note, 2026-10-14: "I want to see from where it came"):
+// the screen it was made on (from: “the Today tab”, “video …”), the part a long press was on (pressed), its page
+// (page), and what went with it to the AI (sentWith: screen, app). The screen is known also when it was not sent.
+export function sentFrom(ev) {
+  const screen = ev.context?.screen ?? ev.offer?.screen;
+  return {
+    ...(screen?.where ? { from: screen.where } : {}), ...(screen?.path ? { page: screen.path } : {}),
+    ...(screen?.element ? { pressed: screen.element.split('\n')[0].replace(/^Path: /, '') } : {}),
+    sentWith: Object.keys(ev.context ?? {}),
+  };
+}
 // Saved before 0.12.16, only questions were followed (no ask field).
 const asks = (q) => q.ask !== false;
 
@@ -62,7 +73,8 @@ export async function heldNotes(s) {
     ...(e.videoId ? { videoId: e.videoId, title: titleOf(e.videoId) } : {}),
     ...((e.context ?? e.offer)?.app?.version ? { version: (e.context ?? e.offer).app.version } : {}),
     ...(e.context ? { attached: Object.keys(e.context) } : {}), ...(e.offer ? { offered: Object.keys(e.offer) } : {}),
-    ...((e.context ?? e.offer)?.screen?.element ? { pressed: (e.context ?? e.offer).screen.element.split('\n')[0].replace(/^Path: /, '') } : {}), ...(e.ask ? { ask: true } : {}), ...(e.voice ? { voice: e.voice } : {}),
+    ...(({ sentWith, ...where }) => where)(sentFrom(e)),   // from, page, pressed
+    ...(e.ask ? { ask: true } : {}), ...(e.voice ? { voice: e.voice } : {}),
   }));
   return { ok: true, notes };
 }

@@ -14,6 +14,7 @@ const TABLE = JSON.parse(readFileSync(join(ROOT, 'build/orion-apis.json'), 'utf8
 export const HANDLED = {
   'declarativeNetRequest.updateDynamicRules': 'skipped when TARGET is orion (applySiteRules); externalGuard sends other sites home',
   'declarativeNetRequest.getDynamicRules': 'the start check start.rules skips it when TARGET is orion (core/checks/start.js)',
+  'declarativeNetRequest.updateSessionRules': 'skipped when TARGET is orion (parent.js playerReferrer): ▶ Play intro there says why and offers YouTube',
 };
 
 const EVENT_METHODS = new Set(['addListener', 'removeListener', 'hasListener']);

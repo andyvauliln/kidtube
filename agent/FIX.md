@@ -93,7 +93,7 @@ on the server cannot.
 
 ## Releasing
 
-Commit your changes, then `npm run ship -- -m "<short summary>"`, exactly as `agent/NOTES.md` says under "Releasing a change to the app". It gives `extension/` the next free version, tests, pushes, and makes the Quetta release; its last line `ship: released <version>` is the version for your fixes. Several problems fixed in one run go into one version: one `ship` at the end. A change only to a test or to `agent/` gets no release (`ship` only pushes it). No Orion build: the parent asks for one when they want it.
+Commit your changes, then `npm run ship -- -m "<short summary>" -t "<what the parent can test>"`, exactly as `agent/NOTES.md` says under "Releasing a change to the app". It gives `extension/` the next free version, tests, pushes, and makes the Quetta release; its last line `ship: released <version>` is the version for your fixes. Several problems fixed in one run go into one version: one `ship` at the end. A change only to a test or to `agent/` gets no release (`ship` only pushes it). No Orion build: the parent asks for one when they want it.
 
 ## Rules
 

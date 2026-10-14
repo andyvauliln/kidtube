@@ -42,7 +42,9 @@ keep an old file for up to 10 minutes.
 
 1. Change the code in `extension/`. Do not change `version` in `extension/manifest.json`.
 2. Commit as `<what changed>`. The message ends with the `Co-Authored-By` line.
-3. Run `npm run ship -- -m "<what changed>"`. The script `build/ship.mjs` does these steps:
+3. Run `npm run ship -- -m "<what changed>" -t "<what to test>"` (several of each are fine; plain words for the
+   parent: the release's `latest.json` keeps them in `changes`, and the app shows them in the update's Details and
+   after the update). The script `build/ship.mjs` does these steps:
    1. It takes the lock `~/.local/share/kidtube/state/push.lock`. Another writer that ships now makes it wait (at
       most 20 minutes).
    2. It runs `git fetch` and `git rebase origin/main`.

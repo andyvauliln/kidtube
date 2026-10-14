@@ -115,6 +115,11 @@ ol.flow li { margin: 4px 0; }
 .hero { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 16px; align-items: start; margin-bottom: 12px; }
 .hero .thumb span.play { position: absolute; inset: 0; display: grid; place-items: center; font-size: 46px; color: #fff; text-shadow: 0 2px 8px #000a; }
 .hero h2 { font-size: 20px; }
+/* ▶ Play intro: YouTube's player where the picture was, a line under it (parent.js introHere) */
+.heropic .player { display: block; width: 100%; aspect-ratio: 16 / 9; border: 0; border-radius: 10px; background: #000; }
+.introline, .introfail { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 8px; font-size: 14px; }
+.introline span { flex: 1; }
+.introline button, .introfail button { margin: 0; }
 @media (max-width: 640px) { .hero { grid-template-columns: 1fr; } }
 .line { display: flex; gap: 10px; align-items: flex-start; }
 .line p { flex: 1; margin: 0; }

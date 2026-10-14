@@ -11,7 +11,7 @@ import { applySiteRules } from '../../../core/background/sites.js';
 import { sync, fetchDataFile } from '../../../core/background/sync.js';
 import { PLAN_ACTIONS, pendingPlan, entryFromRecord } from '../lib/plan.js';
 import { loadBundled, effective, contextDocsOf } from './config.js';
-import { dropDoneNotes, keepResults, getMemory, runView } from './parent.js';
+import { dropDoneNotes, keepResults, getMemory, runView, sentFrom } from './parent.js';
 import { uploadTranscripts } from './transcripts.js';
 import { syncAudio, loadCharacter, syncAvatar } from './media.js';
 import { syncVoice } from './voice.js';
@@ -177,7 +177,16 @@ async function pullPlan(loc, token, acct) {
 export async function releaseNotes(ids = null) {
   // A recorded note the server is still writing down waits (background/voice.js).
   // What the parent did not tick (This screen, App data: ev.offer) stays on the tablet.
-  await withState((s) => { for (const e of s.outbox) if ((!ids || ids.includes(e.eventId)) && !e.voice) { delete e.held; delete e.offer; } });
+  // The sent note keeps where it came from and what went with it, for its Details in 🔔 (sentFrom).
+  await withState((s) => {
+    for (const e of s.outbox) {
+      if ((!ids || ids.includes(e.eventId)) && !e.voice && e.held) {
+        const q = s.notes?.questions?.find((x) => x.id === e.eventId);
+        if (q) Object.assign(q, sentFrom(e));
+        delete e.held; delete e.offer;
+      }
+    }
+  });
 }
 
 // Parent mode → Update. Sends what is waiting (notes, what he watched), then writes requests/run.json;

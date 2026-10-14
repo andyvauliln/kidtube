@@ -122,12 +122,18 @@ function checksOf(n) {
   ];
 }
 
+// Where a note came from (the parent's note, 2026-10-14): the screen it was made on, its page, the part pressed.
+// n.from, n.page, n.pressed: the app's (KidTube: apps/kidtube/background/parent.js sentFrom).
+const fromRows = (n) => [['Made on', n.from ?? ''], ['Page', n.page ?? ''], ['Pressed', n.pressed ?? '']];
+const WITH = { screen: 'This screen', app: 'App data' };
+const sentWith = (keys) => (keys ?? []).map((k) => WITH[k] ?? k).join(', ') || 'only the words';
+
 // A note not sent yet: all of it, what goes with it, and what happens when it is sent.
 function noteView(n, about, extra = []) {
-  const goes = checksOf(n).filter((c) => c.on).map((c) => c.label.replace(/^\S+ /, ''));
+  const goes = checksOf(n).filter((c) => c.on).map((c) => c.key).filter((k) => WITH[k]);
   return { sections: [
     { title: n.ask ? 'Your question' : 'Your note', text: n.text || '(no words yet)' },
-    { title: 'About', rows: [['About', about], ['Pressed', n.pressed ?? ''], ['Made', n.at, 'time'], ['Sent with it', goes.join(', ') || 'only the words'], ...extra] },
+    { title: 'About', rows: [['About', about], ...fromRows(n), ['Made', n.at, 'time'], ['Sent with it', sentWith(goes)], ...extra] },
     { title: 'What happens', steps: [n.ask ? 'Tap Send: the AI answers here, under the question.' : 'Tap Send (or ↻ Update): the AI works on it in its next run.',
       'The row then says Waiting, and Done or Answered when the AI is ready. Tap it again to read what the AI did.'] },
   ] };
@@ -162,7 +168,7 @@ function questionRow(q, run) {
     { title: ask ? 'Your question' : 'Your note', text: q.text },
     ...(q.answer ? [{ title: ask ? 'The answer' : 'What was done', text: q.answer }] : []),
     ...(said && q.state !== 'waiting' ? [{ title: 'What the AI said about its run', text: said }] : []),
-    { title: 'About', rows: [['About', q.about ?? ''], ['Sent', q.at, 'time'], ['Answered', q.answeredAt ?? '', 'time'],
+    { title: 'About', rows: [['About', q.about ?? ''], ...fromRows(q), ['Sent with it', q.sentWith ? sentWith(q.sentWith) : ''], ['Sent', q.at, 'time'], ['Answered', q.answeredAt ?? '', 'time'],
       ['State', { answered: ask ? 'answered' : 'done', none: ask ? 'worked on, no answer' : 'worked on', waiting: 'waiting for the AI' }[q.state] ?? q.state]] },
     ...(q.state === 'waiting' ? [] : [{ title: 'Check it', steps: ask ? ['Read the answer. If it is not what you asked, make a new note that says what is missing.']
       : ['Open the run’s report below: “What it said” and “What changed” show what it did about this note.', 'Check it on the screen it is about. If it is not right, make a new note on that screen.'] }]),

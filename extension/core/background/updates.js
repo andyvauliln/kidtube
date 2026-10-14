@@ -92,6 +92,15 @@ export function phaseOf(st, installType, now = Date.now()) {
   if (st?.askedAt && now - st.since >= MANUAL_AFTER_MS) return { phase: 'manual', why: st.status ?? 'error' };
   return { phase: 'waiting', why: st?.status ?? null };
 }
+// What each release changed and what to test (latest.json changes, written by build/ship.mjs; the parent's note,
+// 2026-10-14): coming, the releases above this one (newest first); here, the one this tablet runs (null: none written).
+const line = (x) => typeof x === 'string' && x.trim() ? [x.trim().slice(0, 400)] : [];
+const entryOf = (c) => ({ version: c.version, at: typeof c.at === 'string' ? c.at : '',
+  changed: (Array.isArray(c.changed) ? c.changed : []).flatMap(line).slice(0, 12), test: (Array.isArray(c.test) ? c.test : []).flatMap(line).slice(0, 12) });
+export function changesOf(latest, version) {
+  const all = (Array.isArray(latest?.changes) ? latest.changes : []).filter((c) => typeof c?.version === 'string').map(entryOf);
+  return { coming: all.filter((c) => cmpVersion(c.version, version) > 0), here: all.find((c) => c.version === version) ?? null };
+}
 export async function appVersion({ fresh = false } = {}) {
   if (!fresh && versionKept && Date.now() - versionAt < VERSION_MS && versionKept.installed === installed()) return versionKept;
   const installType = await installTypeOf();
@@ -105,7 +114,7 @@ export async function appVersion({ fresh = false } = {}) {
   const st = quetta ? (await within(autoUpdate(latest), UPDATE_WAIT_MS, null)) ?? (await loadState(latest.version)) : null;
   const answer = { ok: true, installed: installed(), target: TARGET, kind, installType, latest: latest?.version ?? null, newer,
     ...(newer && kind === 'quetta' ? { ...phaseOf(st, installType), status: st?.status ?? null, askedAt: st?.askedAt ?? null } : {}),
-    updating: st?.status ?? null, download: latest?.zipUrl ?? null, installPage: INSTALL_PAGE };
+    updating: st?.status ?? null, download: latest?.zipUrl ?? null, installPage: INSTALL_PAGE, changes: changesOf(latest, installed()) };
   // A latest.json that did not come back is not kept: the next header asks again.
   if (latest) [versionKept, versionAt] = [answer, Date.now()];
   return answer;

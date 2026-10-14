@@ -627,6 +627,7 @@
     function allRows(h) {
       const rows = [...(h.inbox ?? [])];
       if (ver?.newer) rows.unshift(updateRow(ver));
+      else if (ver?.changes?.here) rows.push(installedRow(ver));
       const note = ui.github ? '' : ui.note || h.error;
       if (note) {
         const tone = ui.note ? ui.noteKind : 'err';
@@ -705,13 +706,28 @@
       row.addEventListener('pointerup', end);
       row.addEventListener('pointercancel', end);
     }
+    // What a release changed and what to test (latest.json changes, build/ship.mjs; the parent's note, 2026-10-14):
+    // sections for a row's Details, one release or several (the newest first).
+    function changeSections(list) {
+      const many = list.length > 1;
+      const tag = (c, s) => (many ? `${c.version}: ${s}` : s);
+      const changed = list.flatMap((c) => c.changed.map((s) => tag(c, s)));
+      const test = list.flatMap((c) => c.test.map((s) => tag(c, s)));
+      return [
+        { title: many ? 'What changed' : `What changed in ${list[0].version}`, list: changed.length ? changed : ['The release did not say.'] },
+        ...(test.length ? [{ title: 'What to test', steps: test }] : []),
+      ];
+    }
     // The App update row: where the new version is, in plain words, and what to do.
     function updateRow(v) {
       const how = v.kind === 'quetta' ? ['Tap Install now. The browser downloads it and Custom Apps restarts by itself.', 'Not installed in a few minutes: tap By hand and install the .crx from the install page. Your settings stay.']
         : [NEWER[v.kind]?.(v.latest) ?? 'Install it from the install page.'];
+      const coming = v.changes?.coming ?? [];
       const base = { id: 'update', type: 'update', title: `Custom Apps ${v.latest} is out. This browser has ${v.installed}.`,
-        view: { sections: [{ title: 'Versions', rows: [['This browser', v.installed], ['New', v.latest], ['Installed as', v.kind ?? ''], ['Asked the browser', v.askedAt ?? '', 'time'],
-          ['The browser said', v.status ?? '']] }, { title: 'How to get it', steps: [...how, 'Then check what the new version changed: open the run report of the note or problem it was for.'] }] } };
+        view: { sections: [...(coming.length ? changeSections(coming) : []),
+          { title: 'Versions', rows: [['This browser', v.installed], ['New', v.latest], ['Installed as', v.kind ?? ''], ['Asked the browser', v.askedAt ?? '', 'time'],
+          ['The browser said', v.status ?? '']] }, { title: 'How to get it', steps: [...how, coming.length ? 'Then test what the list above says, on the screens it names.'
+            : 'Then check what the new version changed: open the run report of the note or problem it was for.'] }] } };
       if (v.kind !== 'quetta') return { ...base, status: { text: 'New', tone: 'wait' }, detail: NEWER[v.kind]?.(v.latest) ?? '', actions: [{ do: 'update', label: 'Get it' }] };
       const asked = v.askedAt ? ` (asked at ${new Date(v.askedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})` : '';
       const said = { throttled: 'it wants to wait', no_update: 'it does not see the new version yet', error: 'it could not check' }[v.status];
@@ -722,6 +738,14 @@
           : `The browser did not install it${said ? ` (${said})` : ''}${asked}. Install it from the install page: download the .crx and open it in Quetta’s Extensions. Your settings stay.` };
       return { ...base, status: { text: 'Waiting', tone: 'wait' }, actions: [{ do: 'update', label: 'Install now' }, { do: 'update.manual', label: 'By hand' }],
         detail: `${said ? `The browser was asked${asked}: ${said}. It looks again by itself.` : 'Tap Install now: the browser downloads it and Custom Apps restarts.'}` };
+    }
+    // The version this browser runs, when its release said what changed: a row until Remove (or a swipe), with what to test.
+    function installedRow(v) {
+      const c = v.changes.here;
+      return { id: `installed:${c.version}`, type: 'update', status: { text: 'Installed', tone: 'ok' }, done: true, count: null,
+        title: `Custom Apps ${c.version} is installed: what changed${c.test.length ? ' and what to test' : ''}`,
+        detail: c.changed[0] ?? '', version: c.version, at: c.at ? `${c.at}T00:00:00` : null,
+        view: { sections: [...changeSections([c]), { title: 'Then', steps: ['Test it on the screens it names.', 'Not right: make a note on that screen (🎤 or a long press): the AI gets it.'] }] } };
     }
     const waiting = (rows) => rows.filter((r) => !r.done && r.type !== 'system').length;
 

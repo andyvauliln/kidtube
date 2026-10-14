@@ -67,7 +67,7 @@ test('ship: two writers at the same time → both changes on main, two version n
   const a = w.clone('a'), b = w.clone('b');
   w.change(a, 'from-a.js', '0.1.1');   // each took a next number on its own: the second one's rebase stops on the
   w.change(b, 'from-b.js', '0.1.5');   // version line, and ship takes the next free number
-  const [ra, rb] = await Promise.all([w.ship(a, '-m', 'change A'), w.ship(b, '-m', 'change B')]);
+  const [ra, rb] = await Promise.all([w.ship(a, '-m', 'change A', '-t', 'try A'), w.ship(b, '-m', 'change B')]);
   assert.equal(ra.code, 0, ra.out);
   assert.equal(rb.code, 0, rb.out);
   w.git(a, 'fetch', '--quiet', 'origin');
@@ -82,6 +82,12 @@ test('ship: two writers at the same time → both changes on main, two version n
   // The newest release was made from the code with both changes.
   assert.ok(w.git(a, 'show', `${latest.sourceCommit}:extension/from-a.js`));
   assert.ok(w.git(a, 'show', `${latest.sourceCommit}:extension/from-b.js`));
+  // What each release changed and what to test (the parent's note, 2026-10-14): newest first, both kept.
+  assert.equal(latest.changes[0].version, latest.version);
+  const a1 = latest.changes.find((c) => c.changed.includes('change A')), b1 = latest.changes.find((c) => c.changed.includes('change B'));
+  assert.deepEqual(a1?.test, ['try A']);
+  assert.deepEqual(b1?.test, []);
+  assert.notEqual(a1.version, b1.version);
   assert.equal(w.verify(a).ok, true);
 });
 

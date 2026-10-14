@@ -1,12 +1,15 @@
 #!/usr/bin/env node
 // One command for every writer of main: a chat session, the fix agent (agent/FIX.md), the notes agent
 // (agent/NOTES.md). Commit your change first, then:
-//   npm run ship -- -m "short summary" [-m "another line"] [--orion] [--no-test] [--key FILE]
+//   npm run ship -- -m "short summary" [-m "another line"] [-t "what to test"] [--orion] [--no-test] [--key FILE]
 // It rebases on origin/main, sets the version (one patch above main's when extension/ changed), runs npm test,
 // pushes the code, and only then makes the Quetta release on top of it (build/pack.mjs), commits site/ and pushes.
 // A push refused there: it resets to origin/main (the code is on main already) and makes the release again with
 // the next number. Nobody solves a site/ file by hand. Orion only with --orion (when the parent asks): each -m is
 // then one line of site/orion/CHANGES.md, in words the parent understands.
+// What changed (each -m) and what to test (each -t), in words the parent understands, go into the release's latest.json
+// (changes: the last CHANGES_KEPT releases, newest first): the app shows them in the update's Details and after the
+// update (the parent's note, 2026-10-14: "I wanna know what is fixed there… and what to test").
 //   node build/ship.mjs verify       is the newest release on origin/main made from main's code? exit 1 if not
 //   node build/ship.mjs pre-push     the git hook (.githooks/pre-push): refuses a push to main that breaks the rules
 // Writers take turns: ship and verify hold a lock (flock on push.lock in the server's state folder) from the fetch
@@ -45,6 +48,17 @@ const versionAt = (ref) => json(show(ref, 'extension/manifest.json'))?.version ?
 const releaseAt = (ref) => json(show(ref, 'site/latest.json'));
 const next = (v) => v.split('.').map(Number).map((n, i) => (i === 2 ? n + 1 : n)).join('.');
 const say = (s) => console.log(`ship: ${s}`);
+
+// The release's own entry first, then the ones before it (another version's, from the previous latest.json).
+const CHANGES_KEPT = 15;
+export function withChanges(latest, before, entry) {
+  const old = (Array.isArray(before) ? before : []).filter((c) => c?.version && c.version !== entry.version);
+  return { ...latest, changes: [entry, ...old].slice(0, CHANGES_KEPT) };
+}
+function writeChanges(path, before, entry) {
+  const latest = json(readFileSync(path, 'utf8'));
+  if (latest) writeFileSync(path, JSON.stringify(withChanges(latest, before, entry), null, 2) + '\n');
+}
 class Stop extends Error {}
 const stop = (s) => { throw new Stop(s); };
 
@@ -145,6 +159,7 @@ function ship(o) {
   if (!tryGit('config', 'core.hooksPath')) git('config', 'core.hooksPath', '.githooks');
   const key = o.key ?? process.env.KIDTUBE_KEY ?? join(homedir(), 'kidtube-key.pem');
   const lines = [].concat(o.message ?? []).map((l) => l.trim()).filter(Boolean);
+  const tests = [].concat(o.test ?? []).map((l) => l.trim()).filter(Boolean);
   let summary = lines.length ? lines.join('; ') : undefined;
   let trailer = '';
   for (let attempt = 1; attempt <= 4; attempt++) {
@@ -185,15 +200,19 @@ function ship(o) {
     const orion = o.orion && json(show('HEAD', 'site/orion/latest.json'))?.version !== version;
     if (!release && !orion) { say(`no release needed: ${rel?.version} has main's code${o.orion ? ', Orion too' : ''}`); return; }
     const made = [];
+    const entry = { version, at: new Date().toISOString().slice(0, 10), changed: lines, test: tests };
     if (release) {
       run(process.execPath, ['build/pack.mjs', 'extension', '--key', key, '--out', 'site']);
+      writeChanges(join(ROOT, 'site/latest.json'), rel?.changes, entry);
       git('add', '-A', 'site');
       commit(`quetta ${version}: release`, trailer);
       made.push('Quetta');
     }
     if (orion) {
       run(process.execPath, ['build/orion-check.mjs']);
+      const orionBefore = json(show('HEAD', 'site/orion/latest.json'))?.changes;
       run(process.execPath, ['build/build-orion.mjs']);
+      writeChanges(join(ROOT, 'site/orion/latest.json'), orionBefore, entry);
       // Each -m is one line for the parent in CHANGES.md.
       const changes = join(ROOT, 'site/orion/CHANGES.md');
       const text = existsSync(changes) ? readFileSync(changes, 'utf8') : '# Orion changes\n';
@@ -242,14 +261,14 @@ function prePush() {
 
 if (process.argv[1] && resolve(process.argv[1]) === ME) {
   const { values, positionals } = parseArgs({ allowPositionals: true, options: {
-    message: { type: 'string', short: 'm', multiple: true }, orion: { type: 'boolean', default: false }, 'no-test': { type: 'boolean', default: false },
+    message: { type: 'string', short: 'm', multiple: true }, test: { type: 'string', short: 't', multiple: true }, orion: { type: 'boolean', default: false }, 'no-test': { type: 'boolean', default: false },
     key: { type: 'string' }, 'no-fetch': { type: 'boolean', default: false } } });
   const cmd = positionals[0] ?? 'ship';
   try {
     if (cmd === 'pre-push') process.exit(prePush());
-    if (cmd !== 'ship' && cmd !== 'verify') { console.error('usage: ship.mjs [-m summary] [--orion] [--no-test] [--key FILE] | verify | pre-push'); process.exit(2); }
+    if (cmd !== 'ship' && cmd !== 'verify') { console.error('usage: ship.mjs [-m summary] [-t what to test] [--orion] [--no-test] [--key FILE] | verify | pre-push'); process.exit(2); }
     locked(process.argv.slice(2));
-    const o = { message: values.message, orion: values.orion, noTest: values['no-test'], key: values.key, noFetch: values['no-fetch'] };
+    const o = { message: values.message, test: values.test, orion: values.orion, noTest: values['no-test'], key: values.key, noFetch: values['no-fetch'] };
     process.exit(cmd === 'verify' ? verify(o) : (ship(o), 0));
   } catch (e) {
     if (!(e instanceof Stop)) throw e;

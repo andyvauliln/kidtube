@@ -1,9 +1,10 @@
 // Parent mode: today's list, the planned videos and what he watched, each video's details and its quiz.
 // Changes go to the background (background/parent.js planChange), which applies them on this tablet at once and logs them for the helper.
 import { ask } from '../../../core/lib/ask.js';
+import { TARGET } from '../../../core/lib/target.js';
 import { APPS } from '../../registry.js';
 import { say, listen, recordedUrl } from '../lib/voice.js';
-import { el, btn, toast, runNow, notesDock, promptNotesBox, hooks, upDown, slideIn, holdPage, editOnDoubleTap, isFull, setFull } from './kit.js';
+import { el, btn, toast, runNow, notesDock, promptNotesBox, hooks, upDown, slideIn, holdPage, editOnDoubleTap, isFull, setFull, introPoints, INTRO_SECONDS } from './kit.js';
 import { mountSettings, settingsBox } from './settings.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { renderMarkdown, promptSteps } from './markdown.js';
@@ -189,6 +190,30 @@ document.addEventListener('touchend', (e) => {
   if (Math.abs(dx) < 70 || Math.abs(dy) > Math.abs(dx) * 0.6) return;
   slide(dx < 0 ? 1 : -1);
 }, { passive: true });
+// A finger moved straight up or down on a page longer than the screen: the page moves (the parent's note, 2026-10-14:
+// "it's also not scrollable there", seen in Full size on a video's Details). Not seen on the server: a long move that
+// left the page where it was, with room to go that way, is reported with the page and the mode.
+let drag = null;
+document.addEventListener('touchstart', (e) => {
+  const t = e.touches[0];
+  drag = e.touches.length === 1 && !e.target.closest?.('textarea, input, select, pre, .tabs, iframe, .notecard, .md') ? { x: t.clientX, y: t.clientY, sy: scrollY, hash: location.hash } : null;
+}, { passive: true });
+document.addEventListener('touchend', (e) => {
+  const s = drag;
+  drag = null;
+  if (!s || !data?.parentMode) return;
+  const t = e.changedTouches[0], dy = t.clientY - s.y;
+  if (Math.abs(dy) < 120 || Math.abs(t.clientX - s.x) > Math.abs(dy) / 2) return;
+  const max = document.scrollingElement.scrollHeight - innerHeight;
+  const room = dy < 0 ? max - s.sy : s.sy;
+  W?.check({ id: 'parent.fingerScroll', area: 'parent', expect: 'A finger moved up or down moves a page longer than the screen',
+    code: ['apps/kidtube/parent/parent.js (fingerScroll)', 'apps/kidtube/parent/kit.js upDown', 'apps/kidtube/parent/parent.css html.updown'] }, (c) => {
+    if (location.hash !== s.hash) return c.skip('the swipe opened another page');
+    c.ok('the page moved', room < 40 || Math.abs(scrollY - s.sy) > 2,
+      `stayed at ${Math.round(s.sy)} of ${Math.round(max)} px (${isFull() ? 'Full size' : 'normal'}, ${location.hash || '#today'}, overflow ${getComputedStyle(document.documentElement).overflowY}/${getComputedStyle(document.body).overflowY})`, 'it scrolls');
+  }, 400);
+}, { passive: true });
+
 function slide(dir) {
   const r = route();
   if (r.video) { if (dir < 0) { animate(-1); location.hash = lastTab; } return; }
@@ -276,13 +301,19 @@ function actionsFor(v, where, { onDone = refresh } = {}) {
   return a;
 }
 
+// A tap anywhere on a row opens its Details, not only on its picture or title (the parent's note, 2026-10-14: "I cannot
+// press on it and go to details"); its buttons do their own thing.
 function row(v, where) {
   const r = el('div', `row${where === 'today' && v.watchedAt ? ' done' : ''}`);
   const t = thumbOf(v);
-  t.addEventListener('click', () => open(v));
+  r.addEventListener('click', (e) => {
+    const b = e.target.closest?.('button');
+    if (b && b !== t) return;
+    open(v);
+    checkOpened(v.videoId);
+  });
   const info = el('div');
   const title = el('div', 'title', v.title);
-  title.addEventListener('click', () => open(v));
   const meta = [v.channelTitle, mins(v.durationSeconds), where === 'history' && v.at ? `at ${when(v.at)}` : '',
     where === 'today' && v.watchedAt ? `watched ${new Date(v.watchedAt).toLocaleString([], { weekday: 'short', hour: '2-digit', minute: '2-digit' })}` : ''].filter(Boolean).join(' · ');
   info.append(title, el('div', 'meta', meta), chipsOf(v, where));
@@ -295,6 +326,13 @@ function row(v, where) {
   info.append(actionsFor(v, where));
   r.append(t, info);
   return r;
+}
+function checkOpened(videoId) {
+  W?.check({ id: 'parent.rowOpens', area: 'parent', expect: 'A tap on a video’s row opens its Details page',
+    code: ['apps/kidtube/parent/parent.js row', 'apps/kidtube/parent/parent.js renderDetail'] }, (t) => {
+    t.eq('the page', `#v=${videoId}`, location.hash);
+    t.ok('its Details on the screen', !!view.querySelector('.detail .hero'), 'no Details', 'the picture and its buttons');
+  }, 3000);
 }
 
 function syncLine() {
@@ -658,15 +696,37 @@ function renderSettings() {
 
 // --- one video ---------------------------------------------------------------------------------------
 
-let detailFor = null;
+let detailFor = null, detailStep = 0;
 async function renderDetail(videoId) {
   detailFor = videoId;
+  const step = detailStep;
+  detailStep = 0;
   const parts = await detailParts(videoId);
   if (detailFor !== videoId) return;
   scrollTo(0, 0);
   if (!parts) { view.replaceChildren(el('p', 'err', 'Could not load this video.')); return; }
-  view.replaceChildren(btn('‹ Back', () => { location.hash = lastTab; }, 'back ghost'), ...parts);
+  const box = el('div', 'detail');
+  box.append(...parts);
+  const top = [btn('‹ Back', () => { location.hash = lastTab; }, 'back ghost')];
+  // Full size: the video's place in the list it was opened from, and the swipe to the next one.
+  const vs = listOf(lastTab), at = vs.findIndex((v) => v.videoId === videoId);
+  if (isFull() && LISTS.includes(lastTab) && at >= 0) {
+    top.push(el('span', 'muted', ` ${at + 1} of ${vs.length} · ${at < vs.length - 1 ? 'swipe up at the end for the next' : 'the last one'}`));
+  }
+  view.replaceChildren(...top, box);
+  if (step) slideIn(box, step);
 }
+// Full size on a video's Details page (the parent's note, 2026-10-14: "I cannot swipe in the full size" there): the
+// page scrolls as always; from its end a swipe up opens the next video of the list it came from, from its top a swipe
+// down the one before (as on Today, Planned and History in Full size).
+const detailList = () => (LISTS.includes(lastTab) ? listOf(lastTab) : []);
+upDown(view, { on: () => isFull() && !!route().video && detailList().some((v) => v.videoId === route().video), box: () => view.querySelector('.detail'), go: (step) => {
+  const vs = detailList(), i = vs.findIndex((v) => v.videoId === route().video) + step;
+  if (i < 0 || i >= vs.length) return;
+  listAt[lastTab] = i;
+  detailStep = step;
+  location.hash = `v=${vs[i].videoId}`;
+} });
 
 // A video's page without ‹ Back: its picture, buttons and boxes. Also Full size on Today, Planned and History
 // (renderOne). null: the background did not answer.
@@ -687,12 +747,14 @@ async function detailParts(videoId) {
   if (['today', 'planned', 'history'].includes(where)) side.append(actionsFor(d, where, { onDone: again }));
   const more = el('div', 'actions');
   if (d.where === 'removed') more.append(btn('Put back in the plan', async () => { if (await plan('restore', videoId)) { toast('Back in the plan.'); await again(); } }));
-  // ▶ Play intro (the parent's note, 2026-10-14; today's list for now): YouTube plays 3 s from several points of the
-  // video, one after another (apps/kidtube/content/youtube.js playIntro).
-  if (d.where === 'today') more.append(btn('▶ Play intro', () => playIntro(videoId)));
+  // ▶ Play intro (the parent's notes, 2026-10-14; today's list for now): 3 s from several points of the video, one
+  // after another, where the picture is (introHere below); YouTube's page only when YouTube refuses to play it here.
+  const pic = el('div', 'heropic');
+  pic.append(t);
+  if (d.where === 'today') more.append(btn('▶ Play intro', () => introHere(d, pic)));
   more.append(btn('▶ Watch it yourself', () => ask({ type: 'watchHere', videoId }), 'primary'));
   side.append(more);
-  hero.append(t, side);
+  hero.append(pic, side);
 
   const sections = [];
   const section = (title, ...body) => { const b = el('div', 'box'); b.append(el('h3', '', title), ...body); sections.push(b); return b; };
@@ -726,6 +788,109 @@ async function detailParts(videoId) {
   return [hero, ...sections];
 }
 
+// ▶ Play intro where the picture is (the parent's note, 2026-10-14: it went to YouTube's page, without the app and its
+// header). YouTube's embedded player takes the picture's place and plays INTRO_CLIPS clips of INTRO_SECONDS (kit.js
+// introPoints), driven by messages to the player (enablejsapi). YouTube refuses a player on an extension page that
+// sends no web page as referrer (error 153), so a session rule gives the player's page request from this extension
+// (initiatorDomains: only its own pages) YouTube's own address. A video YouTube still refuses (an error, or no answer
+// in PLAYER_WAIT_MS): the picture comes back with the reason and ▶ Intro on YouTube (the old way, playIntro).
+const PLAYER_RULE = 9101, PLAYER_WAIT_MS = 12000;
+async function playerReferrer() {
+  if (TARGET === 'orion') return;   // no rules there: the player may refuse, and the fallback says so
+  try {
+    await chrome.declarativeNetRequest?.updateSessionRules?.({ removeRuleIds: [PLAYER_RULE], addRules: [{ id: PLAYER_RULE, priority: 1,
+      action: { type: 'modifyHeaders', requestHeaders: [{ header: 'referer', operation: 'set', value: 'https://www.youtube.com/' }] },
+      condition: { urlFilter: '||youtube.com/embed/', resourceTypes: ['sub_frame'], initiatorDomains: [chrome.runtime.id] } }] });
+  } catch {}
+}
+async function introHere(d, pic) {
+  if (pic.querySelector('iframe')) return;
+  const thumb = pic.querySelector('.thumb');
+  pic.querySelector('.introfail')?.remove();
+  await playerReferrer();
+  const frame = el('iframe', 'player');
+  frame.src = `https://www.youtube.com/embed/${d.videoId}?enablejsapi=1&autoplay=1&playsinline=1&rel=0&modestbranding=1`;
+  frame.allow = 'autoplay; encrypted-media; fullscreen';
+  frame.allowFullscreen = true;
+  const line = el('div', 'introline', 'Intro: getting the video…');
+  thumb.hidden = true;
+  pic.append(frame, line);
+  const st = { heard: false, at: null, i: 0, played: 0, time: 0, state: null, error: null, started: Date.now() };
+  const tell = (func, args = []) => frame.contentWindow?.postMessage(JSON.stringify({ event: 'command', func, args, id: 1, channel: 'widget' }), '*');
+  const say = (text, ...buttons) => line.replaceChildren(el('span', '', text), ...buttons);
+  const close = btn('✕', () => end(), 'ghost');
+  close.title = 'Stop the intro: the picture comes back';
+  const onMsg = (e) => {
+    if (e.source !== frame.contentWindow) return;
+    let m;
+    try { m = typeof e.data === 'string' ? JSON.parse(e.data) : e.data; } catch { return; }
+    st.heard = true;
+    if (m?.event === 'onError') st.error = m.info;
+    if (m?.info && typeof m.info === 'object') {
+      if (typeof m.info.currentTime === 'number') st.time = m.info.currentTime;
+      if (typeof m.info.playerState === 'number') st.state = m.info.playerState;
+      if (m.info.duration > 0) st.duration = m.info.duration;
+    }
+  };
+  addEventListener('message', onMsg);
+  const timer = setInterval(() => {
+    if (!frame.isConnected) return end(true);
+    if (!st.heard) frame.contentWindow?.postMessage(JSON.stringify({ event: 'listening', id: 1, channel: 'widget' }), '*');
+    if (st.error != null || (!st.heard && Date.now() - st.started > PLAYER_WAIT_MS)) return fail(st.error);
+    if (!st.heard) return;
+    if (!st.at) {
+      const length = st.duration || d.durationSeconds;
+      if (!(length > 0)) return;
+      st.at = introPoints(length);
+      tell('seekTo', [st.at[0], true]); tell('playVideo');
+      return say(`Intro: clip 1 of ${st.at.length}`, close);
+    }
+    if (st.state !== 1) {   // not playing: a browser that waits for a tap on ▶
+      if (Date.now() - st.started > 6000 && st.i === 0 && !st.played) say('Tap ▶ on the video: the intro starts.', close);
+      return;
+    }
+    // A clip counts once the player is inside it; before that (it started late, after a tap) it is asked for again.
+    const from = st.at[st.i];
+    if (st.time < from + INTRO_SECONDS && st.time >= from - 1) { st.inClip = true; return; }
+    if (!st.inClip) { if (Date.now() - (st.askedAt ?? 0) > 1500) { st.askedAt = Date.now(); tell('seekTo', [from, true]); } return; }
+    if (st.time >= from + INTRO_SECONDS) st.played++;
+    st.inClip = false;
+    st.i++;
+    if (st.i >= st.at.length) {
+      tell('pauseVideo');
+      clearInterval(timer);
+      const all = btn('▶ Watch it all', () => { tell('seekTo', [0, true]); tell('playVideo'); say('Playing from the start.', close); });
+      return say(`That was the intro: ${st.at.length} clips of ${INTRO_SECONDS} s.`, all, close);
+    }
+    tell('seekTo', [st.at[st.i], true]);
+    say(`Intro: clip ${st.i + 1} of ${st.at.length}`, close);
+  }, 250);
+  function end(gone = false) {
+    clearInterval(timer);
+    removeEventListener('message', onMsg);
+    if (gone) return;
+    frame.remove(); line.remove(); thumb.hidden = false;
+  }
+  function fail(code) {
+    end();
+    const why = code == null ? 'YouTube’s player did not answer here' : `YouTube does not let this video play inside the app (error ${code})`;
+    const box = el('div', 'introfail');
+    box.append(el('span', 'muted', `${why}. `), btn('▶ Intro on YouTube', () => playIntro(d.videoId)));
+    pic.append(box);
+  }
+  W?.check({ id: 'parent.introHere', area: 'parent', expect: '▶ Play intro plays 3 s clips of the video where its picture is, or says why YouTube refused',
+    code: ['apps/kidtube/parent/parent.js introHere', 'apps/kidtube/parent/kit.js introPoints'] }, (t) => {
+    if (!pic.isConnected) return t.skip('left the page');
+    if (pic.querySelector('.introfail')) return t.ok('YouTube refused: the reason and ▶ Intro on YouTube show', true, '', 'the reason');
+    if (st.state !== 1 && !st.played && st.i === 0 && st.at) return t.skip('waiting for a tap on ▶');
+    t.ok('the player answered', st.heard, 'no answer from the player', 'its messages');
+    t.ok('the clips started', !!st.at, 'no video length', 'the clips’ starts');
+    t.ok('a clip played', st.played > 0 || st.i > 0 || st.time > (st.at?.[0] ?? 0), `at ${Math.round(st.time)} s`, 'past the first clip’s start');
+  }, 20000);
+}
+
+// The old way, when YouTube refuses to play it inside the app: the video's page on YouTube plays the clips
+// (apps/kidtube/content/youtube.js playIntro).
 async function playIntro(videoId) {
   const r = await ask({ type: 'watchHere', videoId, intro: true });
   if (!r?.ok) return toast('Could not open the video. Is parent mode still on?');

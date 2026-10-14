@@ -74,6 +74,9 @@ section 9):
    (`quetta <version>: release`) and pushes that. A push refused in between is handled by `ship`.
 3. It stops when the rebase needs you (two writers changed the same lines): solve it by keeping both changes,
    `git rebase --continue`, then run step 2 again. It also stops when `npm test` fails: fix it, commit, step 2 again.
+   Say it for the parent: one `-m` per change and one `-t "<what to test>"` per thing to check, in plain words
+   (`-m "A tap on a row opens its Details" -t "Today: tap a row's words: its Details opens"`). The tablet shows them in
+   the update's Details and after the update ("what changed", "what to test").
 4. The last line says `ship: released <version>`. That is the version for your result. A change only outside
    `extension/` (the helper, a test) gets no release: `ship` only pushes it.
 

@@ -99,6 +99,14 @@ export function setFull(on, tapped = false) {
   globalThis.dispatchEvent?.(new Event('kidtube-fullsize'));
 }
 
+// ▶ Play intro (parent.js introHere; the same on YouTube's page: content/youtube.js): INTRO_CLIPS clips of
+// INTRO_SECONDS, their starts in the middle of equal parts of the video, fewer for a short one (at least 2 s apart).
+export const INTRO_CLIPS = 8, INTRO_SECONDS = 3;
+export function introPoints(duration) {
+  const n = Math.max(1, Math.min(INTRO_CLIPS, Math.floor(duration / (INTRO_SECONDS * 2))));
+  return Array.from({ length: n }, (_, i) => Math.max(0, Math.round((duration * (i + 0.5)) / n - INTRO_SECONDS / 2)));
+}
+
 // The box comes in from below (step 1) or from above (-1).
 export function slideIn(node, step) {
   node.classList.remove('from-below', 'from-above');
