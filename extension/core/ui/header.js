@@ -452,7 +452,8 @@
     }
 
     // The switch's site side: the plain site, no app running (YouTube with this header above it, Instagram with its Connect bar).
-    const plainSite = (site) => act('Opening…', { type: 'plainSite', site }).then((r) => { if (r?.ok && r.url && !r.navigated) location.href = r.url; });
+    // offer: the app whose tile opened its site to sign in (the site's page then asks to switch to the app).
+    const plainSite = (site, offer) => act('Opening…', { type: 'plainSite', site, ...(offer ? { offer } : {}) }).then((r) => { if (r?.ok && r.url && !r.navigated) location.href = r.url; });
 
     async function connect() {
       const repo = (ui.repo ?? data.github.repo ?? '').trim();
@@ -1089,24 +1090,25 @@
           const row = el('div', 'apps');
           const tiles = el('div', 'tiles');
           // Each app (ringed: the one that runs; dimmed: no profile yet for the account its site has signed in).
+          // An app on another site than YouTube (Instagram) stays active without a profile (the parent's note,
+          // 2026-10-14): its tile opens the site to sign in, and the site's page then asks to switch to the app.
+          const signIn = (a) => !a.has && a.siteId && a.siteId !== 'youtube';
+          const hint = (a) => (signIn(a) ? `${a.label}: tap it, sign in on ${a.site}, then switch to the app.`
+            : a.who ? `${a.label}: no profile for ${a.who} yet. Press Connect on ${a.site}.` : `${a.label}: sign in on ${a.site}, then press Connect there.`);
           for (const a of h.apps) {
-            const t = el('button', `app${a.active ? ' on' : ''}${a.has ? '' : ' none'}`);
+            const t = el('button', `app${a.active ? ' on' : ''}${a.has || signIn(a) ? '' : ' none'}`);
             t.type = 'button';
-            t.title = a.active ? `${a.label}: its home` : a.has ? `Open ${a.label} for ${a.who}`
-              : a.who ? `${a.label}: no profile for ${a.who} yet. Press Connect on ${a.site}.` : `${a.label}: sign in on ${a.site}, then press Connect there.`;
+            t.title = a.active ? `${a.label}: its home` : a.has ? `Open ${a.label} for ${a.who}` : hint(a);
             t.append(appIcon(a), el('span', 'name', a.label));
             t.disabled = !!busy;
-            t.addEventListener('click', () => openApp(a.id));
+            t.addEventListener('click', () => (signIn(a) ? plainSite(a.siteId, a.id) : openApp(a.id)));
             tiles.append(t);
           }
           row.append(tiles, el('div', 'grow'));
           if (busy) row.append(el('span', 'muted', busy));
           kids.push(row);
           const missing = h.apps.filter((a) => !a.has);
-          if (missing.length) {
-            kids.push(el('p', 'note muted', missing.map((a) => (a.who ? `${a.label}: no profile for ${a.who} yet. Press Connect on ${a.site}.`
-              : `${a.label}: sign in on ${a.site}, then press Connect there.`)).join(' ')));
-          }
+          if (missing.length) kids.push(el('p', 'note muted', missing.map(hint).join(' ')));
         }
         // A row's Details: the row as it is now, or as it was when it went (a done row goes after 3 minutes).
         if (ui.detail) { const now = allRows(h).find((x) => x.id === ui.detail); if (now) ui.detailRow = now; else if (ui.detailRow?.id !== ui.detail) ui.detail = null; }

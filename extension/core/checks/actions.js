@@ -88,11 +88,13 @@ export const CORE_ACTIONS = {
 
   plainSite: {
     area: 'header', expect: 'A site tile: no app runs and the tab shows the plain site (YouTube, Instagram)',
-    code: ['core/background/profiles.js plainSite'],
-    snap: ['shell'],
-    check(t, { answer, after }) {
+    code: ['core/background/profiles.js plainSite', 'core/ui/header.js plainSite'],
+    snap: ['shell', 'siteOffer'],
+    check(t, { msg, answer, after }) {
       if (!answer?.ok) return refused(t, answer);
       t.eq('shell', { on: true, locked: false }, { on: after.shell?.on, locked: !!after.shell?.locked });
+      // An app's tile without a profile: its site's page will ask to switch to the app.
+      if (msg.offer) t.eq('siteOffer.app (the switch offered after sign-in)', msg.offer, after.siteOffer?.app);
     },
     // YouTube moves a tab between its hosts by itself (m. → www.?app=desktop on a desktop-mode tablet): any YouTube is it.
     later: { ms: 4000, check: (t, c) => tabWent(t, c, !c.answer?.navigated ? null : youtube(c.answer.url) ? youtube : c.answer.url) },

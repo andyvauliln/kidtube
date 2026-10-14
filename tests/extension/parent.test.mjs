@@ -675,6 +675,17 @@ test('an Instagram profile is its Instagram username: Connect on Instagram makes
   assert.deepEqual([plain.ok, plain.url], [true, 'https://www.instagram.com/']);
   assert.ok(fake.rules[0].condition.excludedRequestDomains.includes('instagram.com'), 'where the header can act, Instagram is open');
   assert.equal((await send({ type: 'igSite' }, IG_SITE)).open, true, 'Instagram’s pages show the Connect bar');
+  assert.equal((await send({ type: 'igSite' }, IG_SITE)).offer, false, 'the site tile: no offer to switch');
+  // The parent's note (2026-10-14): the Instagram app's tile without a profile opens Instagram with an offer: once
+  // signed in, the page asks to switch to the app. Not now ends it; Connect (below) too.
+  await send({ type: 'plainSite', site: 'instagram', offer: 'instagram' });
+  assert.equal(fake.store.siteOffer.app, 'instagram');
+  assert.equal((await send({ type: 'igSite' }, IG_SITE)).offer, true);
+  await send({ type: 'igOfferDone' }, IG_SITE);
+  assert.equal((await send({ type: 'igSite' }, IG_SITE)).offer, false, 'Not now: asked no more');
+  await send({ type: 'plainSite', site: 'instagram', offer: 'kidtube' });
+  assert.equal(fake.store.siteOffer, undefined, 'only an app of that site');
+  await send({ type: 'plainSite', site: 'instagram', offer: 'instagram' });
 
   // Signed out, or Instagram did not name the account: Connect says why.
   await instagramHas(null);
@@ -698,6 +709,7 @@ test('an Instagram profile is its Instagram username: Connect on Instagram makes
   });
   assert.deepEqual([r.ok, r.created, r.url, r.app], [true, true, IG_HOME, 'instagram']);
   assert.match(r.message, /Connected: @ann\. A new Instagram profile starts now/);
+  assert.equal(fake.store.siteOffer, undefined, 'connected: the offer is done');
   assert.equal(fake.store.account.key, 'instagram:@ann', 'the Instagram username names the profile, not the YouTube email');
   assert.deepEqual([fake.store.account.username, fake.store.account.email, fake.store.account.folder], ['ann', null, 'ann']);
   assert.deepEqual(puts.map(([p]) => p), ['instagram/ann/profile.json'], 'no posts yet: only profile.json');

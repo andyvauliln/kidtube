@@ -100,6 +100,34 @@ test('the notes card has no list: a saved note waits in 🔔, with the screen an
   for (const gone of ['Clear all', 'Apply notes', 'This screen', 'App data', 'Question']) assert.ok(!text(card).includes(gone), gone);
 });
 
+// The parent's note (2026-10-14): ✕ Cancel while a note records: nothing is saved or sent, the card closes.
+test('✕ Cancel while it records: nothing is saved or sent, and the next note works as before', async () => {
+  sent.length = 0;
+  screen = { list: 'today' };
+  fab.click();
+  await tick();
+  rec.phrase('do not keep this');
+  const cancel = button(card, '✕ Cancel');
+  assert.ok(cancel, 'Cancel next to Stop and Stop and send');
+  assert.ok(button(card, '⏹ Stop') && button(card, '➤ Stop and send'));
+  cancel.click();
+  await tick();
+  assert.equal(sent.filter((m) => ['wish', 'inbox'].includes(m.type)).length, 0, 'nothing saved, nothing sent');
+  assert.equal(card.hidden, true, 'the card closes');
+  assert.equal(fab.textContent, '🎤');
+  fab.click();
+  await tick();
+  rec.phrase('keep this one');
+  fab.click();
+  await tick();
+  assert.deepEqual(sent.filter((m) => m.type === 'wish').map((m) => m.text), ['keep this one'], 'the next note is saved');
+});
+
+test('a long press takes 3 seconds (the parent asked for 3 to 4)', async () => {
+  const { PRESS_MS } = await import('../../extension/apps/kidtube/parent/kit.js');
+  assert.equal(PRESS_MS, 3000);
+});
+
 test('the apps header sits above the page’s sticky toolbar, so its menus show; YouTube’s fixed one is left alone', async () => {
   await import('../../extension/core/ui/header.js');
   const page = new FakeEl('div');
@@ -139,7 +167,7 @@ test('the apps header: Custom Apps, Connect on a site’s page, App | site switc
     github: { connected: true, repo: 'me/data' },
     switch: { app: 'kidtube', label: 'KidTube', site: 'youtube', siteLabel: 'YouTube', on: 'app' },
     apps: [{ id: 'kidtube', label: 'KidTube', has: true, active: true, color: '#c00', glyph: 'play', who: 'parent@example.com', site: 'YouTube' },
-      { id: 'instagram', label: 'Instagram', has: false, active: false, color: '#d62976', glyph: 'camera', who: null, site: 'Instagram' }],
+      { id: 'instagram', label: 'Instagram', has: false, active: false, color: '#d62976', glyph: 'camera', who: null, site: 'Instagram', siteId: 'instagram' }],
   });
   answers.connect = () => ({ ok: true, same: true, app: 'kidtube', who: 'parent@example.com', message: 'Already connected: parent@example.com (KidTube). Nothing changed.' });
   const appsRow = (host) => find(host.shadowRoot, (n) => n.className === 'apps');
@@ -176,8 +204,16 @@ test('the apps header: Custom Apps, Connect on a site’s page, App | site switc
   grid.click();
   assert.ok(appsRow(host), 'the apps button opens it');
   assert.deepEqual(all(appsRow(host), (n) => n.className === 'name').map((n) => n.textContent), ['KidTube', 'Instagram'], 'only the apps (no site tiles), with a profile or not');
-  assert.ok(find(appsRow(host), (n) => n.tagName === 'BUTTON' && n.className.includes('none') && text(n).includes('Instagram')), 'Instagram without a profile: dimmed');
-  assert.ok(text(host.shadowRoot).includes('Instagram: sign in on Instagram, then press Connect there.'));
+  // The parent's note (2026-10-14): Instagram without a profile stays active; it opens Instagram to sign in, and
+  // Instagram's page then asks to switch to the app (the offer).
+  const igTile = find(appsRow(host), (n) => n.tagName === 'BUTTON' && text(n).includes('Instagram'));
+  assert.ok(!igTile.className.includes('none'), 'Instagram without a profile: not dimmed');
+  assert.ok(text(host.shadowRoot).includes('Instagram: tap it, sign in on Instagram, then switch to the app.'));
+  sent.length = 0;
+  igTile.click();
+  await tick();
+  assert.deepEqual(sent.filter((m) => m.type === 'plainSite').map((m) => [m.site, m.offer]), [['instagram', 'instagram']], 'Instagram itself, with the offer');
+  assert.ok(!sent.some((m) => m.type === 'openApp'), 'not the app: it has no profile yet');
   const again = new FakeEl('div');   // a reload: a new header
   globalThis.KidTubeHeader.mount(again, { dark: false });
   await tick();

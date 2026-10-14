@@ -143,7 +143,8 @@ export async function runNow() {
 // The 🎤 records a note about what is on the screen (where()): a tab, a video, a context document or the prompt.
 // Pauses don't end it: it records until ⏹. The card shows the recording and has a box to type a note instead.
 // While it records (the parent's note, 2026-10-14): ⏹ Stop keeps the note in 🔔 as before; ➤ Stop and send sends it to
-// the AI as soon as it is written down (sendAfter).
+// the AI as soon as it is written down (sendAfter). ✕ Cancel (the parent's note, 2026-10-14), while it records or is
+// written down: the recording is dropped, nothing is saved or sent.
 // The notes themselves are only in the header's notifications (🔔): Edit, Delete, Send, Send all, and the checkboxes
 // of what goes with each one (core/background/inbox.js): 📄 This screen and ⚙️ App data, kept with every note when it
 // is made (the background's madeWith) and only sent when ticked, and ❓ Question.
@@ -182,6 +183,8 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
   // On a fresh page the card is closed (the notes are in the header's 🔔 list); a recording opens it.
   let expanded = false;
   let sendAfter = false;     // ➤ Stop and send was tapped: the note goes to the AI once saved
+  let cancelled = false;     // ✕ Cancel was tapped: what was recorded is dropped
+  let writeRun = 0;          // the writing down in progress (✕ Cancel moves it on: a late answer is not used)
 
   // more: what else goes with the note (voice: a recording for the server to write down).
   const save = async (text, at = where(), more = {}) => {
@@ -245,9 +248,14 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
       const go = el('button', 'small primary', '➤ Stop and send');
       go.title = 'Stop, and send the note to the AI as soon as it is written down';
       go.addEventListener('click', () => { sendAfter = true; rec?.stop(); });
-      stop.append(keep, go);
+      stop.append(cancelBtn(), keep, go);
       parts.push(stop);
-    } else if (writing) parts.push(el('p', 'recline', 'Writing it down…'));
+    } else if (writing) {
+      parts.push(el('p', 'recline', 'Writing it down…'));
+      const stop = el('div', 'ncacts recacts');
+      stop.append(cancelBtn());
+      parts.push(stop);
+    }
     if (notice) parts.push(el('p', 'muted', notice));
     if (retry && !busy) {
       const again = el('div', 'ncacts');
@@ -260,6 +268,36 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
     row.append(typed, addTyped);
     parts.push(row, el('p', 'hint', 'Saved notes wait in the 🔔 list above: Send, Send all, Edit, Delete, and what goes with each one.'));
     card.replaceChildren(...parts);
+  }
+
+  // ✕ Cancel: the recording stops (or its words are not waited for) and nothing is saved or sent.
+  function cancelBtn() {
+    const b = el('button', 'small', '✕ Cancel');
+    b.title = 'Cancel: nothing is saved or sent';
+    b.addEventListener('click', () => {
+      cancelled = true;
+      sendAfter = false;
+      writeRun++;
+      if (rec) rec.stop(); else dropped();
+    });
+    return b;
+  }
+  async function dropped() {
+    if (clock) { clearInterval(clock); clock = null; }
+    rec = null;
+    writing = false;
+    notice = '';
+    retry = null;
+    pointed = null;
+    expanded = false;
+    card.classList.remove('open');
+    await draw();
+    toast('Cancelled. Nothing was saved or sent.');
+    globalThis.KidTubeWatch?.check({ id: 'notes.cancel', area: 'notes', expect: '✕ Cancel drops the recording: nothing is saved or sent, and the notes card closes',
+      code: ['apps/kidtube/parent/kit.js notesDock cancelBtn', 'apps/kidtube/parent/kit.js notesDock dropped'] }, (t) => {
+      t.ok('nothing records or is written down', !rec && !writing, 'still busy', 'idle');
+      t.ok('the notes card is closed', card.hidden, 'open', 'closed');
+    });
   }
 
 // Why a model could not write a recording down, in the card.
@@ -286,12 +324,15 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
     const keys = await listenKeys();
     retry = null;
     notice = '';
+    const mine = ++writeRun;
     writing = true;
     await draw();
     const fails = [], details = [];
     const heard = await transcribeAnswer(audio, { keys, lang: navigator.language || 'en-US', maxTokens: 6000, freeModels: NOTE_LISTEN_MODELS,
       instruction: 'A parent dictates a note about their child\'s videos and learning, or about the app. Use punctuation.',
       onFail: (r, why, detail) => { fails.push(`${r.model}: ${WHY[why] ?? why}`); details.push(`${r.via}:${r.model}: ${why} ${detail ?? ''}`.trim()); } });
+    // ✕ Cancel while it was written down: the words are not used (dropped() already closed the card).
+    if (mine !== writeRun) return;
     writing = false;
     if (heard) voiceCheck(heard, details, audio, false);
     if (heard?.length) { await save(heard[0], at); return; }
@@ -326,6 +367,7 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
     retry = null;
     expanded = true;
     sendAfter = false;
+    cancelled = false;
     if (!keys.groq && !keys.gemini && !keys.openrouter && !SR) {
       card.classList.add('open');
       notice = 'Dictation isn’t available here: type the note, or use the 🎤 on the keyboard.';
@@ -344,6 +386,7 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
       await draw();
       const audio = await recordAnswer({ seconds: CLOUD_NOTE_MINUTES * 60, stopSignal: ctl.signal, silenceStop: false });
       rec = null;
+      if (cancelled) return dropped();
       if (audio?.length) { stopClock(); await writeDown(audio, at); return; }
       if (audio) {   // no sound reached KidTube at all
         stopClock();
@@ -374,7 +417,8 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
       if (!stopped && !failed && Date.now() < until) { try { r.start(); return; } catch {} }
       rec = null;
       stopClock();
-      if (said) await save(said, at); else await draw();
+      if (cancelled) await dropped();
+      else if (said) await save(said, at); else await draw();
     };
     try { r.start(); await draw(); } catch { rec = null; stopClock(); notice = 'Dictation isn’t available here: type the note.'; await draw(); }
   }
@@ -420,7 +464,7 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
 // it is outlined. When the ring is full (PRESS_MS), the tablet buzzes and the 🎤 records a note about that part. The
 // note keeps where it is (tab › box › the part), its words and its place, and goes with 📄 This screen ticked.
 // Moving the finger (a scroll, a swipe) or lifting it early cancels. Not on a field (a long press there selects text).
-export const PRESS_MS = 800;
+export const PRESS_MS = 3000;   // 3 s: the parent asked for 3 to 4 s (their note, 2026-10-14; it was 0.8 s)
 const PRESS_SHOW_MS = 200;   // a quick tap shows nothing
 const PRESS_MOVE = 12;       // px the finger may move
 // The part a press is about: the nearest thing with a name of its own.

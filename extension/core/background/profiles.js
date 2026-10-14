@@ -218,7 +218,7 @@ export async function headerView(force, host) {
     const who = seenOn(siteOfApp(a), g).name;
     const mine = who ? accounts[keyFor(a.id, who)] : null;
     const there = who ? inRepo(remote.list, a, who) : null;
-    return { id: a.id, label: shortLabel(a), color: a.color, glyph: a.glyph, about: a.about, site: siteOfApp(a).label, who,
+    return { id: a.id, label: shortLabel(a), color: a.color, glyph: a.glyph, about: a.about, site: siteOfApp(a).label, siteId: siteOfApp(a).id, who,
       has: !!(mine || there), active: a.id === running, folder: mine?.folder ?? there?.folder ?? null, parentScreens: !!a.parentPage };
   });
   return out;
@@ -310,6 +310,7 @@ export async function connect(tabId, host) {
   }
   const r = await openApp({ app: app.id, create: true }, tabId, host);
   if (!r.ok) return r;
+  await chrome.storage.local.remove('siteOffer');   // the switch it offered is done
   return { ...r, app: app.id,
     message: r.created ? `Connected: ${seen.name}. A new ${label} profile starts now, empty.` : `Connected: ${seen.name}. Its ${label} profile is loaded.` };
 }
@@ -361,10 +362,14 @@ export async function importSettings(file) {
 
 // The header's site tiles: no app runs; the plain site (YouTube, Instagram) with the header (KidTube's bar on
 // YouTube, the Connect bar on Instagram), where the parent signs in with the site's own buttons and presses Connect.
-export async function plainSite(siteId, tabId, host) {
+// offer: the app whose tile was tapped without a profile yet (the parent's note, 2026-10-14): its site opens, and once
+// an account is signed in there, the site's page asks to switch to the app now (siteOffer, for an hour).
+export async function plainSite(siteId, tabId, host, offer = null) {
   if (!(await headerOpen())) return { ok: false, error: 'Unlock with the PIN first.' };
   const site = SITES[siteId] ?? SITES.youtube;
-  await chrome.storage.local.set({ shell: { on: true, locked: false } });
+  const app = APPS[offer];
+  await chrome.storage.local.set({ shell: { on: true, locked: false },
+    ...(app && siteOfApp(app).id === site.id ? { siteOffer: { app: app.id, at: Date.now() } } : {}) });
   await applySiteRules();
   const url = site.home ?? homeUrl(/(^|\.)youtube\.com$/.test(host) ? host : live.host);   // from an app's own page: the YouTube in use
   if (tabId != null) await chrome.tabs.update(tabId, { url });

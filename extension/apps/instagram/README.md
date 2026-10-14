@@ -58,6 +58,7 @@ Edit profile form, else the account of the `ds_user_id` cookie).
 | --- | --- |
 | The Connect bar on Instagram's pages, the header on the app's screen | Reads the account again, then: the profile already connected → "Already connected"; a known one → loaded; a new one → made, empty. Then the app opens |
 | App in the Connect bar | Opens the profile of the account signed in here; none yet → it says to press Connect |
+| The header's Instagram tile, no profile yet | Opens Instagram (`plainSite` with `offer`, kept an hour in `siteOffer`). The Connect bar says to sign in; signed in, it asks "Switch to the Instagram app now?": Switch to the app is Connect, Not now ends the offer |
 
 On the app's screen, Instagram signed in to another account than the profile's: nothing is read (another account's
 saved posts must not join this list), and a card offers Connect. Signed out: a card says to sign in on Instagram itself.

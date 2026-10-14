@@ -50,11 +50,16 @@ export const HANDLERS = {
   // Instagram's pages: show the Connect bar and the app only where the header could act (not in kid mode, not
   // locked); who: the running Instagram profile's username (its Saved page is the app); rules: how the app reads
   // Instagram's own page (lib/rules.js, with site/remote.json).
+  // offer: the header's Instagram tile was tapped without a profile (core/background/profiles.js plainSite): once
+  // signed in, the page asks to switch to the app now.
   igSite: async () => {
-    const { account } = await chrome.storage.local.get('account');
+    const { account, siteOffer } = await chrome.storage.local.get(['account', 'siteOffer']);
     const who = appOf(account).id === 'instagram' ? account?.username ?? null : null;
-    return { ok: true, open: await headerOpen(), who, rules: readerRules((await remoteData()).instagram?.reader) };
+    const offer = siteOffer?.app === 'instagram' && Date.now() - siteOffer.at < 60 * 60000;
+    return { ok: true, open: await headerOpen(), who, offer, rules: readerRules((await remoteData()).instagram?.reader) };
   },
+  // The page's "Not now": it asks no more.
+  igOfferDone: async () => { await chrome.storage.local.remove('siteOffer'); return { ok: true }; },
 
   // The screen.
   igState: async () => ((await running()) ? withState(view) : NOT_HERE),

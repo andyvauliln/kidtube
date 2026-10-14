@@ -120,7 +120,11 @@
     .msg { max-width: min(320px, calc(100vw - 24px)); background: #262626; color: #fff; padding: 10px 12px; border-radius: 10px; font-weight: 400;
       line-height: 1.35; box-shadow: 0 4px 16px rgba(0,0,0,.3); }
     .msg.err { background: #b3261e; }
-    .msg[hidden] { display: none; }`;
+    .msg[hidden] { display: none; }
+    .offer { display: flex; flex-direction: column; gap: 8px; }
+    .offer[hidden] { display: none; }
+    .offer .row button { height: 32px; padding: 0 14px; border-radius: 16px; border: 0; font: inherit; cursor: pointer; background: #efefef; color: #262626; }
+    .offer .row .yes { background: #0095f6; color: #fff; }`;
   function connectBar() {
     const host = h('span');
     host.style.cssText = 'position:fixed;left:12px;bottom:72px;z-index:2147483647';
@@ -144,7 +148,27 @@
     };
     const go = h('button', { class: 'connect', type: 'button', title: 'Connect the Instagram account signed in here',
       onclick: async () => { go.disabled = true; await connectHere(say); go.disabled = false; } }, 'Connect');
-    root.append(h('style', { text: SWITCH_CSS + BAR_CSS }), h('div', { class: 'bar' }, msg, h('div', { class: 'row' },
+    // The header's Instagram tile without a profile (igSite's offer): first "sign in here", then, signed in, "switch to
+    // the app now?" (the parent's note, 2026-10-14). Switch is Connect: the profile is made or loaded and the app opens.
+    const offerBox = h('div', { class: 'offer msg', role: 'status', hidden: true });
+    host.offer = (me) => {
+      if (!me) { offerBox.hidden = true; return; }
+      if (!me.username) {
+        offerBox.replaceChildren(h('span', { text: 'Sign in to Instagram here. Then KidTube asks to switch to the Instagram app.' }));
+      } else {
+        const yes = h('button', { class: 'yes', type: 'button', onclick: async () => {
+          yes.disabled = true; offerBox.hidden = true; await connectHere(say); yes.disabled = false; } }, 'Switch to the app');
+        const no = h('button', { type: 'button', onclick: () => { offerBox.hidden = true; ask({ type: 'igOfferDone' }); } }, 'Not now');
+        offerBox.replaceChildren(h('span', { text: `Signed in as @${me.username}. Switch to the Instagram app now?` }), h('div', { class: 'row' }, yes, no));
+      }
+      offerBox.hidden = false;
+      globalThis.KidTubeWatch?.check({ id: 'instagram.offer', area: 'instagram', expect: 'After the header’s Instagram tile, Instagram’s page says to sign in, then offers to switch to the app',
+        code: ['apps/instagram/content/app.js connectBar offer', 'apps/instagram/background/handlers.js igSite'] }, (t) => {
+        t.ok('the offer shows', !offerBox.hidden && host.isConnected, 'hidden', 'shown');
+        if (me.username) t.ok('it has Switch to the app', !!offerBox.querySelector('.yes'), 'no button', 'Switch to the app');
+      });
+    };
+    root.append(h('style', { text: SWITCH_CSS + BAR_CSS }), h('div', { class: 'bar' }, msg, offerBox, h('div', { class: 'row' },
       h('span', { class: 'seg', role: 'group', 'aria-label': 'App or Instagram' },
         h('button', { type: 'button', title: 'Your saved posts, notes and the list', onclick: openIt }, 'App'),
         h('a', { class: 'on', 'aria-current': 'page' }, 'Instagram')),
@@ -158,7 +182,7 @@
     ask({ type: 'igSite' }).then((r) => location.replace(r?.who && r.rules ? savedPath(r.rules, r.who) : '/'));
     return;
   }
-  reportMe();
+  const meFirst = reportMe();
 
   // --- the app's screen ---------------------------------------------------------------------------------------------
   const CSS = `
@@ -910,11 +934,25 @@
   document.documentElement?.classList.add('ktig');
   // The app's view at once (before Instagram draws its page), when this tab was in it.
   if (view.get() === 'app' && savedUser()) showView(true);
-  ask({ type: 'igSite' }).then((r) => {
+  // The tile's offer (igSite offer): who is signed in now, read again when Instagram moves on to another page (a sign-in
+  // does), until an account is signed in. The profile's own account already runs: nothing to offer.
+  let offerAt = null;
+  async function offer(me) {
+    if (!site?.offer || !bar) return;
+    offerAt = location.pathname;
+    if (me.username && site.who && me.username.toLowerCase() === site.who.toLowerCase()) { site.offer = false; bar.offer(null); ask({ type: 'igOfferDone' }); return; }
+    bar.offer(me.loggedIn && me.username ? me : { username: null });
+    if (me.username) site.offer = false;   // asked once on this page
+  }
+  ask({ type: 'igSite' }).then(async (r) => {
     site = r?.ok ? r : { open: false };
     if (r?.rules) useRules(r.rules);
     update();
+    if (site.offer) offer(await meFirst);
   });
-  setInterval(update, 700);
+  setInterval(() => {
+    update();
+    if (site?.offer && offerAt != null && offerAt !== location.pathname) { offerAt = location.pathname; reportMe().then(offer); }
+  }, 700);
   addEventListener('popstate', update);
 })();
