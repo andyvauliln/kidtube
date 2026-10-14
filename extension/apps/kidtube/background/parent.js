@@ -23,7 +23,8 @@ const isQuestion = (msg, text) => msg.ask === true || /\?/.test(String(text ?? '
 function trackQuestion(s, ev) {
   if (!ev.held || !(ev.comment ?? ev.text)) return;
   const qs = ((s.notes ??= {}).questions ??= []);
-  qs.push({ id: ev.eventId, at: ev.at, type: ev.type, text: ev.comment ?? ev.text, ask: !!ev.ask,
+  // version: the app's version when the note was made (the header's list shows it with the date).
+  qs.push({ id: ev.eventId, at: ev.at, type: ev.type, text: ev.comment ?? ev.text, ask: !!ev.ask, version: globalThis.chrome?.runtime?.getManifest?.().version ?? '',
     ...(ev.list ? { list: ev.list } : {}), ...(ev.section ? { section: ev.section } : {}), ...(ev.videoId ? { videoId: ev.videoId } : {}), ...(ev.doc ? { doc: ev.doc } : {}) });
   s.notes.questions = qs.slice(-30);
 }
@@ -59,6 +60,7 @@ export async function heldNotes(s) {
     id: e.eventId, at: e.at, type: e.type, text: e.comment ?? e.text,
     ...(e.list ? { list: e.list } : {}), ...(e.section ? { section: e.section } : {}), ...(e.doc ? { doc: e.doc } : {}),
     ...(e.videoId ? { videoId: e.videoId, title: titleOf(e.videoId) } : {}),
+    ...((e.context ?? e.offer)?.app?.version ? { version: (e.context ?? e.offer).app.version } : {}),
     ...(e.context ? { attached: Object.keys(e.context) } : {}), ...(e.offer ? { offered: Object.keys(e.offer) } : {}), ...(e.ask ? { ask: true } : {}), ...(e.voice ? { voice: e.voice } : {}),
   }));
   return { ok: true, notes };
@@ -219,11 +221,11 @@ export function noteVideo(s, msg, ctx = null) {
   s.notes ??= {};
   if (ev.comment) addNote(((s.notes.videos ??= {})[msg.videoId] ??= []), ev);
   if (typeof ev.liked === 'boolean') (s.notes.liked ??= {})[msg.videoId] = ev.liked;
-  return { ok: true };
+  return ev.comment ? { ok: true, eventId: ev.eventId } : { ok: true };
 }
 
 // A message to the helper, or a note for the AI about a whole list (list: today | planned | history | settings).
-// section: the Settings box it is about (⛶ One box), its title.
+// section: the Settings box it is about (Full size), its title.
 export function wish(s, msg, ctx = null) {
   const text = String(msg.text ?? '').trim().slice(0, 2000);
   if (!text) return { ok: false };
@@ -233,7 +235,7 @@ export function wish(s, msg, ctx = null) {
   s.outbox.push(ev);
   trackQuestion(s, ev);
   if (list) addNote((((s.notes ??= {}).lists ??= {})[list] ??= []), ev);
-  return { ok: true };
+  return { ok: true, eventId: ev.eventId };
 }
 
 // A note on a context document (parent mode → Context). docs: the current app's document ids.
@@ -246,7 +248,7 @@ export function contextNote(s, msg, docs, ctx = null) {
   trackQuestion(s, ev);
   ((s.notes ??= {}).contextNotes ??= []).push(ev);
   s.notes.contextNotes = s.notes.contextNotes.slice(-100);
-  return { ok: true };
+  return { ok: true, eventId: ev.eventId };
 }
 
 // Adds a standing instruction for the helper, or removes one (the Prompt tab).
@@ -260,7 +262,7 @@ export function promptNote(s, msg, ctx = null) {
   s.outbox.push(ev);
   trackQuestion(s, ev);
   ((s.notes ??= {}).promptOps ??= []).push(ev);
-  return { ok: true, noteId: ev.noteId };
+  return { ok: true, noteId: ev.noteId, ...(msg.action === 'add' ? { eventId: ev.eventId } : {}) };
 }
 
 // --- the lists ----------------------------------------------------------------------------------------------

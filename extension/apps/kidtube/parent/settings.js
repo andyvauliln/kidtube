@@ -4,11 +4,10 @@
 import { hashPin } from '../../../core/lib/pin.js';
 import { say, listen, recordAnswer, transcribeAnswer, FREE_LISTEN_MODELS, PAID_LISTEN_MODELS } from '../lib/voice.js';
 import { ask as send } from '../../../core/lib/ask.js';
-import { el as make, upDown, slideIn, holdPage } from './kit.js';
+import { el as make, upDown, slideIn, isFull } from './kit.js';
 
 const MARKUP = `
   <nav class="secnav noswipe" aria-label="Settings sections">
-    <button type="button" id="slideMode" class="slidebtn" title="One box at a time, full screen: swipe up for the next box">🔳 One box</button>
     <button type="button" data-sec="sec-status">Status</button>
     <button type="button" data-sec="sec-time">Time and list</button>
     <button type="button" data-sec="sec-sites">Websites</button>
@@ -176,13 +175,13 @@ async function patchSettings(patch) {
 }
 const el = (tag, text, cls) => make(tag, cls, text);
 
-// The boxes fold (2026-10-13, the parent's wish): only the first one (Status) is open at first. 🔳 One box shows one box
-// at a time on the whole screen; a swipe up (or ↓) goes to the next one, as in Reels (kit.js upDown), and a 🎤 note
-// started there is about that box.
+// The boxes fold (2026-10-13, the parent's wish): only the first one (Status) is open at first. Full size (the switch on
+// the tabs, for every tab since 2026-10-14; kit.js isFull) shows one box at a time on the whole screen; a swipe up (or ↓)
+// goes to the next one, as in Reels (kit.js upDown), and a 🎤 note started there is about that box.
 // Kept while the parent page is open, so coming back to the tab finds it as it was left.
-const shown = { open: new Set(['sec-status']), slides: false, at: 0, title: null };
-// The box a note is about: its title while 🔳 One box is on, else null (parent.js noteTarget).
-export const settingsBox = () => (shown.slides ? shown.title : null);
+const shown = { open: new Set(['sec-status']), at: 0, title: null };
+// The box a note is about: its title while Full size is on, else null (parent.js noteTarget).
+export const settingsBox = () => (isFull() ? shown.title : null);
 
 export function mountSettings(root) {
   root.classList.add('settings');
@@ -267,27 +266,23 @@ export function mountSettings(root) {
   for (const sec of root.querySelectorAll('section.rules')) {
     for (const t of ['input', 'change']) sec.addEventListener(t, () => { if (!drawing) sayRules('Unsaved changes'); });
   }
-  // --- the boxes: folded, or one at a time (🔳 One box) ---------------------------------------------
+  // --- the boxes: folded, or one at a time (Full size) ---------------------------------------------
   const secs = [...root.querySelectorAll(':scope > section')];
   const chips = [...root.querySelectorAll('.secnav button[data-sec]')];
   const titleOf = (sec) => sec.querySelector('h2').textContent;
   function drawBoxes() {
-    root.classList.toggle('slides', shown.slides);
-    // In 🔳 One box a swipe goes to the next box, not to the next tab (parent.js skips .noswipe).
-    root.classList.toggle('noswipe', shown.slides);
-    holdPage(shown.slides);
-    $('slideMode').classList.toggle('on', shown.slides);
-    $('slideMode').textContent = shown.slides ? '✕ All boxes' : '🔳 One box';
-    $('pager').hidden = !shown.slides;
+    const slides = isFull();
+    root.classList.toggle('slides', slides);
+    $('pager').hidden = !slides;
     shown.at = Math.max(0, Math.min(secs.length - 1, shown.at));
     shown.title = titleOf(secs[shown.at]);
     secs.forEach((sec, i) => {
-      const open = shown.slides || shown.open.has(sec.id);
+      const open = slides || shown.open.has(sec.id);
       sec.classList.toggle('closed', !open);
-      sec.hidden = shown.slides && i !== shown.at;
+      sec.hidden = slides && i !== shown.at;
       sec.querySelector('h2').setAttribute('aria-expanded', String(open));
     });
-    if (shown.slides) {
+    if (slides) {
       $('boxOf').textContent = `${shown.at + 1} of ${secs.length} · ${shown.title} · ${shown.at < secs.length - 1 ? 'swipe up for the next' : 'the last box: swipe down for the one before'}`;
       for (const c of chips) c.classList.toggle('on', c.dataset.sec === secs[shown.at].id);
     }
@@ -297,7 +292,7 @@ export function mountSettings(root) {
     h.setAttribute('role', 'button');
     h.tabIndex = 0;
     const fold = () => {
-      if (shown.slides) return;
+      if (isFull()) return;
       if (shown.open.has(sec.id)) shown.open.delete(sec.id); else shown.open.add(sec.id);
       drawBoxes();
     };
@@ -310,27 +305,27 @@ export function mountSettings(root) {
     scrollTo(0, 0);
     checkSlides();
   }
-  $('slideMode').addEventListener('click', () => {
-    shown.slides = !shown.slides;
-    holdPage(shown.slides, true);
-    // Back to all boxes: the one just seen stays open there.
-    if (!shown.slides) shown.open.add(secs[shown.at].id);
+  // The Full size switch (parent.js) turned on or off: back to all boxes, the one just seen stays open there.
+  const onFull = () => {
+    if (!root.isConnected) return removeEventListener('kidtube-fullsize', onFull);
+    if (!isFull()) shown.open.add(secs[shown.at].id);
     goBox(shown.at);
-    if (!shown.slides) secs[shown.at].scrollIntoView({ block: 'start' });
-  });
+    if (!isFull()) secs[shown.at].scrollIntoView({ block: 'start' });
+  };
+  addEventListener('kidtube-fullsize', onFull);
   // A swipe up (or ↓): the next box; down (or ↑): the one before (a long box scrolls to its end first). Not on a field, so text can still be selected.
-  upDown(root, { on: () => shown.slides, box: () => secs[shown.at], skip: '.secnav', go: (step) => {
+  upDown(root, { on: () => isFull(), box: () => secs[shown.at], skip: '.secnav', go: (step) => {
     const i = shown.at + step;
     if (i < 0 || i >= secs.length) return;
     goBox(i);
     slideIn(secs[i], step);
   } });
-  // 🔳 One box: one box on the screen, the one its chip and the 🎤 note name.
+  // Full size: one box on the screen, the one its chip and the 🎤 note name.
   function checkSlides() {
-    if (!shown.slides) return;
-    globalThis.KidTubeWatch?.check({ id: 'parent.settings.oneBox', area: 'parent', expect: '🔳 One box shows one open box, the one marked and named for a note',
+    if (!isFull()) return;
+    globalThis.KidTubeWatch?.check({ id: 'parent.settings.oneBox', area: 'parent', expect: 'Full size shows one open box, the one marked and named for a note',
       code: ['apps/kidtube/parent/settings.js drawBoxes', 'apps/kidtube/parent/parent.js noteTarget'] }, (t) => {
-      if (!root.isConnected || !shown.slides) return t.skip('left the mode');
+      if (!root.isConnected || !isFull()) return t.skip('left the mode');
       const seen = secs.filter((sec) => !sec.hidden);
       t.eq('boxes on the screen', 1, seen.length);
       t.eq('the box', secs[shown.at].id, seen[0]?.id ?? null);
@@ -339,12 +334,12 @@ export function mountSettings(root) {
       t.eq('the box a note is about', titleOf(secs[shown.at]), settingsBox());
       t.eq('no ‹ › buttons (a swipe up or down)', 0, root.querySelectorAll('.pager button').length);
       t.eq('a swipe down is the box before, not a reload', 'none', getComputedStyle(document.documentElement).overscrollBehaviorY);
-      t.eq('nothing on top (no apps header, notifications or tabs)', 'none', getComputedStyle(document.querySelector('body > header') ?? document.body).display);
+      t.eq('no apps header on top (the tabs stay, with Full size)', 'none', getComputedStyle(document.getElementById('appHeader') ?? document.body).display);
     }, 1500);
   }
   // The chip tapped stays marked: a sign the tap worked even when the page is already at that section. Its box opens.
   chips.forEach((b) => b.addEventListener('click', () => {
-    if (shown.slides) { goBox(secs.findIndex((sec) => sec.id === b.dataset.sec)); return; }
+    if (isFull()) { goBox(secs.findIndex((sec) => sec.id === b.dataset.sec)); return; }
     for (const c of chips) c.classList.toggle('on', c === b);
     shown.open.add(b.dataset.sec);
     drawBoxes();

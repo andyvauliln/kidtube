@@ -1006,25 +1006,49 @@ test('a note made in a Settings box names the box: in the event, the header’s 
   assert.deepEqual(validateFile(file).errors, []);
 });
 
-// The parent's note (2026-10-13): Context has no "Your notes on this document" box, and 🔳 Full screen as in Settings.
+// The parent's note (2026-10-13): Context has no "Your notes on this document" box, and a full screen mode as in Settings.
 // Then (the parent's note, 2026-10-13): up and down as in Reels, no ‹ › buttons, ↓ ↑ on a keyboard (kit.js upDown).
-test('Context: no notes box, a 🔳 Full screen button and a swipe up to the next document', async () => {
+// Then (the parent's note, 2026-10-14): one "Full size" switch at the right end of the tabs for every tab, instead of
+// each tab's own 🔳 button; the tabs stay on top; Today, Planned and History show only the videos, one at a time.
+test('Full size: one switch on the tabs for every tab; one box (one video) at a time, a swipe up for the next', async () => {
   const { readFileSync } = await import('node:fs');
-  const src = readFileSync(new URL('../../extension/apps/kidtube/parent/parent.js', import.meta.url), 'utf8');
+  const read = (f) => readFileSync(new URL(`../../extension/apps/kidtube/parent/${f}`, import.meta.url), 'utf8');
+  const src = read('parent.js'), set = read('settings.js'), css = read('parent.css'), html = read('parent.html');
   const ctx = src.slice(src.indexOf('async function renderContext'), src.indexOf('// --- Settings: its own view here'));
   assert.doesNotMatch(ctx, /Your notes on this document/);
-  assert.match(ctx, /🔳 Full screen/);
+  assert.doesNotMatch(src + set, /🔳 (One box|Full screen)|slideMode/, 'no own button on a tab any more');
+  assert.match(html, /<\/nav>\s*<button type="button" id="fullSize" class="fullsw" role="switch"[^>]*><span>Full size<\/span><i><\/i><\/button>/, 'the switch after the tabs, at the right end');
   assert.match(ctx, /id: 'parent\.context\.full'/, 'its check in the app');
-  assert.match(src, /upDown\(view, \{ on: \(\) => contextFull/, 'a swipe up or ↓ goes to the next document');
+  assert.match(src, /id: 'parent\.fullSize'/, 'the switch’s check in the app');
+  assert.match(src, /upDown\(view, \{ on: \(\) => isFull\(\) && route\(\)\.tab === 'context'/, 'a swipe up or ↓ goes to the next document');
+  assert.match(src, /upDown\(view, \{ on: \(\) => isFull\(\) && LISTS\.includes\(route\(\)\.tab\)/, 'a swipe up or ↓ goes to the next video');
+  for (const f of ['renderToday', 'renderPlanned', 'renderHistory']) assert.match(src, new RegExp(`function ${f}\\(\\) \\{\\n  if \\(isFull\\(\\)\\) return renderOne`), `${f}: only the videos in Full size`);
   assert.doesNotMatch(ctx, /btn\('[‹›]'/, 'no ‹ › buttons');
-  const set = readFileSync(new URL('../../extension/apps/kidtube/parent/settings.js', import.meta.url), 'utf8');
-  assert.match(set, /upDown\(root, \{ on: \(\) => shown\.slides/, 'Settings: a swipe up or ↓ goes to the next box');
+  assert.match(set, /upDown\(root, \{ on: \(\) => isFull\(\)/, 'Settings: a swipe up or ↓ goes to the next box');
   assert.doesNotMatch(set, /prevBox|nextBox|touchend/, 'Settings: no ‹ › and no swipe left / right');
-  assert.match(src, /view\.classList\.remove\('noswipe'\)/, 'other tabs get their swipe back');
-  // The parent's notes (2026-10-13): a swipe down there reloaded the page; now no pull-to-refresh in the mode, and full screen.
-  assert.match(ctx, /holdPage\(contextFull, true\)/, 'Context: the button asks for full screen');
-  assert.match(set, /holdPage\(shown\.slides, true\)/, 'Settings: the button asks for full screen');
-  assert.match(src, /shownTab !== r\.tab\) \{ holdPage\(false\)/, 'another tab: pull-to-refresh back');
-  assert.match(readFileSync(new URL('../../extension/apps/kidtube/parent/parent.css', import.meta.url), 'utf8'), /html\.updown[^{]*\{ overscroll-behavior-y: none/);
-  assert.match(readFileSync(new URL('../../extension/apps/kidtube/parent/parent.css', import.meta.url), 'utf8'), /html\.updown #appHeader, html\.updown body > header \{ display: none/, 'in the mode: no apps header, notifications or tabs on top');
+  assert.match(src, /view\.classList\.remove\('noswipe'\)/, 'left and right still go to the next tab');
+  assert.match(src, /fullSw\.addEventListener\('click', \(\) => setFull\(!isFull\(\), true\)\)/, 'the switch asks for full screen');
+  assert.match(src, /shownTab !== r\.tab\) \{ holdPage\(isFull\(\)\)/, 'another tab: Full size stays as it is');
+  assert.match(css, /html\.updown[^{]*\{ overscroll-behavior-y: none/);
+  assert.match(css, /html\.updown #appHeader \{ display: none/, 'in the mode: no apps header on top');
+  assert.doesNotMatch(css, /html\.updown body > header/, 'the tabs stay, with the switch to leave it');
+});
+
+
+// The parent's note (2026-10-14): while a note records, ➤ Stop and send sends it to the AI as soon as it is written
+// down; the save gives back the note's id for that, and every followed note keeps the app's version for the 🔔 list.
+test('➤ Stop and send: the saved note has its id, and only that note is sent', async () => {
+  const { readFileSync } = await import('node:fs');
+  const kit = readFileSync(new URL('../../extension/apps/kidtube/parent/kit.js', import.meta.url), 'utf8');
+  assert.match(kit, /'➤ Stop and send'/);
+  assert.match(kit, /'⏹ Stop'/);
+  assert.match(kit, /ask\(\{ type: 'inbox', do: 'note\.send', id: r\.eventId \}\)/, 'only this note goes');
+  assert.match(kit, /const go = sendAfter && r\.eventId && !more\.voice;/, 'a recording the server still writes down waits');
+  assert.match(kit, /id: 'notes\.stopAndSend'/, 'its check in the app');
+  const r = await fromPage({ type: 'wish', list: 'today', text: 'More trains' });
+  assert.equal(r.ok, true);
+  assert.equal(r.eventId, fake.store.outbox.at(-1).eventId);
+  const q = fake.store.notes.questions.at(-1);
+  assert.equal(q.id, r.eventId);
+  assert.equal(typeof q.version, 'string', 'the version it was made in');
 });

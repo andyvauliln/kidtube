@@ -299,7 +299,8 @@ test('the notifications: a row swiped away stays away until its status changes; 
   const h1 = new FakeEl('div');
   globalThis.KidTubeHeader.mount(h1, { dark: false });
   await tick(); await tick();
-  assert.deepEqual(titles(h1), ['Your notes were sent'], 'the swiped row stays away');
+  // Every row ends with its version (the parent's note, 2026-10-14; no version of its own: this tablet's).
+  assert.deepEqual(titles(h1), ['Your notes were sent v0.12.9'], 'the swiped row stays away');
   inbox = rowsOf('Done');   // the AI fixed it: a new status, so it shows again (and goes by itself after 3 minutes)
   const h2 = new FakeEl('div');
   globalThis.KidTubeHeader.mount(h2, { dark: false });
@@ -380,6 +381,68 @@ test('the notifications: a note’s checkboxes (This screen, App data, Question)
   await tick();
   assert.ok(row('Bigger buttons'));
   delete answers.header; delete answers.version; delete answers.inbox;
+});
+
+// The parent's note (2026-10-14): in a notification's Details the ✕ did not close it (Got it, ✕, Delete left the old
+// row on the screen; Edit showed nothing). Every row: its date and version, and a way to remove it; Edit's field fits its words.
+test('the notifications: Details closes on ✕ and on Got it; every row has its date, version and Remove; Edit goes to its field', async () => {
+  answers.header = () => ({ ok: true, open: true, mode: 'parent', running: 'kidtube', site: null, here: null, connected: null, github: { connected: true }, apps: [], inbox: [
+    { id: 'note:n1', note: 'n1', type: 'note', status: { text: 'Not sent', tone: 'wait' }, title: 'Bigger buttons', at: '2026-10-14T07:31:48Z', version: '0.12.26',
+      actions: [{ do: 'note.edit', label: 'Edit' }, { do: 'note.drop', label: 'Delete' }, { do: 'note.send', label: 'Send' }] },
+    { id: 'question:n0', note: 'n0', type: 'note', done: true, status: { text: 'Done', tone: 'ok' }, title: 'Remove update box', at: '2026-10-14T07:00:00Z',
+      details: [['What was done', 'Removed it.']], actions: [{ do: 'question.dismiss', label: 'Got it' }] },
+    { id: 'run', type: 'data', status: { text: 'Sent', tone: 'wait' }, title: 'Your notes were sent', at: '2026-10-14T07:35:00Z', actions: [] },
+  ] });
+  answers.version = () => ({ ok: true, installed: '0.12.27', latest: '0.12.27', newer: false, kind: 'quetta' });
+  answers.inbox = () => ({ ok: true });
+  delete local.inboxHidden;
+  const h = new FakeEl('div');
+  globalThis.KidTubeHeader.mount(h, { dark: false });
+  await tick(); await tick();
+  const row = (title) => find(h.shadowRoot, (n) => n.className?.startsWith?.('nrow') && text(n).includes(title));
+  const details = () => find(h.shadowRoot, (n) => n.className === 'dview');
+  const tap = (r, label) => find(r, (n) => n.tagName === 'BUTTON' && text(n).trim().startsWith(label)).click();
+  // Date and version on the row: its own, or this tablet's.
+  assert.match(text(row('Bigger buttons')), /v0\.12\.26/);
+  assert.match(text(row('Your notes were sent')), /v0\.12\.27/);
+  // A row with no Delete or Got it of its own gets Remove.
+  assert.ok(find(row('Your notes were sent'), (n) => n.tagName === 'BUTTON' && text(n).trim() === 'Remove'));
+  assert.ok(!find(row('Bigger buttons'), (n) => n.tagName === 'BUTTON' && text(n).trim() === 'Remove'), 'a note has its own Delete');
+  // Details: the When section, and ✕ closes it.
+  row('Bigger buttons').dispatchEvent({ type: 'click', target: { closest: () => null } });
+  await tick();
+  assert.ok(details() && text(details()).includes('0.12.26'), 'Details says the version');
+  tap(details(), '✕');
+  await tick();
+  assert.ok(!details(), '✕ closes the Details');
+  // Got it in the Details: the Details closes (it stayed with the old row before).
+  row('Remove update box').dispatchEvent({ type: 'click', target: { closest: () => null } });
+  await tick();
+  tap(details(), 'Got it');
+  await tick(); await tick();
+  assert.ok(!details(), 'Got it closes the Details');
+  assert.ok(sent.some((m) => m.type === 'inbox' && m.do === 'question.dismiss'));
+  // Edit in the Details: back to the list, with the row's field open.
+  row('Bigger buttons').dispatchEvent({ type: 'click', target: { closest: () => null } });
+  await tick();
+  tap(details(), 'Edit');
+  await tick();
+  assert.ok(!details(), 'Edit closes the Details');
+  assert.ok(find(h.shadowRoot, (n) => n.tagName === 'TEXTAREA'), 'the edit field is open');
+  // Remove in the list: the row goes.
+  tap(row('Your notes were sent'), 'Remove');
+  await tick();
+  assert.ok(!row('Your notes were sent'));
+  delete local.inboxHidden; delete answers.header; delete answers.version; delete answers.inbox;
+});
+
+test('the Edit field is as tall as its words (no scroll inside it)', async () => {
+  const { readFileSync } = await import('node:fs');
+  const src = readFileSync(new URL('../../extension/core/ui/header.js', import.meta.url), 'utf8');
+  assert.match(src, /const fit = \(ta\) => \{ ta\.style\.height = 'auto'; ta\.style\.height = `\$\{ta\.scrollHeight \+ 2\}px`; \}/);
+  assert.match(src, /\.msg textarea \{[^}]*resize: none; overflow: hidden/);
+  assert.match(src, /fit\(box\); \}\);/, 'grows while typing');
+  assert.match(src, /id: 'header\.editFits'/, 'its check in the app');
 });
 
 // The parent's wish (2026-10-13): “every notification should be clickable and goes to details … all agents runs should
@@ -463,6 +526,29 @@ test('holdPage: no pull-to-refresh in the mode, full screen on a tap, both back 
   holdPage(true, true);
   assert.ok(html.classList.contains('updown'), 'a refused full screen keeps the mode');
   delete document.documentElement; delete document.fullscreenElement; delete document.exitFullscreen;
+});
+
+// The parent's note (2026-10-14): one Full size switch for every tab (kit.js isFull, setFull).
+test('Full size is one setting for every tab, kept on this tablet', async () => {
+  const store = {};
+  globalThis.localStorage = { getItem: (k) => store[k] ?? null, setItem: (k, v) => { store[k] = String(v); } };
+  const seen = [];
+  const add = globalThis.addEventListener, disp = globalThis.dispatchEvent;
+  globalThis.dispatchEvent = (e) => { seen.push(e.type); return true; };
+  const html = new FakeEl('html');
+  document.documentElement = html;
+  document.fullscreenElement = null;
+  try {
+    const { isFull, setFull } = await import('../../extension/apps/kidtube/parent/kit.js');
+    assert.equal(isFull(), false);
+    setFull(true);
+    assert.equal(isFull(), true);
+    assert.equal(store.kidtubeFullSize, '1');
+    assert.deepEqual(seen, ['kidtube-fullsize'], 'every view hears it');
+    assert.ok(html.classList.contains('updown'), 'no pull-to-refresh, no apps header');
+    setFull(false);
+    assert.equal(isFull(), false);
+  } finally { delete document.documentElement; delete document.fullscreenElement; delete globalThis.localStorage; globalThis.dispatchEvent = disp; globalThis.addEventListener = add; }
 });
 
 // The parent's note (2026-10-13): a double tap on a paragraph of the Prompt or Context tab makes it editable; Save sends

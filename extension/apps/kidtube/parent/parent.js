@@ -3,7 +3,7 @@
 import { ask } from '../../../core/lib/ask.js';
 import { APPS } from '../../registry.js';
 import { say, listen, recordedUrl } from '../lib/voice.js';
-import { el, btn, toast, runNow, notesDock, promptNotesBox, hooks, upDown, slideIn, holdPage, editOnDoubleTap } from './kit.js';
+import { el, btn, toast, runNow, notesDock, promptNotesBox, hooks, upDown, slideIn, holdPage, editOnDoubleTap, isFull, setFull } from './kit.js';
 import { mountSettings, settingsBox } from './settings.js';
 import { isCorrect, correctText } from '../lib/mark.js';
 import { renderMarkdown, promptSteps } from './markdown.js';
@@ -96,13 +96,13 @@ function render() {
     a.classList.toggle('on', a.dataset.tab === (r.tab ?? lastTab));
     if (a.classList.contains('on')) a.scrollIntoView?.({ inline: 'center', block: 'nearest' });
   }
-  // Only Context in 🔳 Full screen and Prompt in 🔳 One box keep the swipe for themselves (renderContext, renderPrompt).
+  // Full size goes up and down; left and right still go to the next tab (the swipe below).
   view.classList.remove('noswipe');
-  if (r.video) { shownTab = null; holdPage(false); return renderDetail(r.video); }
-  // The settings page keeps its own state: redrawn only when you come to the tab.
+  if (r.video) { shownTab = null; holdPage(isFull()); return renderDetail(r.video); }
+  // The settings page keeps its own state: redrawn only when you come to the tab (it follows Full size by itself).
   if (r.tab === 'settings' && shownTab === 'settings') return;
-  // Another tab: out of 🔳 (pull-to-refresh back, full screen left); the tab's own mode sets it again when drawn.
-  if (shownTab !== r.tab) { holdPage(false); scrollTo(0, 0); checkTab(r.tab); }
+  // Another tab: Full size stays as it is (one switch for every tab, the parent's note, 2026-10-14).
+  if (shownTab !== r.tab) { holdPage(isFull()); scrollTo(0, 0); checkTab(r.tab); }
   lastTab = shownTab = r.tab;
   if (r.tab === 'planned') return renderPlanned();
   if (r.tab === 'history') return renderHistory();
@@ -112,6 +112,33 @@ function render() {
   return renderToday();
 }
 addEventListener('hashchange', render);
+
+// --- Full size: the switch at the right end of the tabs, for every tab (the parent's note, 2026-10-14) --------------
+// It replaced the One box / Full screen buttons of Settings, Context and Prompt. On: one box on the screen (on Today,
+// Planned and History one video, nothing else), a swipe up or ↓ for the next; it stays on when the tab changes.
+const fullSw = $('fullSize');
+const drawSwitch = () => fullSw.setAttribute('aria-checked', String(isFull()));
+fullSw.addEventListener('click', () => setFull(!isFull(), true));
+addEventListener('kidtube-fullsize', () => { drawSwitch(); if (route().tab !== 'settings') render(); checkFull(); });
+drawSwitch();
+holdPage(isFull());
+function checkFull() {
+  const on = isFull();
+  W?.check({ id: 'parent.fullSize', area: 'parent', expect: 'The Full size switch at the right end of the tabs turns one box (one video) on the screen on or off, on every tab',
+    code: ['apps/kidtube/parent/parent.js checkFull', 'apps/kidtube/parent/kit.js setFull', 'apps/kidtube/parent/parent.css .fullsw'] }, (t) => {
+    const r = route();
+    if (r.video) return t.skip('a video’s page');
+    t.eq('the switch says', String(on), fullSw.getAttribute('aria-checked'));
+    t.ok('the switch is the last thing in the tabs bar', fullSw.parentElement?.lastElementChild === fullSw, 'not last', 'after Settings');
+    t.ok('the tabs stay on top', getComputedStyle(document.querySelector('body > header')).display !== 'none', 'hidden', 'shown');
+    t.eq('no apps header on top', on ? 'none' : 'block', getComputedStyle($('appHeader')).display === 'none' ? 'none' : 'block');
+    t.eq('a swipe down is the box before, not a reload', on ? 'none' : 'auto', getComputedStyle(document.documentElement).overscrollBehaviorY);
+    if (on && LISTS.includes(r.tab) && listOf(r.tab).length) {
+      t.eq('videos on the screen', 1, view.querySelectorAll('.row').length);
+      t.eq('no other boxes (stats, headings, days)', 0, view.querySelectorAll('.box, .stats, .day').length);
+    }
+  }, 1500);
+}
 
 // The bottom bar as the parent asked (2026-10-09): left ↻ Update, middle Parent | Kid, right the 🎤, fixed to the
 // bottom, and no time of the last update. The version moved to the header (2026-10-12).
@@ -304,7 +331,38 @@ function statsRow() {
   return row;
 }
 
+// Full size on Today, Planned and History: only the videos, one at a time, big; a swipe up (or ↓) for the next one,
+// down (or ↑) for the one before (the parent's note, 2026-10-14: "same like for videos… only videos should be left").
+const LISTS = ['today', 'planned', 'history'];
+const listAt = { today: 0, planned: 0, history: 0 };
+let listStep = 0;
+const listOf = (tab) => (tab === 'today' ? data?.today : tab === 'planned' ? data?.planned
+  : (data?.history ?? []).flatMap((d) => d.items.map((v) => ({ ...v, day: d.date })))) ?? [];
+function renderOne(where) {
+  const vs = listOf(where);
+  if (!vs.length) { view.replaceChildren(el('p', 'muted', { today: 'Nothing on today’s list.', planned: 'Nothing planned yet.', history: 'Nothing watched yet.' }[where])); return; }
+  const at = listAt[where] = Math.max(0, Math.min(vs.length - 1, listAt[where]));
+  const v = vs[at];
+  const card = row(v, where);
+  card.classList.add('one');
+  const pager = el('div', 'pager');
+  pager.append(el('span', '', `${at + 1} of ${vs.length}${v.day ? ` · ${dayLabel(v.day)}` : ''} · ${at < vs.length - 1 ? 'swipe up for the next' : 'the last one: swipe down for the one before'}`));
+  view.replaceChildren(pager, card);
+  if (listStep) slideIn(card, listStep);
+  listStep = 0;
+}
+upDown(view, { on: () => isFull() && LISTS.includes(route().tab) && !route().video, box: () => view.querySelector('.row.one'), go: (step) => {
+  const tab = route().tab;
+  const i = listAt[tab] + step;
+  if (i < 0 || i >= listOf(tab).length) return;
+  listAt[tab] = i;
+  listStep = step;
+  scrollTo(0, 0);
+  renderOne(tab);
+} });
+
 function renderToday() {
+  if (isFull()) return renderOne('today');
   const vs = data.today;
   const head = el('div', 'box');
   head.append(el('h2', '', 'What he sees today'),
@@ -314,6 +372,7 @@ function renderToday() {
 }
 
 function renderPlanned() {
+  if (isFull()) return renderOne('planned');
   const head = el('div', 'box');
   head.append(el('h2', '', 'Planned and ideas'),
     el('p', 'muted', data.hasMemory ? 'The helper’s next picks, in its order. Approve, make a must-watch, move to today or remove. The helper reads your changes on its next run.'
@@ -323,6 +382,7 @@ function renderPlanned() {
 }
 
 function renderHistory() {
+  if (isFull()) return renderOne('history');
   const head = el('div', 'box');
   head.append(el('h2', '', 'What he watched'), el('p', 'muted', 'By day. Tap a video to see its questions and how he answered.'));
   const parts = [head];
@@ -363,7 +423,7 @@ function fold(title, ...body) {
 
 // The parent's notes (2026-10-13): the tab in boxes, each with where its words come from, how the helper uses them
 // and why the box is here (ABOUT); a first box shows how it all fits together, and the last one every prompt it reads.
-// 🔳 One box as in Settings: one box on the whole screen, a swipe up (or ↓) for the next. A double tap on a text of a
+// Full size (the switch on the tabs) as in Settings: one box on the whole screen, a swipe up (or ↓) for the next. A double tap on a text of a
 // prompt (or of what it noticed, its study plan) makes it editable: Save sends the change as a note (kit.js editOnDoubleTap).
 const ABOUT = {
   flow: { chip: 'Overview', from: 'This app: how the helper is built (agent/ on the server).', used: 'Not by the helper: it is for you.', why: 'The whole picture first: who starts it, what it reads, what it makes.' },
@@ -378,7 +438,7 @@ const ABOUT = {
   io: { chip: 'Reads & writes', from: 'helper.json: made from agent/kt.mjs (its toolkit) on every run.', used: 'The toolkit is the only way it reads and changes the data.', why: 'What it may touch, and what it can’t.' },
   prompts: { chip: 'All prompts', from: 'The prompt files in the code (GitHub), as the last run used them.', used: 'Rules first, then the steps, then your changes; the skills at their steps.', why: 'Every prompt in full. Double-tap a text to change it.' },
 };
-let promptFull = false, promptAt = 'flow', promptStep = 0;
+let promptAt = 'flow', promptStep = 0;
 let promptDraw = null;   // redraws the boxes of the page on the screen (renderPrompt)
 
 function aboutBox(a) {
@@ -512,24 +572,18 @@ async function renderPrompt() {
       fold('Your changes', el('p', 'muted', `memory.json (promptNotes) · Added after the steps on every run. ${h.notes.length ? `${h.notes.length} now: see “Your changes to the prompt”.` : 'None yet.'}`)));
   }
 
-  // The chips: one per box (a tap goes to it), and 🔳 One box as in Settings.
+  // The chips: one per box (a tap goes to it). Full size is the switch on the tabs.
   const chips = el('div', 'chips noswipe pchips');
-  const full = btn(promptFull ? '✕ All boxes' : '🔳 One box', () => { promptFull = !promptFull; holdPage(promptFull, true); draw(); if (!promptFull) boxes.find((b) => b.dataset.box === promptAt)?.scrollIntoView({ block: 'start' }); }, promptFull ? 'small slidebtn on' : 'small slidebtn');
-  full.title = 'One box at a time, full screen: swipe up for the next box';
   const pager = el('div', 'pager');
   function draw(step = 0) {
+    const promptFull = isFull();
     const ids = boxes.map((b) => b.dataset.box);
     if (!ids.includes(promptAt)) promptAt = ids[0];
     const at = ids.indexOf(promptAt);
-    full.textContent = promptFull ? '✕ All boxes' : '🔳 One box';
-    full.className = promptFull ? 'small slidebtn on' : 'small slidebtn';
-    chips.replaceChildren(full, ...boxes.map((b) => btn(ABOUT[b.dataset.box].chip, () => {
+    chips.replaceChildren(...boxes.map((b) => btn(ABOUT[b.dataset.box].chip, () => {
       promptAt = b.dataset.box;
       if (promptFull) { scrollTo(0, 0); draw(); } else b.scrollIntoView({ block: 'start', behavior: 'smooth' });
     }, promptFull && b.dataset.box === promptAt ? 'small primary' : 'small')));
-    // In 🔳 One box a swipe goes to the next box, not to the next tab (the tabs' swipe skips .noswipe).
-    view.classList.toggle('noswipe', promptFull);
-    holdPage(promptFull);
     for (const b of boxes) b.hidden = promptFull && b.dataset.box !== promptAt;
     pager.hidden = !promptFull;
     pager.replaceChildren(el('span', '', `${at + 1} of ${boxes.length} · ${boxes[at].querySelector('h2').textContent} · ${at < boxes.length - 1 ? 'swipe up for the next' : 'the last box: swipe down for the one before'}`));
@@ -541,8 +595,8 @@ async function renderPrompt() {
   draw(promptStep);
   promptStep = 0;
 }
-// A swipe up (or ↓): the next box; down (or ↑): the one before (only in 🔳 One box).
-upDown(view, { on: () => promptFull && route().tab === 'prompt' && !route().video, box: () => view.querySelector('.box.pbox:not([hidden])'), skip: '.chips', go: (step) => {
+// A swipe up (or ↓): the next box; down (or ↑): the one before (only in Full size).
+upDown(view, { on: () => isFull() && route().tab === 'prompt' && !route().video, box: () => view.querySelector('.box.pbox:not([hidden])'), skip: '.chips', go: (step) => {
   const ids = [...view.querySelectorAll('.box.pbox')].map((b) => b.dataset.box);
   const i = ids.indexOf(promptAt) + step;
   if (i < 0 || i >= ids.length) return;
@@ -551,34 +605,31 @@ upDown(view, { on: () => promptFull && route().tab === 'prompt' && !route().vide
   promptDraw?.(step);
 } });
 function checkPromptFull() {
-  globalThis.KidTubeWatch?.check({ id: 'parent.prompt.oneBox', area: 'parent', expect: '🔳 One box on the Prompt tab shows one box on the whole screen, its chip marked, each box says where it comes from',
+  globalThis.KidTubeWatch?.check({ id: 'parent.prompt.oneBox', area: 'parent', expect: 'Full size on the Prompt tab shows one box on the whole screen, its chip marked, each box says where it comes from',
     code: ['apps/kidtube/parent/parent.js renderPrompt'] }, (t) => {
-    if (route().tab !== 'prompt' || !promptFull) return t.skip('left the mode');
+    if (route().tab !== 'prompt' || !isFull()) return t.skip('left the mode');
     const seen = [...view.querySelectorAll('.box.pbox')].filter((b) => !b.hidden);
     t.eq('boxes on the screen', 1, seen.length);
     t.eq('the box', promptAt, seen[0]?.dataset.box ?? null);
     t.eq('the marked chip', ABOUT[promptAt]?.chip, view.querySelector('.pchips .primary')?.textContent ?? null);
     t.ok('From, Used, Why', seen[0]?.querySelectorAll('.about dt').length === 3, seen[0]?.querySelectorAll('.about dt').length, '3 lines');
     t.eq('a swipe down is the box before, not a reload', 'none', getComputedStyle(document.documentElement).overscrollBehaviorY);
-    t.eq('nothing on top (no apps header, notifications or tabs)', 'none', getComputedStyle(document.querySelector('body > header') ?? document.body).display);
+    t.eq('no apps header on top (the tabs stay, with Full size)', 'none', getComputedStyle($('appHeader')).display);
   }, 1500);
 }
 
 // --- Context: the documents the helper plans from (kidtube-data context/*.md) ---------------------------
 // The parent's note (2026-10-13): no "Your notes on this document" box (a chip still counts the notes waiting), and
-// 🔳 Full screen as in Settings: the document fills the screen, a swipe up (or ↓) goes to the next document.
+// Full size (the switch on the tabs, 2026-10-14) as in Settings: the document fills the screen, a swipe up (or ↓) goes to the next document.
 const CONTEXT = [['kid', 'About him'], ['strategy', 'Strategy'], ['math', 'Math'], ['letters', 'Letters'], ['world', 'World']];
 let contextDoc = 'kid';
-let contextFull = false;
 async function renderContext() {
   const c = await ask({ type: 'contextData' });
   if (route().tab !== 'context') return;
   if (!c?.ok) { view.replaceChildren(el('p', 'err', 'Could not load the context documents.')); return; }
+  const contextFull = isFull();
   const at = CONTEXT.findIndex(([id]) => id === contextDoc);
   const chips = el('div', 'chips noswipe');
-  const full = btn(contextFull ? '✕ Exit full screen' : '🔳 Full screen', () => { contextFull = !contextFull; holdPage(contextFull, true); renderContext(); }, contextFull ? 'small slidebtn on' : 'small slidebtn');
-  full.title = 'The document on the whole screen: swipe up for the next document';
-  chips.append(full);
   for (const [id, name] of CONTEXT) {
     const n = c.notes.filter((x) => x.doc === id).length;
     chips.append(btn(n ? `${name} · ${n}` : name, () => { contextDoc = id; renderContext(); }, id === contextDoc ? 'small primary' : 'small'));
@@ -587,30 +638,27 @@ async function renderContext() {
   const body = el('div', contextFull ? 'box doc full' : 'box doc');
   // A double tap on a paragraph edits it (the parent's note, 2026-10-13): the change goes as a note on this document.
   body.append(doc?.text ? editable(doc.text, `context/${contextDoc}.md`) : el('p', 'muted', 'Not written yet. It appears after the next sync, or the helper writes it on its next run.'));
-  // In 🔳 Full screen a swipe goes to the next document, not to the next tab (the swipe below; the tabs' swipe skips .noswipe).
-  view.classList.toggle('noswipe', contextFull);
-  holdPage(contextFull);
   if (!contextFull) { view.replaceChildren(chips, body); return; }
   const pager = el('div', 'pager');
   pager.append(el('span', '', `${at + 1} of ${CONTEXT.length} · ${CONTEXT[at][1]} · ${at < CONTEXT.length - 1 ? 'swipe up for the next' : 'the last one: swipe down for the one before'}`));
   view.replaceChildren(chips, pager, body);
   if (contextStep) slideIn(body, contextStep);
   contextStep = 0;
-  globalThis.KidTubeWatch?.check({ id: 'parent.context.full', area: 'parent', expect: '🔳 Full screen shows the chosen document on the whole screen, its chip marked',
+  globalThis.KidTubeWatch?.check({ id: 'parent.context.full', area: 'parent', expect: 'Full size shows the chosen document on the whole screen, its chip marked',
     code: ['apps/kidtube/parent/parent.js renderContext'] }, (t) => {
-    if (route().tab !== 'context' || !contextFull) return t.skip('left the mode');
+    if (route().tab !== 'context' || !isFull()) return t.skip('left the mode');
     t.eq('documents on the screen', 1, view.querySelectorAll('.box.doc').length);
     t.eq('the marked chip', CONTEXT.find(([id]) => id === contextDoc)[1], view.querySelector('.chips .primary')?.textContent.replace(/ · \d+$/, '') ?? null);
     t.ok('fills the screen', view.querySelector('.box.doc')?.getBoundingClientRect().height >= innerHeight * 0.5, 'small', 'at least half the screen');
     t.eq('no notes box', 0, [...view.querySelectorAll('h2')].filter((h) => /Your notes/.test(h.textContent)).length);
     t.eq('no ‹ › buttons (a swipe up or down)', 0, view.querySelectorAll('.pager button').length);
     t.eq('a swipe down is the document before, not a reload', 'none', getComputedStyle(document.documentElement).overscrollBehaviorY);
-    t.eq('nothing on top (no apps header, notifications or tabs)', 'none', getComputedStyle(document.querySelector('body > header') ?? document.body).display);
+    t.eq('no apps header on top (the tabs stay, with Full size)', 'none', getComputedStyle($('appHeader')).display);
   }, 1500);
 }
 let contextStep = 0;
-// A swipe up (or ↓): the next document; down (or ↑): the one before (only in 🔳 Full screen; the parent's note, 2026-10-13).
-upDown(view, { on: () => contextFull && route().tab === 'context' && !route().video, box: () => view.querySelector('.box.doc'), skip: '.chips', go: (step) => {
+// A swipe up (or ↓): the next document; down (or ↑): the one before (only in Full size; the parent's note, 2026-10-13).
+upDown(view, { on: () => isFull() && route().tab === 'context' && !route().video, box: () => view.querySelector('.box.doc'), skip: '.chips', go: (step) => {
   const i = CONTEXT.findIndex(([id]) => id === contextDoc) + step;
   if (i < 0 || i >= CONTEXT.length) return;
   contextDoc = CONTEXT[i][0];
@@ -774,7 +822,7 @@ function noteTarget() {
   if (r.video) return { videoId: r.video };
   if (r.tab === 'context') return { doc: contextDoc };
   if (r.tab === 'prompt') return { prompt: true };
-  // Settings in 🔳 One box: the note is about the box on the screen when it starts.
+  // Settings in Full size: the note is about the box on the screen when it starts.
   if (r.tab === 'settings' && settingsBox()) return { list: 'settings', section: settingsBox() };
   return { list: r.tab };   // today | planned | history | settings
 }

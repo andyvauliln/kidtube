@@ -8,6 +8,8 @@
 //   (the header adds its own: update, a newer version; system, what its last action said)
 // The same problem again is not a new row: its count goes up (core/checks/runner.js counts it and does not send it
 // again). A new version that still has it sends it once more: its try goes up (one try per version).
+// Every row has at (its date) and may have version (the app's version it came from; the header shows this tablet's
+// version when it has none), shown on the row and in its Details (the parent's note, 2026-10-14).
 // Every row has a view: its Details (the header opens it on a tap), only what the parent needs to understand it and to
 // check it again: sections of { title, text } | { title, rows: [[label, value, 'time'?]] } | { title, steps: [..] }
 // (what to do, in order) | { title, list: [..] }, and report: { path, root } when an AI run did something about it
@@ -69,7 +71,7 @@ function problemRow(p, installed) {
     { title: 'Check it again', steps: recheckOf(p) },
   ], report: p.fix?.report ? { path: p.fix.report, root: true } : null };
   return { id: `problem:${p.key}`, type: p.kind, status: status(PROBLEM_STATUS[p.state] ?? ['Open', 'bad']), title: p.title,
-    detail: p.detail, state: `${p.label}.${ai}`, versions: versionsOf(p, installed), count: p.count, tries: p.tries, at: p.lastAt, done: !!p.done, actions,
+    detail: p.detail, state: `${p.label}.${ai}`, versions: versionsOf(p, installed), version: p.versions.at(-1) ?? '', count: p.count, tries: p.tries, at: p.lastAt, done: !!p.done, actions,
     more: `${p.check} · ${p.versions.join(', ')}`, view };
 }
 
@@ -134,7 +136,7 @@ function noteView(n, about, extra = []) {
 function voiceRow(n, about) {
   const [st, words] = VOICE[n.voice.state] ?? VOICE.server;
   const failed = n.voice.state === 'failed';
-  return { id: `note:${n.id}`, note: n.id, type: n.ask ? 'question' : 'note', status: status(st), at: n.at, count: null,
+  return { id: `note:${n.id}`, note: n.id, type: n.ask ? 'question' : 'note', status: status(st), at: n.at, version: n.version ?? '', count: null,
     view: noteView(n, about, [['Recording', `${n.voice.seconds ?? '?'} s, ${st[0].toLowerCase()}${failed ? `: ${n.voice.error ?? 'no reason given'}` : ''}`]]),
     editText: '', title: `🎤 A recorded ${n.ask ? 'question' : 'note'}${n.voice.seconds ? ` (${n.voice.seconds} s)` : ''} about ${about}`,
     detail: failed ? `${words}: ${n.voice.error ?? 'no reason given'}. Type the note with Edit, or delete it.` : words,
@@ -146,7 +148,7 @@ function noteRow(n) {
   if (n.voice) return voiceRow(n, about);
   return { id: `note:${n.id}`, note: n.id, type: n.ask ? 'question' : 'note', status: status(['Not sent', 'wait']), title: n.text, view: noteView(n, about),
     detail: `Your ${n.ask ? 'question' : 'note'} about ${about}. It waits on this tablet until you send it.${n.ask ? ' The AI answers it here.' : ''}`,
-    at: n.at, count: null, checks: checksOf(n), actions: [{ do: 'note.edit', label: 'Edit' }, { do: 'note.drop', label: 'Delete' }, { do: 'note.send', label: 'Send' }] };
+    at: n.at, version: n.version ?? '', count: null, checks: checksOf(n), actions: [{ do: 'note.edit', label: 'Edit' }, { do: 'note.drop', label: 'Delete' }, { do: 'note.send', label: 'Send' }] };
 }
 
 // A note or question already sent: waiting for the AI, then its answer (a question) or what was done about it (a
@@ -165,7 +167,7 @@ function questionRow(q, run) {
     ...(q.state === 'waiting' ? [] : [{ title: 'Check it', steps: ask ? ['Read the answer. If it is not what you asked, make a new note that says what is missing.']
       : ['Open the run’s report below: “What it said” and “What changed” show what it did about this note.', 'Check it on the screen it is about. If it is not right, make a new note on that screen.'] }]),
   ], report: q.report ? { path: q.report, root: false } : run?.report && q.state !== 'waiting' ? { path: run.report, root: false } : null };
-  const base = { id: `question:${q.id}`, note: q.id, type: ask ? 'question' : 'note', title: q.text, at: q.answeredAt ?? q.at, count: null, view };
+  const base = { id: `question:${q.id}`, note: q.id, type: ask ? 'question' : 'note', title: q.text, at: q.answeredAt ?? q.at, version: q.version ?? '', count: null, view };
   if (q.state === 'answered') {
     return ask ? { ...base, fresh: true, status: status(['Answered', 'ok']), answer: q.answer, state: `Your question about ${q.about}.`, actions: [gotIt] }
       : { ...base, done: true, status: status(['Done', 'ok']), state: `Your note about ${q.about}.`, details: [['What was done', q.answer]], actions: [gotIt] };

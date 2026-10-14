@@ -77,13 +77,28 @@ export function upDown(host, { on, box, go, skip = '' }) {
 // While the mode is on (the parent's notes, 2026-10-13): a swipe down at the top goes to the box before, it does not
 // reload the page (html.updown stops the browser's pull-to-refresh; parent.css). Out of the mode it reloads as before.
 // tapped: the mode's button was just tapped, so the browser may also go full screen (no status bar or notifications
-// on top); leaving the mode leaves full screen. html.updown also hides the page's top: the apps header with its
-// notifications and the tabs (the parent's note, 2026-10-13; parent.css); the mode's own button stays to leave it. A browser that refuses full screen keeps the mode as it was.
+// on top); leaving the mode leaves full screen. html.updown also hides the apps header with its notifications
+// (the parent's note, 2026-10-13; parent.css); the tabs stay, with the Full size switch to leave it (2026-10-14). A browser that refuses full screen keeps the mode as it was.
 export function holdPage(on, tapped = false) {
   document.documentElement.classList.toggle('updown', on);
   if (on && tapped && !document.fullscreenElement) document.documentElement.requestFullscreen?.({ navigationUI: 'hide' })?.catch?.(() => {});
   if (!on && document.fullscreenElement) document.exitFullscreen?.()?.catch?.(() => {});
 }
+// --- Full size: one switch for every tab (the parent's note, 2026-10-14) ----------------------------------------
+// It replaced each tab's own 🔳 One box / Full screen button: the switch at the right end of the tabs turns it on or off
+// on every tab at once, and it stays as it was left (this tablet, localStorage). On: one box (a video, a document, a
+// Settings or Prompt box) on the screen, a swipe up for the next. The tabs stay on top (the switch is there).
+const FULL_KEY = 'kidtubeFullSize';
+export function isFull() {
+  try { return globalThis.localStorage?.getItem(FULL_KEY) === '1'; } catch { return false; }
+}
+// tapped: the switch was just tapped (the browser may go full screen). Tells every view: 'kidtube-fullsize'.
+export function setFull(on, tapped = false) {
+  try { globalThis.localStorage?.setItem(FULL_KEY, on ? '1' : '0'); } catch {}
+  holdPage(on, tapped);
+  globalThis.dispatchEvent?.(new Event('kidtube-fullsize'));
+}
+
 // The box comes in from below (step 1) or from above (-1).
 export function slideIn(node, step) {
   node.classList.remove('from-below', 'from-above');
@@ -127,6 +142,8 @@ export async function runNow() {
 // --- notes for the AI: one 🎤 button (in the bottom bar, right) and one notes card (top of the page) ---------
 // The 🎤 records a note about what is on the screen (where()): a tab, a video, a context document or the prompt.
 // Pauses don't end it: it records until ⏹. The card shows the recording and has a box to type a note instead.
+// While it records (the parent's note, 2026-10-14): ⏹ Stop keeps the note in 🔔 as before; ➤ Stop and send sends it to
+// the AI as soon as it is written down (sendAfter).
 // The notes themselves are only in the header's notifications (🔔): Edit, Delete, Send, Send all, and the checkboxes
 // of what goes with each one (core/background/inbox.js): 📄 This screen and ⚙️ App data, kept with every note when it
 // is made (the background's madeWith) and only sent when ticked, and ❓ Question.
@@ -163,6 +180,7 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
   let started = 0, clock = null, notice = '', cloud = false;
   // On a fresh page the card is closed (the notes are in the header's 🔔 list); a recording opens it.
   let expanded = false;
+  let sendAfter = false;     // ➤ Stop and send was tapped: the note goes to the AI once saved
 
   // more: what else goes with the note (voice: a recording for the server to write down).
   const save = async (text, at = where(), more = {}) => {
@@ -178,7 +196,14 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
     expanded = false;
     card.classList.remove('open');
     await draw();
-    toast('Saved. It waits in the 🔔 list: send it there, or tick what goes with it.');
+    // ➤ Stop and send: this note goes now (a recording the server still writes down waits: it has no words yet).
+    const go = sendAfter && r.eventId && !more.voice;
+    sendAfter = false;
+    const sent = go ? await ask({ type: 'inbox', do: 'note.send', id: r.eventId }) : null;
+    if (go) checkSent(r.eventId, sent);
+    if (sent?.ok) toast('Sent to the AI. The 🔔 list shows when it answers.');
+    else if (go) toast(`Saved, but not sent: ${sent?.error ?? 'no answer'}. Send it from the 🔔 list.`);
+    else toast('Saved. It waits in the 🔔 list: send it there, or tick what goes with it.');
     onSaved();
     hooks.afterRun();
     return true;
@@ -206,6 +231,15 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
     if (rec) {
       const s = Math.round((Date.now() - started) / 1000);
       parts.push(el('p', 'recline', `● Recording ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')} · pauses are fine · tap ⏹ to stop${cloud ? ` (it stops by itself at ${CLOUD_NOTE_MINUTES}:00)` : ''}`));
+      const stop = el('div', 'ncacts recacts');
+      const keep = el('button', 'small', '⏹ Stop');
+      keep.title = 'Stop: the note waits in the 🔔 list';
+      keep.addEventListener('click', () => { sendAfter = false; rec?.stop(); });
+      const go = el('button', 'small primary', '➤ Stop and send');
+      go.title = 'Stop, and send the note to the AI as soon as it is written down';
+      go.addEventListener('click', () => { sendAfter = true; rec?.stop(); });
+      stop.append(keep, go);
+      parts.push(stop);
     } else if (writing) parts.push(el('p', 'recline', 'Writing it down…'));
     if (notice) parts.push(el('p', 'muted', notice));
     if (retry && !busy) {
@@ -284,6 +318,7 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
     notice = '';
     retry = null;
     expanded = true;
+    sendAfter = false;
     if (!keys.groq && !keys.gemini && !keys.openrouter && !SR) {
       card.classList.add('open');
       notice = 'Dictation isn’t available here: type the note, or use the 🎤 on the keyboard.';
@@ -337,6 +372,16 @@ export function notesDock({ card, where, onSaved = () => {}, fabHost = null }) {
     try { r.start(); await draw(); } catch { rec = null; stopClock(); notice = 'Dictation isn’t available here: type the note.'; await draw(); }
   }
 
+  // ➤ Stop and send: the note left the 🔔 list's "Not sent" (sent, or the run asked for).
+  function checkSent(id, res) {
+    globalThis.KidTubeWatch?.check({ id: 'notes.stopAndSend', area: 'notes', expect: '➤ Stop and send sends the recorded note to the AI at once',
+      code: ['apps/kidtube/parent/kit.js notesDock save', 'core/background/inbox.js inboxAct note.send'] }, async (t) => {
+      t.ok('the send was accepted', !!res?.ok, res?.error ?? 'no answer', 'ok');
+      const left = await ask({ type: 'heldNotes' });
+      t.ok('it is not waiting on the tablet', !(left?.notes ?? []).some((n) => n.id === id), 'still held', 'sent');
+    }, 3000);
+  }
+
   fab.addEventListener('click', () => {
     if (rec) return rec.stop();
     if (writing) return;
@@ -387,7 +432,10 @@ export function startEdit(node, send) {
   const form = el('div', 'editform');
   const area = el('textarea');
   area.value = before;
-  area.rows = Math.min(14, Math.max(3, Math.ceil(before.length / 50)));
+  area.rows = 3;
+  // As tall as its words, also while typing: no scroll inside it (the parent's note, 2026-10-14).
+  const fit = () => { area.style.height = 'auto'; area.style.height = `${area.scrollHeight + 2}px`; };
+  area.addEventListener('input', fit);
   const close = (...put) => { node.classList.remove('editing'); form.replaceWith(...put); };
   const save = btn('Save', async () => {
     const after = area.value.replace(/\s+/g, ' ').trim();
@@ -404,6 +452,7 @@ export function startEdit(node, send) {
   form.append(el('div', 'muted', `Change the words, then Save. The AI changes ${source} with them.`), area, actions);
   node.classList.add('editing');
   if (node.tagName === 'LI') node.append(form); else node.after(form);
+  fit();
   area.focus();
 }
 

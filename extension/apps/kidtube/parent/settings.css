@@ -29,8 +29,7 @@
 .settings section.closed > :not(h2) { display: none !important; }
 .settings section > h2:focus-visible { outline: 2px solid var(--focus); outline-offset: 4px; }
 
-/* 🔳 One box: one box on the whole screen, a swipe up or ↓ goes to the next one (no buttons) */
-.settings .secnav .slidebtn { font-weight: 600; }
+/* Full size (the switch on the tabs): one box on the whole screen, a swipe up or ↓ goes to the next one (no buttons) */
 .settings .pager { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin: 0 0 10px; }
 .settings .pager[hidden] { display: none; }
 .settings .pager span { flex: 1; text-align: center; color: var(--muted); font-size: 14px; }

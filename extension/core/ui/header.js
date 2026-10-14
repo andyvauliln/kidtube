@@ -134,7 +134,8 @@
     .msg span.pvers { font-size: 11px; }
     .msg span.answer { font-size: 14px; color: var(--ink); white-space: pre-wrap; padding: 2px 0; }
     .msg textarea { font: inherit; font-size: 14px; width: 100%; min-height: 60px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line);
-      background: var(--bg); color: var(--ink); resize: vertical; }
+      background: var(--bg); color: var(--ink); resize: none; overflow: hidden; box-sizing: border-box; }
+    .msg span.nwhen { font-size: 11px; font-variant-numeric: tabular-nums; }
     .acts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
     .acts button { height: 28px; padding: 0 10px; border-radius: 14px; background: var(--soft); font-size: 13px; font-weight: 500; white-space: nowrap; }
     .acts button:not(:disabled):hover { background: var(--hover); }
@@ -154,6 +155,7 @@
     .dview .dhead { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; }
     .dview .dhead b { flex-basis: 100%; font-size: 16px; font-weight: 600; overflow-wrap: anywhere; }
     .dview .back { height: 30px; padding: 0 12px; border-radius: 15px; background: var(--soft); font-weight: 500; }
+    .dview .dclose { margin-left: auto; width: 34px; height: 34px; border-radius: 50%; background: var(--soft); font-size: 16px; font-weight: 600; }
     .dview h4 { margin: 0 0 4px; font-size: 13px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
     .dview .dtext { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 14px; line-height: 1.45; }
     .dview dl { display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 3px 12px; margin: 0; font-size: 13px; }
@@ -636,17 +638,36 @@
     const rowsNow = (h) => allRows(h).filter((r) => hidden[r.id] !== sigOf(r));
     const sigOf = (r) => `${r.status?.text ?? ''}|${r.tries ?? ''}`;
     // A row swiped to the right: a note asks once more (its Delete); an answered question closes (Got it); the header's
-    // message goes; any other row is hidden until its status changes.
+    // message goes; any other row is hidden until its status changes (its Remove button does the same: hide).
     function swiped(r) {
       if (r.actions?.some((a) => a.do === 'note.drop')) { ui.sure = r.id; return draw(); }
       const close = r.actions?.find((a) => a.do === 'question.dismiss');
       if (close) return tapRow(r, close);
       if (r.id === 'system') { ui.note = ''; return draw(); }
+      hide(r);
+    }
+    function hide(r) {
       // Forget only rows that are gone for good (not the ones swiped before: they would come back).
       const ids = new Set(allRows(data ?? {}).map((x) => x.id));
       hidden = { ...Object.fromEntries(Object.entries(hidden).filter(([k]) => ids.has(k))), [r.id]: sigOf(r) };
       chrome.storage.local.set({ inboxHidden: hidden }).catch(() => {});
+      if (ui.detail === r.id) closeDetail();
       draw();
+    }
+    // Every row can go (the parent's note, 2026-10-14): a row with no Delete, ✕ or Got it of its own gets Remove (hides it).
+    const GOES = ['note.drop', 'question.dismiss', 'dismiss'];
+    const actionsOf = (r) => (r.actions ?? []).some((a) => GOES.includes(a.do)) ? (r.actions ?? []) : [...(r.actions ?? []), { do: 'hide', label: 'Remove' }];
+    // The date and the version a row came from (the parent's note, 2026-10-14); no version of its own: this tablet's.
+    const versionOf = (r) => r.version || ver?.installed || chrome.runtime.getManifest?.().version || '';
+    const whenLine = (r) => [when(r.at), versionOf(r) && `v${versionOf(r)}`].filter(Boolean).join(' · ');
+    // An edit field as tall as its words: no scroll inside it (the parent's note, 2026-10-14).
+    const fit = (ta) => { ta.style.height = 'auto'; ta.style.height = `${ta.scrollHeight + 2}px`; };
+    function closeDetail() {
+      ui.detail = null; ui.detailRow = null; ui.rep = null;
+      W?.check({ id: 'header.detailCloses', area: 'header', expect: 'A notification’s Details closes on ✕, ‹ Back, or a button that makes the row go',
+        code: ['core/ui/header.js closeDetail', 'core/ui/header.js tapRow'] }, (t) => {
+        t.eq('the Details on the screen', 0, root.querySelectorAll('.dview').length);
+      }, 1000);
     }
     // Swipe to the right (a finger or the mouse): past a third of the row it goes; less, it slides back.
     function swipeable(row, r) {
@@ -703,6 +724,10 @@
     const waiting = (rows) => rows.filter((r) => !r.done && r.type !== 'system').length;
 
     async function tapRow(r, a) {
+      // From a row's Details: a button that makes the row go (✕, Got it, Delete, Remove) closes the Details too, and Edit
+      // goes back to the list, where the row's field is (the parent's note, 2026-10-14: the ✕ there did not close it).
+      if (ui.detail === r.id && (GOES.includes(a.do) || a.do === 'hide' || a.do === 'note.edit') && !(a.do === 'note.drop' && ui.sure !== r.id)) closeDetail();
+      if (a.do === 'hide') return hide(r);
       if (a.do === 'dismiss') { ui.note = ''; return draw(); }
       if (a.do === 'update') return getUpdate();
       if (a.do === 'update.manual') return getUpdate(true);
@@ -711,7 +736,13 @@
         if (!o?.ok) say(o?.error ?? 'That didn’t work. Try again.', 'err');
         return;
       }
-      if (a.do === 'note.edit') { ui.edit = { id: r.note, text: r.editText ?? r.title }; ui.sure = null; draw(); root.querySelector('textarea')?.focus(); return; }
+      if (a.do === 'note.edit') {
+        ui.edit = { id: r.note, text: r.editText ?? r.title }; ui.sure = null; draw();
+        const ta = root.querySelector?.('.msg textarea');
+        ta?.focus();
+        checkEdit(ta);
+        return;
+      }
       // Delete asks once more on the same button: a dictated note can be long.
       if (a.do === 'note.drop' && ui.sure !== r.id) { ui.sure = r.id; return draw(); }
       ui.sure = null;
@@ -734,6 +765,14 @@
         }, 5000);
       }
     }
+    // The Edit field shows all its words (no scroll inside it).
+    function checkEdit(ta) {
+      W?.check({ id: 'header.editFits', area: 'notes', expect: 'A note’s Edit field is as tall as its words: no scroll inside it',
+        code: ['core/ui/header.js inboxRow (fit)'] }, (t) => {
+        if (!ta?.isConnected) return t.skip('the field closed');
+        t.ok('all the words show', ta.scrollHeight <= ta.clientHeight + 4, `${ta.scrollHeight} px of words in ${ta.clientHeight} px`, 'no scroll');
+      }, 1000);
+    }
     async function saveEdit() {
       const e = ui.edit;
       if (!e) return;
@@ -751,7 +790,7 @@
       const acts = el('div', 'acts');
       if (editing) {
         const box = Object.assign(el('textarea'), { value: ui.edit.text, maxLength: 2000 });
-        box.addEventListener('input', () => { ui.edit.text = box.value; save.disabled = !box.value.trim() || !!busy; });
+        box.addEventListener('input', () => { ui.edit.text = box.value; save.disabled = !box.value.trim() || !!busy; fit(box); });
         box.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.stopPropagation(); ui.edit = null; draw(); } });
         msg.append(box);
         const save = button('go', 'Save', saveEdit);
@@ -763,6 +802,7 @@
         if (r.detail) msg.append(el('span', '', r.detail));
         if (r.state) msg.append(el('span', '', r.state));
         if (r.versions) msg.append(el('span', 'pvers', r.versions));   // a problem: where it came from, where it is fixed
+        if (whenLine(r)) msg.append(el('span', 'nwhen', whenLine(r)));
         // A note not sent yet: what goes with it (core/background/inbox.js checksOf).
         if (r.checks?.length) {
           const box = el('div', 'nchecks');
@@ -776,12 +816,13 @@
           }
           msg.append(box);
         }
-        for (const a of r.actions ?? []) {
+        for (const a of actionsOf(r)) {
           const sure = a.do === 'note.drop' && ui.sure === r.id;
           const b = button(sure ? 'sure' : a.do === 'note.send' ? 'go' : '', sure ? 'Sure? Delete' : a.label, () => tapRow(r, a));
           b.disabled = !!busy;
           if (a.do === 'note.send') b.title = 'Send this note to the AI now (the other notes keep waiting)';
           if (a.do === 'dismiss') b.title = 'Hide this message';
+          if (a.do === 'hide') b.title = 'Remove this row from the list (it comes back only if it changes)';
           acts.append(b);
         }
       }
@@ -908,19 +949,28 @@
     function detailView(r) {
       const v = el('div', 'dview');
       const head = el('div', 'dhead');
-      head.append(button('back', '‹ Back', () => { ui.detail = null; ui.rep = null; draw(); }), el('span', `chip ${r.type}`, TYPE[r.type] ?? r.type),
-        el('span', `st ${r.status?.tone ?? ''}`, r.status?.text ?? ''), el('b', '', r.title));
+      const close = button('dclose', '✕', () => { closeDetail(); draw(); });
+      close.title = 'Close the Details';
+      close.setAttribute('aria-label', close.title);
+      head.append(button('back', '‹ Back', () => { closeDetail(); draw(); }), el('span', `chip ${r.type}`, TYPE[r.type] ?? r.type),
+        el('span', `st ${r.status?.tone ?? ''}`, r.status?.text ?? ''), close, el('b', '', r.title));
       v.append(head);
+      // Every notification: its date and version (the parent's note, 2026-10-14).
+      const stamp = rowsOf([['Date', r.at ?? '', 'time'], ['Version', versionOf(r)]]);
+      if (stamp) v.append(section('When', stamp));
       if (r.answer) v.append(section('Answer', el('div', 'dtext', r.answer)));
       const secs = (r.view?.sections ?? []).map(sectionOf).filter(Boolean);
       if (!secs.length && r.details?.length) secs.push(section('Details', rowsOf(r.details)));
       else if (!secs.length && r.detail) secs.push(section('Details', el('div', 'dtext', [r.detail, r.state].filter(Boolean).join('\n'))));
       v.append(...secs);
-      if (r.actions?.length) {
-        const acts = el('div', 'acts');
-        for (const a of r.actions) { const b = button(a.do === 'note.send' ? 'go' : '', a.label, () => tapRow(r, a)); b.disabled = !!busy; acts.append(b); }
-        v.append(acts);
+      const acts = el('div', 'acts');
+      for (const a of actionsOf(r)) {
+        const sure = a.do === 'note.drop' && ui.sure === r.id;
+        const b = button(sure ? 'sure' : a.do === 'note.send' ? 'go' : '', sure ? 'Sure? Delete' : a.label, () => tapRow(r, a));
+        b.disabled = !!busy;
+        acts.append(b);
       }
+      v.append(acts);
       if (r.view?.report) {
         const rp = ui.rep;
         const sec = el('div', 'dsec');
@@ -1058,6 +1108,7 @@
         kids.unshift(scrim);
       }
       box.replaceChildren(...kids);
+      for (const ta of box.querySelectorAll?.('.msg textarea') ?? []) fit(ta);
     }
 
     // The notifications' sources change often (the checks after every message): at most one refresh a second for them.
@@ -1072,7 +1123,7 @@
     chrome.storage.onChanged.addListener(onStorage);
     const onKey = (e) => {
       if (e.key !== 'Escape') return;
-      if (ui.menu) { ui.menu = false; draw(); } else if (ui.detail) { ui.detail = null; ui.rep = null; draw(); }
+      if (ui.menu) { ui.menu = false; draw(); } else if (ui.detail) { closeDetail(); draw(); }
     };
     root.addEventListener('keydown', onKey);
     draw();
