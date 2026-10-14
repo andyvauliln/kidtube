@@ -194,13 +194,22 @@ fi
 # What is there to do: a new run request, new notes, or both.
 id=""
 req="$DATA/requests/run.json"
-if [ -f "$req" ]; then
+new_request() {
+  [ -f "$req" ] || return 0
+  local rid
   rid=$(node -e "try{process.stdout.write(String(require('$req').id??''))}catch{}")
   if [ -n "$rid" ] && [ "$rid" != "$(cat "$STATE/last-request" 2>/dev/null)" ]; then id=$rid; echo "$id" > "$STATE/last-request"; fi
-fi
+}
+new_request
 notes=$(node agent/notes.mjs new --data "$DATA" --state "$STATE") || notes='[]'
 count=$(printf '%s' "$notes" | node -e "let s='';process.stdin.on('data',d=>s+=d).on('end',()=>{try{process.stdout.write(String(JSON.parse(s).length))}catch{process.stdout.write('0')}})")
 [ -n "$id" ] || [ "$count" -gt 0 ] || exit 0
+# Notes and no request: ↻ Update pushes its request a few seconds after the notes. Wait for it, so the run has the
+# request's id (the tablet waits for that id: server.run, 2026-10-14).
+if [ -z "$id" ] && [ "${KIDTUBE_REQUEST_WAIT:-20}" -gt 0 ]; then
+  sleep "${KIDTUBE_REQUEST_WAIT:-20}"
+  git -C "$CLONE" fetch --quiet origin && git -C "$CLONE" reset --quiet --hard "origin/HEAD" && new_request
+fi
 # Notes sent by an older tablet (no request) still get a status line under their own id.
 statusId=${id:-notes-$(date -u +%Y%m%dT%H%M%SZ)}
 # The report of the run that ends (agent/report.mjs): in run-status.json, so the tablet's row opens it.

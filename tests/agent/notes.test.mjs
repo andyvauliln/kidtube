@@ -82,6 +82,7 @@ console.log('{}');
 `);
   chmodSync(p('bin', 'claude'), 0o755);
   const env = { ...process.env, PATH: `${p('bin')}:${process.env.PATH}`, KIDTUBE_STATE_DIR: p('state'), KIDTUBE_DATA_DIR: p('data'), KIDTUBE_APP_DIR: p('app'),
+    KIDTUBE_REQUEST_WAIT: '0',
     GIT_AUTHOR_NAME: 't', GIT_AUTHOR_EMAIL: 't@t', GIT_COMMITTER_NAME: 't', GIT_COMMITTER_EMAIL: 't@t', ...extraEnv };
   const tablet = p('tablet');
   sh(`git clone -q ${p('data.git')} ${tablet} 2>/dev/null`);
@@ -145,6 +146,26 @@ test('poll.sh: old notes are not worked on; a new note wakes the notes agent onc
 
   w.poll();                                            // nothing new: no second run
   assert.equal(w.calls().length, 1);
+});
+
+// 2026-10-14 (server.run): ↻ Update pushed the notes, the poll started 2 s before the run request arrived, and the
+// notes run got its own id: the tablet waited for its request's id, said "not started in 10 minutes".
+test('poll.sh: notes with no request yet: the request pushed a few seconds later is the run’s id', () => {
+  const w = world({ KIDTUBE_REQUEST_WAIT: '20' });
+  w.send([]);
+  w.poll();                                            // first run: nothing old
+  // The poll's wait (a fake sleep): the tablet's request arrives then.
+  writeFileSync(w.p('bin', 'sleep'), `#!/usr/bin/env bash\necho "$1" >> "${w.p('slept')}"\ncd "${w.p('tablet')}" && git pull -q --rebase origin main && mkdir -p requests && echo '{"schemaVersion":1,"id":"req-late","at":"now"}' > requests/run.json && git add -A && git commit -qm tablet && git push -q origin HEAD:main\n`);
+  chmodSync(w.p('bin', 'sleep'), 0o755);
+  w.answer({ summary: 'Done.', runHelper: false, version: null });
+  w.send([ev('n-late', '2026-10-14T10:15:00Z', 'wish', { list: 'settings', text: 'A Cancel button' })]);
+  w.poll();
+  assert.equal(readFileSync(w.p('slept'), 'utf8').trim(), '20');
+  assert.equal(w.calls().length, 1);
+  assert.equal(w.status().requestId, 'req-late');
+  w.poll();                                            // the request was this run's: no second run for it
+  assert.equal(w.calls().length, 1);
+  assert.equal(existsSync(w.p('helper-ran')), false);
 });
 
 test('poll.sh: a question gets its answer in answers.json, pushed with the status', () => {
