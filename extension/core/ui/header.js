@@ -16,11 +16,13 @@
   // Same as lib/ask.js. Orion only returns sendMessage answers to the callback. 15 s; a note's Send (inbox) 60 s, as
   // ↻ Update (lib/ask.js WAIT: a whole sync and the run request, 8–9 s on a slow tablet).
   const LONG = { inbox: 60000 };
-  const ask = (msg, ms = LONG[msg?.type] ?? 15000) => new Promise((resolve) => {
+  // cut(why): no answer, and not because of the wait: 'restart' (the background closed the message: it restarted, as
+  // when an update installs) or 'gone' (this page is cut off from KidTube: an update replaced it).
+  const ask = (msg, ms = LONG[msg?.type] ?? 15000, cut = null) => new Promise((resolve) => {
     const timer = setTimeout(() => { globalThis.KidTubeWatch?.noAnswer(msg, ms); resolve(undefined); }, ms);
     try {
-      chrome.runtime.sendMessage(msg, (value) => { clearTimeout(timer); void chrome.runtime.lastError; resolve(value); });
-    } catch { clearTimeout(timer); resolve(undefined); }
+      chrome.runtime.sendMessage(msg, (value) => { clearTimeout(timer); if (chrome.runtime.lastError && value === undefined) cut?.('restart'); resolve(value); });
+    } catch { clearTimeout(timer); cut?.('gone'); resolve(undefined); }
   });
 
   const CSS = `
@@ -349,11 +351,19 @@
       if (loading) { again = again || force; return; }
       loading = true;
       try {
-        const h = await ask({ type: 'header', refresh: force });
+        // The background restarted under the message (2026-10-14: an update installed as the parent page opened, the
+        // header stayed empty): the new worker answers, so ask it once more, a second later.
+        let why = null;
+        const get = () => ask({ type: 'header', refresh: force }, undefined, (w) => { why = w; });
+        let h = await get();
+        if (why === 'restart' && alive) { why = null; await new Promise((r) => setTimeout(r, 1000)); h = await get(); }
         if (first && alive) {
           first = false;
           W?.check({ id: 'header.loads', area: 'header', expect: 'The apps header gets what to show from the background',
-            code: ['core/ui/header.js refresh', 'core/background/profiles.js headerView'] }, (t) => { t.ok('answer to "header"', !!h?.ok, h ?? 'no answer in 15 s', '{ ok: true, … }'); });
+            code: ['core/ui/header.js refresh', 'core/background/profiles.js headerView'] }, (t) => {
+            if (why === 'gone') return t.skip('KidTube was updated: this page is cut off from it');
+            t.ok('answer to "header"', !!h?.ok, h ?? (why === 'restart' ? 'the background closed the message twice (it restarted)' : 'no answer in 15 s'), '{ ok: true, … }');
+          });
         }
         readVersion();
         if (!alive || !h?.ok) return;

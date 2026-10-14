@@ -695,3 +695,41 @@ test('a long press: the ring fills while the finger stays; a full press picks th
     assert.equal(picked[1].tagName, 'H2', 'the nearest part with a name of its own');
   } finally { t.mock.timers.reset(); delete globalThis.requestAnimationFrame; delete globalThis.cancelAnimationFrame; }
 });
+
+// header.loads|quetta (2026-10-14, 0.12.34): the tablet installed an update while the parent page opened; the
+// background restarted and closed the header's "header" message after 3 s (lastError, no answer). The header stayed
+// empty and the check said "no answer in 15 s". Now the header asks the new worker once more, and the check sees that.
+test('the apps header: an answer lost to a restarting background is asked again, and the check sees the second one', async () => {
+  const results = [];
+  const watch = globalThis.KidTubeWatch;
+  globalThis.KidTubeWatch = { watchTaps() {}, noAnswer() {}, shadow() {},
+    check: async (def, testFn) => { const t = { mismatch: [], skipped: null, ok(what, c, actual) { if (!c) this.mismatch.push({ what, actual }); return !!c; }, skip(w) { this.skipped = w; } };
+      await testFn(t); results.push({ id: def.id, mismatch: t.mismatch, skipped: t.skipped }); } };
+  const send = chrome.runtime.sendMessage;
+  let headers = 0;
+  chrome.runtime.sendMessage = (msg, cb) => {
+    if (msg.type !== 'header') return send(msg, cb);
+    if (++headers === 1) {   // the old worker goes away: the port closes, Chrome sets lastError for the callback
+      chrome.runtime.lastError = { message: 'The message port closed before a response was received.' };
+      cb(undefined);
+      chrome.runtime.lastError = null;
+      return;
+    }
+    cb({ ok: true, open: true, mode: 'parent', running: 'kidtube', site: null, here: null, connected: { app: 'kidtube', label: 'KidTube', who: 'parent@example.com', site: 'YouTube' }, github: { connected: true }, apps: [] });
+  };
+  const host = new FakeEl('div');
+  globalThis.KidTubeHeader.mount(host, { dark: false });
+  await new Promise((r) => setTimeout(r, 1300));
+  assert.equal(headers, 2, 'asked again after the restart');
+  assert.ok(text(host.shadowRoot).includes('parent@example.com'), 'the header shows');
+  assert.deepEqual(results.filter((r) => r.id === 'header.loads').map((r) => r.mismatch), [[]], 'header.loads passes');
+
+  // The page cut off from KidTube (an update replaced it: sendMessage throws): nothing to ask, the check skips.
+  results.length = 0;
+  chrome.runtime.sendMessage = () => { throw new Error('Extension context invalidated.'); };
+  globalThis.KidTubeHeader.mount(new FakeEl('div'), { dark: false });
+  await tick();
+  assert.deepEqual(results.filter((r) => r.id === 'header.loads').map((r) => [r.mismatch.length, !!r.skipped]), [[0, true]], 'skipped, not failed');
+  chrome.runtime.sendMessage = send;
+  globalThis.KidTubeWatch = watch;
+});
