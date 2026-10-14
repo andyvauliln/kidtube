@@ -1102,7 +1102,7 @@ test('▶ Play intro: on a video of today’s list, YouTube plays 3 s clips of i
   assert.match(src, /btn\('▶ Intro on YouTube', \(\) => playIntro\(d\.videoId\)\)/, 'YouTube’s page only when YouTube refuses');
   assert.match(src, /id: 'parent\.playIntro'/, 'its check in the app');
   assert.match(yt, /if \(parentOn\) \{ showParentView\(\); if \(vid === introFor\) playIntro\(vid\); return; \}/, 'parent mode only');
-  assert.match(yt, /const INTRO_CLIPS = 8, INTRO_SECONDS = 3;/);
+  assert.match(yt, /const INTRO_CLIPS = 8, INTRO_SECONDS = 3, INTRO_AD_WAIT_MS = 90000;/);
   assert.match(yt, /id: 'yt\.intro'/, 'its check in the app');
   // The clips' starts: the middle of each part of the video, fewer for a short one.
   const points = new Function(`const INTRO_CLIPS = 8, INTRO_SECONDS = 3; ${yt.match(/function introPoints\(duration\) \{[\s\S]*?\n  \}/)[0]}; return introPoints;`)();
@@ -1114,6 +1114,56 @@ test('▶ Play intro: on a video of today’s list, YouTube plays 3 s clips of i
   assert.equal(fake.nav.updates.at(-1), `https://m.youtube.com/watch?v=${ids[0]}&kidtube=intro`);
   assert.equal((await fromPage({ type: 'watchHere', videoId: ids[0] })).ok, true);
   assert.equal(fake.nav.updates.at(-1), `https://m.youtube.com/watch?v=${ids[0]}`, 'Watch it yourself as before');
+});
+
+// Report yt.intro|quetta (0.12.32, 2026-10-14): ▶ Intro on YouTube, an ad played first (yt.adSkipped 13 s after the
+// tap), and the check said "no video length after 20 s": its 20 s count from the end of the ads.
+test('▶ Intro on YouTube: its check counts 20 s from the end of YouTube’s ads', async () => {
+  const { readFileSync } = await import('node:fs');
+  const yt = readFileSync(new URL('../../extension/apps/kidtube/content/youtube.js', import.meta.url), 'utf8');
+  const fn = (name) => yt.match(new RegExp(`  function ${name}\\([^)]*\\) \\{[\\s\\S]*?\\n  \\}`))[0];
+  const run = (adMs) => {
+    let now = 0, tick = null;
+    const checks = [];
+    const v = { duration: NaN, currentTime: 0, paused: true, readyState: 0, play() { this.paused = false; return Promise.resolve(); }, pause() { this.paused = true; } };
+    const env = {
+      v, Date: { now: () => now }, setInterval: (f) => { tick = f; return 1; }, clearInterval: () => { tick = null; },
+      globalThis: { KidTubeWatch: { check: (def, test, within) => checks.push({ def, test, at: now, within }) } },
+    };
+    const make = new Function(...Object.keys(env), `
+      const INTRO_CLIPS = 8, INTRO_SECONDS = 3, INTRO_AD_WAIT_MS = 90000;
+      let intro = null, videoId = 'RGpQcce_fMg', parentOn = true, adOn = false;
+      const player = () => v, introLabel = () => {};
+      const adPlayer = () => (Date.now() < ${adMs} ? {} : null);
+      ${fn('introPoints')} ${fn('stopIntro')} ${fn('playIntro')} ${fn('checkIntro')}
+      return playIntro;`);
+    const playIntro = make(...Object.values(env));
+    return { playIntro, checks, v, step(ms) { for (const end = now + ms; now < end; now += 200) {
+      if (now >= adMs) { v.duration = 600; v.readyState = 4; }   // the video's own media after the ad
+      if (!v.paused) v.currentTime += 0.2;
+      tick?.();
+    } }, now: () => now };
+  };
+  for (const adMs of [0, 25000, 120000]) {
+    const r = run(adMs);
+    r.playIntro('RGpQcce_fMg');
+    r.step(200);
+    if (adMs === 120000) {
+      assert.equal(r.checks.length, 0, 'an ad that plays on: no check yet');
+      r.step(91000);
+      assert.equal(r.checks.length, 1, 'checked after 90 s anyway');
+      continue;
+    }
+    if (adMs) { assert.equal(r.checks.length, 0, 'no check while the ad plays'); r.step(adMs); }
+    assert.equal(r.checks.length, 1, 'one check, armed when no ad plays');
+    const c = r.checks[0];
+    assert.equal(c.within, 20000);
+    r.step(c.at + c.within - r.now());
+    const { Expect } = await import('../../extension/core/checks/kit.js');
+    const t = new Expect();
+    c.test(t);
+    assert.equal(t.passed, true, `ad of ${adMs} ms: ${JSON.stringify(t.mismatch)}`);
+  }
 });
 
 // The parent's notes (2026-10-14): a tap anywhere on a row opens its Details; Full size on a Details page swipes to the

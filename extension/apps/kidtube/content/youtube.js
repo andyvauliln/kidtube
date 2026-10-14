@@ -13,7 +13,7 @@
   let videoId = null;
   let frames = {};             // our screens by name: extension iframes, or in-page panels (below)
   // ▶ Play intro (playIntro below): the video this page was opened for with …&kidtube=intro, its clips, the one playing.
-  const INTRO_CLIPS = 8, INTRO_SECONDS = 3;
+  const INTRO_CLIPS = 8, INTRO_SECONDS = 3, INTRO_AD_WAIT_MS = 90000;
   const introFor = (() => { const u = new URL(location.href); return u.searchParams.get('kidtube') === 'intro' ? u.searchParams.get('v') : null; })();
   let intro = null;   // { vid, at: [start s…], i, timer, box }
 
@@ -338,7 +338,9 @@
     intro.timer = setInterval(() => {
       const v = player();
       if (videoId !== vid || !parentOn) { stopIntro(); intro.box?.host.remove(); return; }
-      if (!v || adOn || adPlayer() || !(v.duration > 0)) return;
+      const ad = adOn || !!adPlayer();
+      if (!intro.checked && (!ad || Date.now() - intro.asked > INTRO_AD_WAIT_MS)) { intro.checked = true; checkIntro(vid); }
+      if (!v || ad || !(v.duration > 0)) return;
       if (!intro.at) {
         intro.at = introPoints(v.duration);
         v.currentTime = intro.at[0];
@@ -360,12 +362,19 @@
       v.currentTime = intro.at[intro.i];
       introLabel(`Intro: clip ${intro.i + 1} of ${intro.at.length}`);
     }, 200);
+  }
+  // Its 20 s count from the end of YouTube's ads (the clips wait for them; two ads take 30 s and more: report
+  // 2026-10-14). An ad that never ends is checked after INTRO_AD_WAIT_MS anyway (and yt.adSkipped says why).
+  function checkIntro(vid) {
     globalThis.KidTubeWatch?.check({ id: 'yt.intro', kind: 'probe', area: 'youtube', expect: '▶ Play intro: the video plays its 3 s clips, one after another',
       code: ['apps/kidtube/content/youtube.js playIntro'] }, (t) => {
       if (intro?.vid !== vid) return t.skip('another video now');
       if (intro.at && player()?.paused && intro.i === 0) return t.skip('waiting for a tap on ▶');
+      const v = player();
+      t.note('video', { found: !!v, duration: v?.duration, at: v?.currentTime, readyState: v?.readyState, paused: v?.paused,
+        ad: adOn || !!adPlayer(), secondsSinceTap: Math.round((Date.now() - intro.asked) / 1000) });
       t.ok('the clips started', !!intro.at, 'no video length after 20 s', 'the clips’ starts');
-      t.ok('a clip played', intro.played > 0 || intro.i > 0 || (player()?.currentTime ?? 0) > (intro.at?.[0] ?? 0), 'still at the start', 'at least one clip');
+      t.ok('a clip played', intro.played > 0 || intro.i > 0 || (v?.currentTime ?? 0) > (intro.at?.[0] ?? 0), 'still at the start', 'at least one clip');
     }, 20000);
   }
 
