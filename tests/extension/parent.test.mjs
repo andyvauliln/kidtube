@@ -1130,6 +1130,13 @@ test('rows open their Details; Details swipes in Full size; Play intro in the pa
   assert.match(src, /frame\.src = `https:\/\/www\.youtube\.com\/embed\/\$\{d\.videoId\}\?enablejsapi=1/, 'YouTube’s player in the page');
   assert.match(src, /initiatorDomains: \[chrome\.runtime\.id\]/, 'the referrer rule: only this extension’s requests');
   assert.match(src, /resourceTypes: \['sub_frame'\]/, 'only the player’s page');
+  // The parent's note (2026-10-14): "Error 152". YouTube refuses its player when the referrer is YouTube itself; the
+  // app's web site (where its updates are) is accepted.
+  assert.match(src, /PLAYER_REFERRER = 'https:\/\/andyvauliln\.github\.io\/'/, 'the app’s web site as referrer');
+  assert.match(src, /operation: 'set', value: PLAYER_REFERRER \}/);
+  assert.doesNotMatch(src, /value: 'https:\/\/www\.youtube\.com\/'/, 'not YouTube’s own address: error 152');
+  const site = new URL(JSON.parse(read('../../../manifest.json')).update_url).origin + '/';
+  assert.equal(site, 'https://andyvauliln.github.io/', 'the same site as the updates');
   assert.match(src, /id: 'parent\.introHere'/);
   assert.match(src, /id: 'parent\.fingerScroll'/);
   assert.match(css, /\.heropic \.player \{/);

@@ -792,14 +792,16 @@ async function detailParts(videoId) {
 // header). YouTube's embedded player takes the picture's place and plays INTRO_CLIPS clips of INTRO_SECONDS (kit.js
 // introPoints), driven by messages to the player (enablejsapi). YouTube refuses a player on an extension page that
 // sends no web page as referrer (error 153), so a session rule gives the player's page request from this extension
-// (initiatorDomains: only its own pages) YouTube's own address. A video YouTube still refuses (an error, or no answer
-// in PLAYER_WAIT_MS): the picture comes back with the reason and ▶ Intro on YouTube (the old way, playIntro).
-const PLAYER_RULE = 9101, PLAYER_WAIT_MS = 12000;
+// (initiatorDomains: only its own pages) the app's web site as referrer (PLAYER_REFERRER: where its updates are).
+// YouTube's own address there made YouTube refuse every video (error 152; the parent's note, 2026-10-14). A video
+// YouTube still refuses (an error, or no answer in PLAYER_WAIT_MS): the picture comes back with the reason and
+// ▶ Intro on YouTube (the old way, playIntro).
+const PLAYER_RULE = 9101, PLAYER_WAIT_MS = 12000, PLAYER_REFERRER = 'https://andyvauliln.github.io/';
 async function playerReferrer() {
   if (TARGET === 'orion') return;   // no rules there: the player may refuse, and the fallback says so
   try {
     await chrome.declarativeNetRequest?.updateSessionRules?.({ removeRuleIds: [PLAYER_RULE], addRules: [{ id: PLAYER_RULE, priority: 1,
-      action: { type: 'modifyHeaders', requestHeaders: [{ header: 'referer', operation: 'set', value: 'https://www.youtube.com/' }] },
+      action: { type: 'modifyHeaders', requestHeaders: [{ header: 'referer', operation: 'set', value: PLAYER_REFERRER }] },
       condition: { urlFilter: '||youtube.com/embed/', resourceTypes: ['sub_frame'], initiatorDomains: [chrome.runtime.id] } }] });
   } catch {}
 }
