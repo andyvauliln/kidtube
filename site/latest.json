@@ -1,10 +1,10 @@
 {
-  "version": "0.12.32",
+  "version": "0.12.33",
   "target": "quetta",
-  "sourceCommit": "ff64bf46c9cef5335a4bf441e231c62db6e0ea90",
+  "sourceCommit": "a06869b9736093afbbb5ed8ddad256e3901bc5db",
   "id": "mpgpgldgfogdipaaaobleoppocmhlidp",
-  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.32.crx",
-  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.32.zip",
+  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.33.crx",
+  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.33.zip",
   "quizTypes": [
     "text",
     "choice",
@@ -12,6 +12,16 @@
     "voice"
   ],
   "changes": [
+    {
+      "version": "0.12.33",
+      "at": "2026-10-14",
+      "changed": [
+        "▶ Play intro plays the video's clips inside the app, in the box of its picture: YouTube no longer refuses it with error 152"
+      ],
+      "test": [
+        "Today: open a video's Details, tap ▶ Play intro: the clips play where the picture was, with no error 152"
+      ]
+    },
     {
       "version": "0.12.32",
       "at": "2026-10-14",
