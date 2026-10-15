@@ -378,6 +378,11 @@ test('notes wait on the tablet until ↻ Update; then they all go to GitHub, and
       [['Open parent mode on the Planned tab', 'Not sent', 'Edit,Delete,Send'], ['Too fast', 'Not sent', 'Edit,Delete,Send']]);
     assert.match(rows[0].detail, /^Your note about the settings\. It waits on this tablet/);
     assert.match(rows[1].detail, /^Your note about the video “/);
+    // The apps menu on (no app runs) while the parent screens are open: the notes are still in the list.
+    const shell = fake.store.shell;
+    fake.store.shell = { on: true, locked: false };
+    assert.equal((await noteRows()).length, 2, 'the notes show while the apps menu is on');
+    fake.store.shell = shell;
     // Edit from the header on YouTube (the parent is there): the outbox and the tab's list change.
     assert.equal((await send({ type: 'inbox', do: 'note.edit', id: rows[1].note, text: 'Too fast for him' })).ok, true);
     assert.equal(fake.store.outbox.find((e) => e.eventId === rows[1].note).comment, 'Too fast for him');

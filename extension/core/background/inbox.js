@@ -189,7 +189,7 @@ function questionRow(q, run) {
       : 'Sent. The AI works on it when the server picks it up (about 10–30 minutes); then Details says what it did.' };
 }
 
-// cur: the running profile's account (null: no app runs, only the checks' problems).
+// cur: the connected profile's account, running or not (null: no profile, only the checks' problems).
 export async function inboxOf(cur) {
   const part = cur ? partOf(cur) : null;
   const mine = part ? await withState(async (s) => ({

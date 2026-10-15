@@ -224,7 +224,9 @@ export async function headerView(force, host) {
     site: site?.id ?? null, here: site ? seenOn(site, g) : null,
     connected: cur ? { app: appOf(cur).id, label: shortLabel(appOf(cur)), who: whoOf(cur) ?? 'a YouTube account without an email', site: siteOfApp(appOf(cur)).label } : null,
     github, switch: switchOf(running, site), apps: [], error: null, inbox: null, dev: await devView() };
-  if (out.open) out.inbox = await inboxOf(running ? cur : null);
+  // The connected profile's notes even while the apps menu is on (the parent screens work then too): 2026-10-15, a
+  // recorded note made there was not in the list.
+  if (out.open) out.inbox = await inboxOf(cur);
   if (!github.connected) return out;
   const remote = await repoProfiles(force, { soon: true });
   out.error = remote.error;
