@@ -1,10 +1,10 @@
 {
-  "version": "0.12.35",
+  "version": "0.12.36",
   "target": "quetta",
-  "sourceCommit": "67219277383b2dc9611d6cacec30ab1e37fe7e58",
+  "sourceCommit": "e607e12400f0c4e300f9f3cacdd9618fb8b56e72",
   "id": "mpgpgldgfogdipaaaobleoppocmhlidp",
-  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.35.crx",
-  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.35.zip",
+  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.36.crx",
+  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.36.zip",
   "quizTypes": [
     "text",
     "choice",
@@ -12,6 +12,16 @@
     "voice"
   ],
   "changes": [
+    {
+      "version": "0.12.36",
+      "at": "2026-10-15",
+      "changed": [
+        "The 🔔 list shows your notes (also recorded ones) while the apps menu is on"
+      ],
+      "test": [
+        "Apps menu on, open KidTube's parent screens, record a note: it shows in the 🔔 list as Uploading, then Writing down"
+      ]
+    },
     {
       "version": "0.12.35",
       "at": "2026-10-14",
