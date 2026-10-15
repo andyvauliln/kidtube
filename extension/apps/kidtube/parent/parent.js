@@ -193,11 +193,24 @@ document.addEventListener('touchend', (e) => {
 // A finger moved straight up or down on a page longer than the screen: the page moves (the parent's note, 2026-10-14:
 // "it's also not scrollable there", seen in Full size on a video's Details). Not seen on the server: a long move that
 // left the page where it was, with room to go that way, is reported with the page and the mode.
+// 2026-10-15 (3 times in 4 s on Quetta, after the tab was away for ~30 min; fine after a reload; the server's lab
+// cannot move a page by touch): the report also keeps what the finger started on, the moves the page got (and if one
+// was blocked), what scrolled meanwhile, how long the page has been in front, and the screen's height.
 let drag = null;
+let shownAt = Date.now();
+document.addEventListener('visibilitychange', () => { if (!document.hidden) shownAt = Date.now(); });
+const nameOf = (n) => (n === document ? 'document' : n?.tagName ? `${n.tagName.toLowerCase()}${n.id ? `#${n.id}` : ''}${typeof n.className === 'string' && n.className ? `.${n.className.trim().split(/\s+/).join('.')}` : ''}` : String(n));
 document.addEventListener('touchstart', (e) => {
   const t = e.touches[0];
-  drag = e.touches.length === 1 && !e.target.closest?.('textarea, input, select, pre, .tabs, iframe, .notecard, .md') ? { x: t.clientX, y: t.clientY, sy: scrollY, hash: location.hash } : null;
+  drag = e.touches.length === 1 && !e.target.closest?.('textarea, input, select, pre, .tabs, iframe, .notecard, .md')
+    ? { x: t.clientX, y: t.clientY, sy: scrollY, hash: location.hash, on: nameOf(e.target), ih: innerHeight, moves: 0, blocked: 0, scrolled: new Set() } : null;
 }, { passive: true });
+document.addEventListener('touchmove', (e) => {
+  if (!drag) return;
+  drag.moves++;
+  if (e.defaultPrevented || !e.cancelable) drag.blocked++;
+}, { passive: true });
+document.addEventListener('scroll', (e) => { if (drag && drag.scrolled.size < 5) drag.scrolled.add(nameOf(e.target)); }, { passive: true, capture: true });
 document.addEventListener('touchend', (e) => {
   const s = drag;
   drag = null;
@@ -209,6 +222,8 @@ document.addEventListener('touchend', (e) => {
   W?.check({ id: 'parent.fingerScroll', area: 'parent', expect: 'A finger moved up or down moves a page longer than the screen',
     code: ['apps/kidtube/parent/parent.js (fingerScroll)', 'apps/kidtube/parent/kit.js upDown', 'apps/kidtube/parent/parent.css html.updown'] }, (c) => {
     if (location.hash !== s.hash) return c.skip('the swipe opened another page');
+    c.note('finger', { startedOn: s.on, dy: Math.round(dy), moves: s.moves, blockedOrNotCancelable: s.blocked, scrolled: [...s.scrolled],
+      inFrontSeconds: Math.round((Date.now() - shownAt) / 1000), height: `${s.ih} → ${innerHeight}`, scrollYNow: Math.round(scrollY) });
     c.ok('the page moved', room < 40 || Math.abs(scrollY - s.sy) > 2,
       `stayed at ${Math.round(s.sy)} of ${Math.round(max)} px (${isFull() ? 'Full size' : 'normal'}, ${location.hash || '#today'}, overflow ${getComputedStyle(document.documentElement).overflowY}/${getComputedStyle(document.body).overflowY})`, 'it scrolls');
   }, 400);

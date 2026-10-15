@@ -1194,6 +1194,8 @@ test('rows open their Details; Details swipes in Full size; Play intro in the pa
   assert.equal(site, 'https://andyvauliln.github.io/', 'the same site as the updates');
   assert.match(src, /id: 'parent\.introHere'/);
   assert.match(src, /id: 'parent\.fingerScroll'/);
+  // 2026-10-15: it failed 3 times on Quetta with nothing to show why; the report keeps what the finger did.
+  assert.match(src, /c\.note\('finger', \{ startedOn: s\.on, dy: [^}]*moves: s\.moves, blockedOrNotCancelable: s\.blocked, scrolled: \[\.\.\.s\.scrolled\],\s*inFrontSeconds:/);
   assert.match(css, /\.heropic \.player \{/);
   const { introPoints, INTRO_CLIPS } = await import('../../extension/apps/kidtube/parent/kit.js');
   assert.equal(introPoints(300).length, INTRO_CLIPS);
