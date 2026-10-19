@@ -1,10 +1,10 @@
 {
-  "version": "0.12.38",
+  "version": "0.12.39",
   "target": "quetta",
-  "sourceCommit": "24634768b457778cd185ae8a32229e517e613067",
+  "sourceCommit": "5ff02c910f44bfa76300bfffb49155a62b5f1cd0",
   "id": "mpgpgldgfogdipaaaobleoppocmhlidp",
-  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.38.crx",
-  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.38.zip",
+  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.39.crx",
+  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.39.zip",
   "quizTypes": [
     "text",
     "choice",
@@ -12,6 +12,17 @@
     "voice"
   ],
   "changes": [
+    {
+      "version": "0.12.39",
+      "at": "2026-10-19",
+      "changed": [
+        "Saved tab: a Stop button ends the reading of older saved posts; Read the rest goes on later"
+      ],
+      "test": [
+        "Saved tab, while it says Reading your saved posts…: tap Stop: the number stops going up, and the line says Stopped by you at N posts",
+        "Then tap Read the rest: the number goes up again"
+      ]
+    },
     {
       "version": "0.12.38",
       "at": "2026-10-19",
