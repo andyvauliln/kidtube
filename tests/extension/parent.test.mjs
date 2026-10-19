@@ -868,6 +868,19 @@ test('the Instagram screen: saved posts come in not handled, new ones at the top
       assert.deepEqual(ex.file.posts.map((p) => [p.id, p.status]), [['14', 'Not handled'], ['11', 'In the list'], ['12', 'Failed'], ['13', 'Not handled']]);
       assert.deepEqual([ex.file.posts[1].url, ex.file.posts[1].notes.map((n) => n.text), ex.file.posts[2].collections], ['https://www.instagram.com/reel/C11x/', ['And the sauce'], ['Recipes']]);
       assert.equal(ex.file.posts[0].videos[0], cdn('14.mp4'));
+      // Stop while the whole list is read: it counts as read to its end, and Read the rest goes on from there.
+      assert.equal((await ig({ type: 'igResume' })).ok, false, 'not stopped');
+      fake.store.ig = { ...fake.store.ig, complete: false, cursor: 'c7' };
+      const stopped = (await ig({ type: 'igStop' })).stopped;
+      assert.deepEqual([stopped.cursor, stopped.count], ['c7', 4]);
+      st = await ig({ type: 'igState' });
+      assert.deepEqual([st.complete, st.cursor, st.stopped.count], [true, null, 4]);
+      assert.equal((await ig({ type: 'igStop' })).stopped.cursor, 'c7', 'a second Stop changes nothing');
+      assert.equal((await ig({ type: 'igResume' })).ok, true);
+      st = await ig({ type: 'igState' });
+      assert.deepEqual([st.complete, st.cursor, st.stopped], [false, 'c7', null]);
+      await ig({ type: 'igSaved', media: [], at: 'end', page: 0, cursor: null });
+      assert.equal((await ig({ type: 'igState' })).complete, true);
     } finally { globalThis.fetch = real; }
   });
   await fromPage({ type: 'leaveApp' });

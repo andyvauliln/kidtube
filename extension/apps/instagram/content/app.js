@@ -387,12 +387,14 @@
     return { media: r.media, next: r.next, via: 'api' };
   }
 
-  let reading = false, reads = 0;
+  // stop: the parent's Stop (statusLine): the read ends after the page it is on.
+  let reading = false, reads = 0, stop = false;
   // The newest saved posts until a page with nothing new, then (once) the rest of the list; the collections; the
   // collection on screen.
   async function readInstagram() {
     if (reading) return;
     reading = true;
+    stop = false;
     ui.readError = '';
     ui.collectionsNote = '';
     ui.login = false;
@@ -426,6 +428,7 @@
       for (let n = 0; ; n++) {
         const a = await ask({ type: 'igSaved', media: page.media, at: top ? 'top' : 'end', page: n, cursor: page.next });
         show(page.media.length);
+        if (stop) { if (!top) await ask({ type: 'igStop' }); break; }
         if (!a?.ok || !page.next || (top && a.known === page.media.length) || n >= (top ? 50 : 1000)) break;
         if (!top && n % 5 === 4) await refresh();
         await wait(top ? 400 : 500);
@@ -563,8 +566,19 @@
   function statusLine() {
     const d = ui.data;
     const bits = [];
-    if (ui.reading) bits.push(h('span', { text: ui.reading }));
-    else bits.push(h('span', { text: `Read from Instagram ${ago(d.loadedAt)}${d.complete ? '' : ' · not all read yet'}` }));
+    if (ui.reading) {
+      bits.push(h('span', { text: ui.reading }));
+      // Stop: the whole list is read no further (its end may never come); Read the rest goes on later.
+      if (reading && !(d.posts.length && d.complete)) {
+        bits.push(h('button', { class: 'linkbtn', type: 'button', disabled: stop, title: 'Stop reading older saved posts. The list keeps what it has; ↻ still adds your newest saves.',
+          onclick: () => { stop = true; draw(); } }, stop ? 'Stopping…' : 'Stop'));
+      }
+    } else bits.push(h('span', { text: `Read from Instagram ${ago(d.loadedAt)}${d.complete ? '' : ' · not all read yet'}` }));
+    if (d.stopped && !ui.reading) {
+      bits.push(h('span', { text: `Stopped by you at ${d.stopped.count} posts (${new Date(d.stopped.at).toLocaleDateString()}): older saves are not read.` }),
+        h('button', { class: 'linkbtn', type: 'button', title: 'Go on reading older saved posts from where it stopped',
+          onclick: async () => { const r = await ask({ type: 'igResume' }); if (!r?.ok) return toast(r?.error ?? 'Could not do it.'); await refresh(); readInstagram(); } }, 'Read the rest'));
+    }
     if (ui.readError && !ui.login) bits.push(h('span', { class: 'err', text: ui.readError }));
     if (ui.collectionsNote) bits.push(h('span', { text: ui.collectionsNote, title: `Instagram: ${ui.collectionsWhy}` }));
     if (!d.github) bits.push(h('span', { class: 'err', text: 'GitHub is not connected: the notes stay on this device (header → account menu).' }));

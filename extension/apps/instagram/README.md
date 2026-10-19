@@ -69,7 +69,7 @@ card offers Connect. Signed out: the profile stays, and a card says to sign in o
 
 | Tab | What it shows |
 | --- | --- |
-| Saved | Every saved post (default) or one collection (the dropdown). ★ makes the shown one the default. Chips filter by status. ↻ reads Instagram again. ⤓ saves every saved post to a JSON file (`igExport`, `lib/posts.js exportFile`) |
+| Saved | Every saved post (default) or one collection (the dropdown). ★ makes the shown one the default. Chips filter by status. ↻ reads Instagram again. While the whole list is read, **Stop** ends it there (`igStop`: the list counts as read to its end, ↻ then only adds the newest saves); **Read the rest** goes on from the kept position (`igResume`). ⤓ saves every saved post to a JSON file (`igExport`, `lib/posts.js exportFile`) |
 | To handle | The posts waiting for the agent, the failed ones, and the latest handled ones |
 
 A post opens in a sheet: the video or pictures, the caption, its status with a button (Add to the list, Take out of

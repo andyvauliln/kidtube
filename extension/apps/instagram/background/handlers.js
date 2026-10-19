@@ -30,7 +30,7 @@ async function view(s) {
   });
   const { igAudio = {}, account } = await chrome.storage.local.get(['igAudio', 'account']);
   return { ok: true, folder: await folderShown(), who: account?.username ? `@${account.username}` : null, posts, collections: s.ig.collections, defaultCollection: s.ig.defaultCollection,
-    loadedAt: s.ig.loadedAt, complete: s.ig.complete, cursor: s.ig.cursor, sync: s.syncStatus ?? {},
+    loadedAt: s.ig.loadedAt, complete: s.ig.complete, cursor: s.ig.cursor, stopped: s.ig.stopped ?? null, sync: s.syncStatus ?? {},
     unsent: s.ig.rev !== s.ig.pushedRev || Object.keys(igAudio).length > 0, github: !!s.settings.token };
 }
 
@@ -85,6 +85,24 @@ export const HANDLERS = {
     if (msg.finished) s.ig.loadedAt = nowIso();
     if (added) syncSoon(5000);
     return { ok: true, added, known: posts.length - added };
+  }),
+
+  // The parent's Stop while the whole list is read (the parent's note, 2026-10-19: no way to stop it if the end
+  // of the list is not found): the list counts as read to its end; later reads only take the newest at the top.
+  // The position is kept, so Read the rest (igResume) goes on from there.
+  igStop: () => onIg((s) => {
+    if (s.ig.complete) return { ok: true, stopped: s.ig.stopped ?? null };
+    s.ig.stopped = { at: nowIso(), cursor: s.ig.cursor, count: s.ig.order.length };
+    s.ig.complete = true;
+    s.ig.cursor = null;
+    return { ok: true, stopped: s.ig.stopped };
+  }),
+  igResume: () => onIg((s) => {
+    if (!s.ig.stopped) return { ok: false, error: 'The list was not stopped.' };
+    s.ig.complete = false;
+    s.ig.cursor = s.ig.stopped.cursor ?? null;
+    delete s.ig.stopped;
+    return { ok: true };
   }),
 
   // Fresh picture and video addresses for posts already here (an expired picture, a post opened, a request).
