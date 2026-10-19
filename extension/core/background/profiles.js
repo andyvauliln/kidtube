@@ -151,7 +151,10 @@ export async function youtubeAccount(msg) {
 }
 
 // Another site's page says who is signed in there (Instagram: apps/instagram/content/app.js, on every page and
-// before Connect). It only changes what the header knows: the app's screen itself sees a different account.
+// before Connect). While that site's app runs and another account of it is signed in now, the app takes that
+// account's profile at once (loaded, or made new), as Connect does: the parent's note, 2026-10-19, after a sign-in
+// to another Instagram account the header still showed the old profile. Else it only changes what the header knows.
+let switching = null;
 export async function siteAccount(msg, host) {
   const site = siteOfHost(host);
   if (!site || site.id === 'youtube') return { ok: false, error: 'Only a page of the site can say its account.' };
@@ -159,7 +162,17 @@ export async function siteAccount(msg, host) {
   const username = /^[a-z0-9._]{1,30}$/.test(name) ? name : null;
   const id = /^\d{1,30}$/.test(String(msg.id ?? '')) ? String(msg.id) : null;
   await chrome.storage.local.set({ [site.stored]: { loggedIn: !!msg.loggedIn, username: msg.loggedIn ? username : null, id: msg.loggedIn ? id : null, at: Date.now() } });
-  return { ok: true };
+  const g = await chrome.storage.local.get(['shell', 'account', 'settings', ...seenKeys()]);
+  const cur = g.account?.key ? g.account : null;
+  const app = cur ? appOf(cur) : null;
+  const seen = seenOn(site, g);
+  if (!app || siteOfApp(app).id !== site.id || !seen.name || cur.key === keyFor(app.id, seen.name) || (await shellOf(g)).on || !(await headerOpen(g))) return { ok: true };
+  // Two pages (or one page twice) that say it at once: one switch.
+  switching ??= openApp({ app: app.id, create: true }, null, host).finally(() => { switching = null; });
+  const r = await switching;
+  if (!r.ok) return { ok: true, error: r.error };
+  await chrome.storage.local.remove('siteOffer');
+  return { ok: true, switched: { from: whoOf(cur), to: seen.name, created: r.created } };
 }
 
 // The profiles in the data repo: <app>/<folder>/profile.json says whose folder it is (email, or username).

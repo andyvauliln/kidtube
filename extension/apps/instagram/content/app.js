@@ -59,6 +59,7 @@
     open: 'M14 3v2h3.6l-9.8 9.8 1.4 1.4L19 6.4V10h2V3zm5 16H5V5h7V3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7h-2z',
     x: 'M19 6.4 17.6 5 12 10.6 6.4 5 5 6.4 10.6 12 5 17.6 6.4 19 12 13.4 17.6 19 19 17.6 13.4 12z',
     saved: 'M6 2h12a1 1 0 0 1 1 1v19l-7-5-7 5V3a1 1 0 0 1 1-1z',
+    download: 'M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2z',
   };
   function icon(name, size = 22) {
     const s = document.createElementNS(NS, 'svg');
@@ -85,9 +86,12 @@
     const api = globalThis.KidTubeIgApi;
     let me = null, loggedIn = true, detail = '';
     try { me = await api.me(); } catch (e) { loggedIn = !(e instanceof api.LoginNeeded); detail = e.detail || String(e.message ?? e); }
-    await ask({ type: 'siteAccount', loggedIn, username: me?.username ?? null, id: me?.id ?? null });
+    const r = await ask({ type: 'siteAccount', loggedIn, username: me?.username ?? null, id: me?.id ?? null });
+    if (r?.switched) switched = r.switched;
     return { loggedIn, username: me?.username ?? null, detail };
   }
+  // The profile the background took by itself (another Instagram account signed in while the app runs).
+  let switched = null;
   // Connect: Instagram's account is read again now, then that account's Instagram profile runs: loaded, or made new
   // (core/background/profiles.js connect). say(text, err): where the page shows what happened.
   async function connectHere(say) {
@@ -525,6 +529,8 @@
       } }, icon(isDefault ? 'star' : 'starOff'));
     const syncBtn = h('button', { class: `ibtn${reading ? ' spin' : ''}`, type: 'button', title: 'Read Instagram again', disabled: reading,
       onclick: () => { ui.loadedCollections.clear(); readInstagram(); ask({ type: 'sync' }); } }, icon('sync'));
+    const exportBtn = h('button', { class: 'ibtn', type: 'button', title: 'Save every saved post to a JSON file (Downloads / Files)',
+      'aria-label': 'Export the saved posts', disabled: !posts().length, onclick: exportSaved }, icon('download'));
     const list = inCollection();
     const counts = { all: list.length, new: 0, queued: 0, handled: 0, failed: 0 };
     for (const p of list) counts[p.status]++;
@@ -534,13 +540,24 @@
         .map(([k, label]) => h('button', { class: `chip${ui.filter === k ? ' on' : ''}`, type: 'button', 'aria-pressed': String(ui.filter === k),
           text: `${label} ${counts[k]}`, onclick: () => { ui.filter = k; draw(); } })));
     const shown = ui.filter === 'all' ? list : list.filter((p) => p.status === ui.filter);
-    const top = h('div', { class: 'top' }, h('div', { class: 'bar' }, h('h1', { text: 'Saved' }), h('div', { class: 'grow' }), syncBtn),
+    const top = h('div', { class: 'top' }, h('div', { class: 'bar' }, h('h1', { text: 'Saved' }), h('div', { class: 'grow' }), exportBtn, syncBtn),
       h('div', { class: 'bar pick' }, sel, star), chips, statusLine());
     let body;
     if (ui.login) body = loginCard();
     else if (!shown.length) body = h('div', { class: 'empty', text: ui.reading ? 'Loading…' : posts().length ? 'Nothing here.' : 'No saved posts yet. Save posts on Instagram, then tap ↻.' });
     else body = h('div', { class: 'grid' }, shown.map(tile));
     return [top, body];
+  }
+
+  // Export: every saved post (not only the collection on screen) as one JSON file, from the background (igExport).
+  async function exportSaved() {
+    const r = await ask({ type: 'igExport' });
+    if (!r?.ok) return toast(r?.error ?? 'Could not make the file.');
+    const blob = new Blob([JSON.stringify(r.file, null, 2)], { type: 'application/json' });
+    const a = h('a', { href: URL.createObjectURL(blob), download: r.name });
+    root.append(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10000);
+    toast(`Saved as ${r.name}: ${r.file.count} posts, ${r.file.videos} with video${r.file.complete ? '' : ' (not all read from Instagram yet)'}.`);
   }
 
   function statusLine() {
@@ -877,7 +894,10 @@
     draw();
     await refresh();
     const me = ui.me = await reportMe();
+    // Another account signed in: the background took its profile (siteAccount), so the screen asks again.
+    await refresh();
     if (ui.notHere) return;
+    if (switched) toast(`Instagram is signed in to ${switched.to}: the app shows ${switched.to} now${switched.created ? ' (a new profile)' : ''}.`);
     // Only the profile's own account is read: another one's saved posts must not join its list.
     if (!me.loggedIn) { ui.login = true; ui.readError = me.detail; draw(); return; }
     if (me.username && ui.data?.who && `@${me.username}` !== ui.data.who) { ui.other = me.username; draw(); return; }

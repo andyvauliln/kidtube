@@ -132,6 +132,25 @@ export function repoPost(p, done) {
   };
 }
 
+// The Saved tab's export (a JSON file for the parent): every saved post, newest saved first, with its status, its
+// collections by name and its notes. The picture and video addresses are Instagram's: they expire in some days.
+export function exportFile(ig, handled = {}, { who = null, now = new Date().toISOString() } = {}) {
+  const names = Object.fromEntries((ig.collections ?? []).map((c) => [c.id, c.name]));
+  const posts = ig.order.map((id) => ig.posts[id]).filter(Boolean).map((p) => {
+    const done = handled[p.id];
+    const texts = done?.noteTexts ?? {};
+    return {
+      id: p.id, code: p.code, url: postUrl(p), kind: p.kind, reel: !!p.reel, author: p.author, caption: p.caption,
+      takenAt: p.takenAt, duration: p.duration ?? null, savedSeenAt: p.seenAt ?? null,
+      collections: (p.collections ?? []).map((c) => names[c] ?? c), status: STATUS[statusOf(p, done)],
+      notes: (p.notes ?? []).map((n) => ({ at: n.at, text: n.text ?? texts[n.id] ?? null })),
+      thumb: p.thumb ?? null, videos: videosOf(p), mediaAt: p.mediaAt ?? null,
+    };
+  });
+  return { instagramSaved: 1, account: who, exportedAt: now, complete: !!ig.complete, count: posts.length,
+    videos: posts.filter((p) => p.videos.length).length, collections: ig.collections ?? [], posts };
+}
+
 // A fresh tablet (or one whose storage was erased): the notes, the requests and the collections it had come back
 // from posts.json. Only posts the tablet doesn't have yet; their pictures come with the next read from Instagram.
 export function restoreFromRepo(ig, file) {

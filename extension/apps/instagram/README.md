@@ -60,14 +60,16 @@ Edit profile form, else the account of the `ds_user_id` cookie).
 | App in the Connect bar | Opens the profile of the account signed in here; none yet → it says to press Connect |
 | The header's Instagram tile, no profile yet | Opens Instagram (`plainSite` with `offer`, kept an hour in `siteOffer`). The Connect bar says to sign in; signed in, it asks "Switch to the Instagram app now?": Switch to the app is Connect, Not now ends the offer |
 
-On the app's screen, Instagram signed in to another account than the profile's: nothing is read (another account's
-saved posts must not join this list), and a card offers Connect. Signed out: a card says to sign in on Instagram itself.
+While the Instagram app runs, any Instagram page that sees another account signed in switches to that account's
+profile at once, as Connect does (`siteAccount` in `core/background/profiles.js`); the old profile's posts wait in
+`acct:<key>`. Another account's saved posts never join a profile's list: if the switch fails, nothing is read and a
+card offers Connect. Signed out: the profile stays, and a card says to sign in on Instagram itself.
 
 ## The screen
 
 | Tab | What it shows |
 | --- | --- |
-| Saved | Every saved post (default) or one collection (the dropdown). ★ makes the shown one the default. Chips filter by status. ↻ reads Instagram again |
+| Saved | Every saved post (default) or one collection (the dropdown). ★ makes the shown one the default. Chips filter by status. ↻ reads Instagram again. ⤓ saves every saved post to a JSON file (`igExport`, `lib/posts.js exportFile`) |
 | To handle | The posts waiting for the agent, the failed ones, and the latest handled ones |
 
 A post opens in a sheet: the video or pictures, the caption, its status with a button (Add to the list, Take out of

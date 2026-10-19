@@ -5,7 +5,7 @@ import { withState, dataLocation, folderShown, headerOpen } from '../../../core/
 import { syncSoon, fetchDataFile } from '../../../core/background/sync.js';
 // The notes are written down like KidTube's parent notes: Groq's Whisper, then Gemini, then OpenRouter (keys.json or Settings).
 import { transcribeAnswer, listenKeys, NOTE_LISTEN_MODELS } from '../../kidtube/lib/voice.js';
-import { statusOf, mergeSaved, mergeCollection, cleanPost, parseMedia } from '../lib/posts.js';
+import { statusOf, mergeSaved, mergeCollection, cleanPost, parseMedia, exportFile } from '../lib/posts.js';
 import { readerRules } from '../lib/rules.js';
 import { remoteData } from '../../../core/background/remote.js';
 
@@ -63,6 +63,15 @@ export const HANDLERS = {
 
   // The screen.
   igState: async () => ((await running()) ? withState(view) : NOT_HERE),
+
+  // The Saved tab's Export: every saved post as one JSON file (lib/posts.js exportFile).
+  igExport: () => onIg(async (s) => {
+    const { account } = await chrome.storage.local.get('account');
+    const who = account?.username ? `@${account.username}` : null;
+    const file = exportFile(s.ig, s.data.handled?.posts ?? {}, { who });
+    const day = file.exportedAt.slice(0, 10);
+    return { ok: true, file, name: `instagram-saved-${account?.username ?? 'posts'}-${day}.json` };
+  }),
 
   // One page of the saved list (media: Instagram's posts). at 'top': the newest; at 'end': the rest, read once
   // (cursor: where to go on). finished: this read of Instagram is over.

@@ -744,18 +744,28 @@ test('an Instagram profile is its Instagram username: Connect on Instagram makes
     assert.deepEqual(h.apps.map((a) => [a.id, a.has, a.who]), [['kidtube', true, first], ['instagram', true, '@ann']], 'each app with its own site’s account');
   });
 
-  // Another Instagram account signed in: Connect makes its own profile. Connect as @ann again loads hers.
-  await instagramHas('bob');
-  await withRepo([], async () => { r = await send({ type: 'connect' }, IG_SITE); });
-  assert.deepEqual([r.created, fake.store.account.key, fake.store.account.folder], [true, 'instagram:@bob', 'bob']);
+  // Another Instagram account signed in while the app runs: its own profile at once, made new (the parent's note,
+  // 2026-10-19: the header still showed the old one). Connect then says it is the same. @ann again: hers is loaded.
+  await withRepo([], async () => { r = await instagramHas('bob'); });
+  assert.deepEqual([r.switched, fake.store.account.key, fake.store.account.folder], [{ from: '@ann', to: '@bob', created: true }, 'instagram:@bob', 'bob']);
+  assert.equal(fake.store.shell.on, false, 'the app keeps running');
+  assert.equal((await send({ type: 'connect' }, IG_SITE)).same, true);
+  assert.equal((await send({ type: 'header' }, { tab: { id: 7, url: IG_HOME } })).connected.who, '@bob', 'the header shows the new profile');
+  await withRepo([{ app: 'instagram', folder: 'ann', username: 'ann' }], async () => { r = await instagramHas('ann'); });
+  assert.deepEqual([r.switched.created, fake.store.account.key], [false, 'instagram:@ann']);
+  assert.equal((await instagramHas('ann')).switched, undefined, 'the same account: nothing changes');
+  assert.equal((await instagramHas(null)).switched, undefined, 'signed out: the profile stays');
   await instagramHas('ann');
-  await withRepo([{ app: 'instagram', folder: 'ann', username: 'ann' }], async () => { r = await send({ type: 'connect' }, IG_SITE); });
-  assert.deepEqual([r.created, fake.store.account.key], [false, 'instagram:@ann']);
-  assert.match(r.message, /Connected: @ann\. Its Instagram profile is loaded\./);
-  // A profile only the repo has (another tablet made it): Connect finds its folder by the username.
-  await instagramHas('cara');
+  // While KidTube runs, Instagram's account only changes what the header knows.
+  await withRepo([], () => send({ type: 'openApp', app: 'kidtube', mode: 'kid' }));
+  assert.equal((await instagramHas('bob')).switched, undefined);
+  assert.equal(fake.store.account.key, first);
+  await fromPage({ type: 'setMode', mode: 'parent' });
+  await withRepo([{ app: 'instagram', folder: 'ann', username: 'ann' }], async () => { await instagramHas('ann'); await send({ type: 'openApp', app: 'instagram' }); });
+  assert.equal(fake.store.account.key, 'instagram:@ann');
+  // A profile only the repo has (another tablet made it): its folder is found by the username.
   await withRepo([{ app: 'instagram', folder: 'cara-kitchen', username: 'cara' }, { app: 'instagram', folder: 'mail', email: 'cara@example.com' }], async () => {
-    r = await send({ type: 'connect' }, IG_SITE);
+    r = (await instagramHas('cara')).switched;
   });
   assert.deepEqual([r.created, fake.store.account.key, fake.store.account.folder], [false, 'instagram:@cara', 'cara-kitchen']);
 
@@ -851,6 +861,13 @@ test('the Instagram screen: saved posts come in not handled, new ones at the top
       assert.equal((await ig({ type: 'igState' })).posts[1].status, 'queued');
       assert.equal((await ig({ type: 'igDropNote', id: '11', noteId: st.posts[1].notes[0].id })).ok, true);
       assert.deepEqual((await ig({ type: 'igState' })).posts[1].notes.map((n) => n.text), ['And the sauce']);
+      // Export: every saved post in one JSON file, its status and collections in words.
+      const ex = await ig({ type: 'igExport' });
+      assert.match(ex.name, /^instagram-saved-ann-\d{4}-\d\d-\d\d\.json$/);
+      assert.deepEqual([ex.file.instagramSaved, ex.file.account, ex.file.count, ex.file.videos, ex.file.complete], [1, '@ann', 4, 3, true]);
+      assert.deepEqual(ex.file.posts.map((p) => [p.id, p.status]), [['14', 'Not handled'], ['11', 'In the list'], ['12', 'Failed'], ['13', 'Not handled']]);
+      assert.deepEqual([ex.file.posts[1].url, ex.file.posts[1].notes.map((n) => n.text), ex.file.posts[2].collections], ['https://www.instagram.com/reel/C11x/', ['And the sauce'], ['Recipes']]);
+      assert.equal(ex.file.posts[0].videos[0], cdn('14.mp4'));
     } finally { globalThis.fetch = real; }
   });
   await fromPage({ type: 'leaveApp' });
