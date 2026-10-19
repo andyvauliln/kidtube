@@ -1,10 +1,10 @@
 {
-  "version": "0.12.37",
+  "version": "0.12.38",
   "target": "quetta",
-  "sourceCommit": "bee463b027f3403ceaa89acb89ca7ff5d677377b",
+  "sourceCommit": "24634768b457778cd185ae8a32229e517e613067",
   "id": "mpgpgldgfogdipaaaobleoppocmhlidp",
-  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.37.crx",
-  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.37.zip",
+  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.38.crx",
+  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.38.zip",
   "quizTypes": [
     "text",
     "choice",
@@ -12,6 +12,18 @@
     "voice"
   ],
   "changes": [
+    {
+      "version": "0.12.38",
+      "at": "2026-10-19",
+      "changed": [
+        "After you sign in to another Instagram account, the app and the header switch to that account by themselves",
+        "Saved tab: a new download button saves all your saved posts to a JSON file"
+      ],
+      "test": [
+        "Instagram: sign in to another account, open the app: the header shows the new account, and a message says so",
+        "Saved tab: tap the download button next to ↻: a file instagram-saved-<name>-<date>.json is saved, with all posts"
+      ]
+    },
     {
       "version": "0.12.37",
       "at": "2026-10-15",
