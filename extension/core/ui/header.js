@@ -303,8 +303,11 @@
   // host: an element to draw into (its shadow root). dark: YouTube's own theme (shell.js); on the extension's pages, the system's.
   // siteView: the switch's site button on a page that is both (Instagram's Saved page: the app's view and Instagram's
   // own); without it, the site button opens the plain site (no app runs).
+  // side: on such a site, the view the page shows now ('app' or 'site'): the switch shows that one, not only whether
+  // the app runs (the parent's note, 2026-10-20: on Instagram's own page the switch said App, and App did nothing).
+  // appView: App's tap there; true when the page changed its view itself, else the app opens as usual.
   // Returns { refresh(force), setDark(on), destroy() }.
-  function mount(host, { dark = !!globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches, siteView = null } = {}) {
+  function mount(host, { dark = !!globalThis.matchMedia?.('(prefers-color-scheme: dark)').matches, siteView = null, side = null, appView = null } = {}) {
     const root = host.shadowRoot ?? host.attachShadow({ mode: 'closed' });
     globalThis.KidTubeWatch?.shadow?.(root);   // dev mode reads and taps inside it (core/ui/bridge.js)
     host.classList.toggle('dark', dark);
@@ -433,12 +436,13 @@
 
     // The App | site switch, the same for every app (core/background/profiles.js switchOf).
     function siteSwitch(sw) {
+      if (side && sw.site === data.site) sw = { ...sw, on: side };
       const seg = el('div', 'seg');
       seg.setAttribute('role', 'group');
       seg.setAttribute('aria-label', `App or ${sw.siteLabel}`);
       const toSite = () => (siteView ? siteView() : plainSite(sw.site));
       for (const [side, label, title, go] of [
-        ['app', 'App', sw.on === 'app' ? `${sw.label}: you are here` : `Open ${sw.label}`, () => openApp(sw.app)],
+        ['app', 'App', sw.on === 'app' ? `${sw.label}: you are here` : `Open ${sw.label}`, () => (appView?.() || openApp(sw.app))],
         ['site', sw.siteLabel, `${sw.siteLabel} itself, without the app`, toSite]]) {
         const b = button(sw.on === side ? 'on' : '', label, () => { if (sw.on !== side) go(); });
         b.title = title;

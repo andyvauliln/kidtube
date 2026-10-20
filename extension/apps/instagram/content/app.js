@@ -88,8 +88,11 @@
     try { me = await api.me(); } catch (e) { loggedIn = !(e instanceof api.LoginNeeded); detail = e.detail || String(e.message ?? e); }
     const r = await ask({ type: 'siteAccount', loggedIn, username: me?.username ?? null, id: me?.id ?? null });
     if (r?.switched) switched = r.switched;
+    if (signedOut !== !loggedIn) { signedOut = !loggedIn; update?.(); }
     return { loggedIn, username: me?.username ?? null, detail };
   }
+  // Nobody signed in to Instagram: its own page always (to sign in there), whatever view this tab was in.
+  let signedOut = false;
   // The profile the background took by itself (another Instagram account signed in while the app runs).
   let switched = null;
   // Connect: Instagram's account is read again now, then that account's Instagram profile runs: loaded, or made new
@@ -904,7 +907,7 @@
   // The first time the app's view shows: what the background has, then Instagram.
   async function start() {
     // The header's App | Instagram: Instagram is this same page without the app's layer.
-    globalThis.KidTubeHeader?.mount(headerBox, { siteView: () => { view.set('instagram'); update(); } });
+    globalThis.KidTubeHeader?.mount(headerBox, { side: 'app', siteView: () => { view.set('instagram'); update(); } });
     draw();
     await refresh();
     const me = ui.me = await reportMe();
@@ -961,7 +964,7 @@
   }
   // Which view, after every page change (Instagram changes pages without loading them).
   function update() {
-    const app = view.get() === 'app' && !!savedUser() && site?.open !== false;
+    const app = view.get() === 'app' && !!savedUser() && site?.open !== false && !signedOut;
     showView(app);
     siteHeader(!app && !!site?.open);
     if (!site?.open || !document.documentElement) { if (bar) bar.style.display = 'none'; return; }
@@ -983,7 +986,13 @@
       topHost = document.createElement('div');
       topHost.id = 'kidtube-header';
       topHost.style.cssText = 'position:fixed!important;top:0!important;left:0!important;right:0!important;z-index:2147483647!important;display:block!important;margin:0!important';
-      topHeader = globalThis.KidTubeHeader.mount(topHost);
+      // Instagram's own page: its switch says Instagram; App on the profile's Saved page shows the app over it.
+      topHeader = globalThis.KidTubeHeader.mount(topHost, { side: 'site', appView: () => {
+        view.set('app');
+        if (!site?.who || savedUser() !== site.who.toLowerCase()) return false;
+        update();
+        return true;
+      } });
       topSize = new ResizeObserver(() => document.documentElement.style.setProperty('--kidtube-h', `${topHost?.offsetHeight ?? 0}px`));
       topSize.observe(topHost);
       checkSiteHeader();
