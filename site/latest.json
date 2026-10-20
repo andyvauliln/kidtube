@@ -1,10 +1,10 @@
 {
-  "version": "0.12.39",
+  "version": "0.12.40",
   "target": "quetta",
-  "sourceCommit": "5ff02c910f44bfa76300bfffb49155a62b5f1cd0",
+  "sourceCommit": "5fd85f2fc8e0f77067f99e948ac63a4e824643cc",
   "id": "mpgpgldgfogdipaaaobleoppocmhlidp",
-  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.39.crx",
-  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.39.zip",
+  "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.40.crx",
+  "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.40.zip",
   "quizTypes": [
     "text",
     "choice",
@@ -12,6 +12,18 @@
     "voice"
   ],
   "changes": [
+    {
+      "version": "0.12.40",
+      "at": "2026-10-20",
+      "changed": [
+        "Instagram: the App | Instagram switch in the header now shows the view you see, and App works from Instagram's page",
+        "Instagram: when nobody is signed in, the tab always shows Instagram's own page"
+      ],
+      "test": [
+        "Instagram's Saved page in the Instagram view, reload: the switch says Instagram; tap App: the app shows at once",
+        "Sign out of Instagram, open the app: Instagram's own page shows, not the app"
+      ]
+    },
     {
       "version": "0.12.39",
       "at": "2026-10-19",
