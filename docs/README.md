@@ -9,7 +9,7 @@ Longer texts. The code map is in the `README.md` of each code folder; start at `
 | `CONFIGURATION.md` | Every setting: where it lives, its default, what it does | Reference (kept current) |
 | `STATE.json` | Every object of the extension and its apps (storage, data repo, messages, screen data) with example values; `//` keys are comments, `//shared` marks what KidTube and Instagram share | Reference (as of 0.12.40) |
 | `BROWSER-STORAGE-AND-APPS.md` | What each app keeps in browser storage, the browser features in use, how apps could share data and switch | Reference + options (2026-10-21) |
-| `BROWSER-APIS.md` | Every browser API in the code (with Quetta and Orion support), how tabs and apps communicate, the limits of an extension app compared with a real site | Research (2026-10-21) |
+| `BROWSER-APIS.md` | Every browser API in the code (with Quetta and Orion support), how tabs and apps communicate, what the extension cannot do that Instagram's and YouTube's own sites can do | Research (2026-10-21) |
 | `ORION.md` | KidTube on Orion (iPad/iPhone/Mac): what works, what the build changes | Research + reference |
 | `SAFARI.md` | KidTube on Safari: research, nothing built | Research |
 | `PLAN.md` | The first development plan: the brief's checks (C1–C24), data contracts, milestones | Plan (history) |

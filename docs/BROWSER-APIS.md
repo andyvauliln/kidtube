@@ -3,7 +3,8 @@
 As of 0.12.40 (2026-10-21). Research. Written in ASD-STE100. Code names, keys and paths stay as they are in the code.
 
 This file adds to `BROWSER-STORAGE-AND-APPS.md`. That file tells where the data is and gives the options to connect
-the apps. This file gives the full list of browser APIs in the code, and the limits of an extension app.
+the apps. This file gives the full list of browser APIs in the code, and what the extension app cannot do that Instagram's and
+YouTube's own sites can do.
 
 Contents:
 
@@ -11,9 +12,8 @@ Contents:
 2. [Extension APIs (`chrome.*`) in the code](#2-extension-apis-chrome-in-the-code)
 3. [Web APIs in the code](#3-web-apis-in-the-code)
 4. [The four places where code runs](#4-the-four-places-where-code-runs)
-5. [Limits: an extension app compared with a real site](#5-limits-an-extension-app-compared-with-a-real-site)
-6. [Limits that YouTube and Instagram put on the extension](#6-limits-that-youtube-and-instagram-put-on-the-extension)
-7. [Summary](#7-summary)
+5. [What the extension cannot do that the site itself can do](#5-what-the-extension-cannot-do-that-the-site-itself-can-do)
+6. [Summary](#6-summary)
 
 ---
 
@@ -202,82 +202,73 @@ Each place has different APIs. This is the main cause of the design: the screens
 
 ---
 
-## 5. Limits: an extension app compared with a real site
+## 5. What the extension cannot do that the site itself can do
 
-Here "a real site" is our own website on our own address (for example a page on GitHub Pages, or a PWA). It is the
-option B of `docs/SAFARI.md`.
+### 5.1 Why there is a difference
 
-### 5.1 What only the extension can do
+1. Instagram's site is Instagram's own code. It talks to Instagram's own servers with all of Instagram's tokens.
+2. The extension app is a guest. It draws a layer over Instagram's page. It sees only what the page receives, or
+   what Instagram's web API gives to the signed-in user.
+3. Meta's official API does not give a person's saved posts. So the app uses Instagram's private web API. Instagram
+   can change that API at any time, with no notice.
+4. The extension runs only in a browser with extensions (Quetta, Orion). It cannot run in Instagram's phone app.
 
-| Feature | Extension | Real site |
-| --- | --- | --- |
-| Draw our screens on top of `youtube.com` and `instagram.com` | Yes (content scripts) | No |
-| Read the signed-in YouTube or Instagram account | Yes (`core/content/youtube-page.js`, `apps/instagram/content/api.js`) | No. The browser does not send their cookies to our site. |
-| Call Instagram's private API as the signed-in user | Yes, from a content script on `instagram.com` | No. CORS and the cookies block it. |
-| Read the site's own network answers (the saved posts) | Yes (`apps/instagram/content/net.js`) | No |
-| Block other websites before they load | Yes on Quetta (`declarativeNetRequest`). Orion: only the guard. | No. The parent must use Screen Time or a family filter. |
-| Block ad servers | Yes (rules 100 and 101) | No. Ads in the YouTube embed stay. |
-| See every address change in every tab | Yes (`chrome.tabs.onUpdated`) | No. A site sees only its own pages. |
-| Close a second app tab | Yes (`keepOneTab()`) | No |
-| Use the full YouTube site (comments off, covers, the real player, no "embed is off" errors) | Yes | No. Only the embedded player. Some owners turn the embed off. |
-| Call GitHub and listening services without CORS problems | Yes, from the service worker with `host_permissions` | Only services that allow CORS |
-| Keep data after the parent clears the site data of YouTube | Yes (`chrome.storage.local` is separate) | No. The site's data goes with its origin. |
+### 5.2 Instagram: what the site does and the extension app cannot do
 
-### 5.2 What the extension cannot do, or does with more work
+| # | Instagram's site (or phone app) | The extension app | Why | Code |
+| --- | --- | --- | --- | --- |
+| 1 | Gets all data from its own server | Reads only what the page receives (`net.js`), or Instagram's web API from the page (`api.js`) | No official API for saved posts. The reader rules guess which answers hold saved posts. | `apps/instagram/content/net.js`, `apps/instagram/lib/reader.js`, `apps/instagram/lib/rules.js` |
+| 2 | Works the same after each of its own changes | Can break when Instagram changes its page, its GraphQL queries or its web API | Instagram changes them with no notice | `site/remote.json` `instagram.reader` changes the rules with no new version. Send to AI reports a failed read. |
+| 3 | Saves, unsaves, likes, comments, posts, sends messages, shows stories and reels | Reads only. It does not write to Instagram. | A write to the private API is a high account risk. The app is not made for it. | `apps/instagram/content/api.js` (only `GET` requests) |
+| 4 | Knows at once when you unsave a post | Keeps an unsaved post in its list | The app reads only new saves after the first read | `apps/instagram/README.md` "Not yet" |
+| 5 | Shows every collection | Sometimes cannot get a collection from the web API | The web API may not give a collection. The app then takes the collection when the parent opens it on Instagram's page. | `apps/instagram/content/api.js` `collection` |
+| 6 | Works with no open tab: push notifications, sync on the phone | Works only while an Instagram tab is open and signed in | The manifest has no host permission for `instagram.com`. The code calls Instagram only from the page. | `extension/manifest.json`, `apps/instagram/content/api.js` |
+| 7 | Signs in, asks for a second factor, and handles security checks | Cannot sign in. When the session ends, the app tells you to sign in on Instagram's page. | The session cookie (`sessionid`) is `HttpOnly`. The page sends it, but no script can read or keep it. | `apps/instagram/content/api.js` (reads only `csrftoken` and `ds_user_id`) |
+| 8 | Reads its feeds as fast as it needs | Must read slowly. Too many requests can get an error, a security check, or a blocked account. | Instagram limits automated use | Stop and Read the rest (`igStop`, `igResume`) |
+| 9 | Pictures and videos always load | Picture and video addresses expire after some days. The app asks Instagram for the post again. | Instagram's media addresses are signed and expire | `apps/instagram/content/app.js` (broken picture → new request), `apps/instagram/lib/posts.js` (`posts.json` keeps no picture addresses) |
+| 10 | Plays video with its own player (adaptive quality) | Plays the one video address from the post data. **▶ Play on Instagram** opens Instagram's player. | The app does not have Instagram's player | `apps/instagram/content/app.js` |
+| 11 | Its server can read the video | The tablet sends the video address to the data repo. The server's agent downloads it. An expired address makes the post Failed (Try again sends a new one). | The tablet does not process video | `agent/instagram.mjs` `download()` |
+| 12 | Search, Explore, recommendations, likes and view counts | Has only the fields that come with a saved post | These parts live on Instagram's servers | `apps/instagram/lib/posts.js` |
+| 13 | Owns the page: its design, its address, its Back button | Is a layer over the page. It must keep Instagram's CSS away and share the address bar. | The page belongs to Instagram | Closed shadow root, `history.pushState` for the post sheet (`apps/instagram/content/app.js`) |
+| 14 | Asks for the microphone as Instagram | The microphone prompt says `instagram.com`, not the extension | The recording runs in a content script, and a content script has the site's origin | `apps/instagram/content/app.js` |
+| 15 | Keeps your data on its servers, on every device | Keeps notes and statuses in `chrome.storage.local` and the GitHub data repo. Instagram never sees the notes. | The notes are the app's own data | `apps/instagram/background/sync.js` |
+| 16 | Works the same in every browser | On Orion, page-world scripts may not run. Then only the web API path (`api.js`) works. | Orion supports fewer extension features | `apps/instagram/README.md` |
+| 17 | Can see which scripts are in its page | Can be detected: the app wraps the page's `fetch` and `XMLHttpRequest` | The page world is shared with Instagram's code | `apps/instagram/content/net.js` |
 
-| Limit | Why | What the code does now |
-| --- | --- | --- |
-| It needs a browser with extensions | Chrome on Android and Safari on iPad without a port have none | Quetta on Android, Orion on iPad, Mac |
-| The child can switch the extension off or remove it | The browser's settings belong to the user | The PIN, plus Guided Access on the iPad (`docs/ORION.md`) |
-| The service worker stops when idle (about 30 seconds) | Manifest V3 rule | No state only in variables. `serial()` and the store hold the state. Alarms start the work again. |
-| The service worker has no DOM, no microphone, no audio | Manifest V3 rule | Record and play in a page or a content script |
-| Content scripts get only some `chrome.*` APIs | Browser rule | They send a message to the service worker |
-| A page-world script gets no `chrome.*` API | Browser rule | It sends `window.postMessage` to the content script |
-| The microphone permission in a content script is for the site, not for the extension | Browser rule | The Instagram voice note asks for `instagram.com`. KidTube records in its own frames. |
-| Updates come only through `update_url` or a store | Browser rule | Quetta: `updates.xml` on GitHub Pages. Orion: the parent installs a new .zip. |
-| The browser can refuse an update check | Chrome limits `requestUpdateCheck` ("throttled") | `core/background/updates.js` waits between checks |
-| Extension frames are blank on Orion | Orion limit | The Orion build draws in the page (`apps/kidtube/kid/render.js`) |
-| No background work when iOS stops Orion | iOS limit | Sync when a screen asks for `state` |
-| The site's address bar and Back button belong to the site | The app is a guest on the site's page | `history.pushState` for the post sheet. The guard for addresses. |
-| Two app tabs cannot work together | The design: one live profile, one app tab | `keepOneTab()`. `BROWSER-STORAGE-AND-APPS.md` 5.2 gives the change. |
-| System notifications | The manifest has no `notifications` permission. Support in Quetta and Orion is not known. | The header's 🔔 list (`core/background/inbox.js`) |
+### 5.3 YouTube: what the site does and KidTube cannot do
 
-### 5.3 What a real site does better
-
-| Feature | Real site | Extension |
-| --- | --- | --- |
-| Install | Open an address. A PWA can go on the home screen. | Download a .crx or .zip, then install it in the browser |
-| Browsers | All browsers, also Safari on iPad and Chrome on Android | Only browsers with extensions |
-| Updates | At once, with the next page load | Through `updates.xml` or a new .zip |
-| Its own design | It owns the full page | It must fight the site's CSS (shadow roots, frames) |
-| Stable base | Its own code only | YouTube and Instagram change their pages and APIs. The app can break with no change on our side. |
-| Account risk | None for the user's Instagram account | Instagram can block an account for automated use |
-| Permission warnings | None at install | The browser shows "read and change data on youtube.com" |
-
----
-
-## 6. Limits that YouTube and Instagram put on the extension
-
-| Site | Limit | Effect on the app | Where in the code |
+| # | YouTube's site (or phone app) | KidTube | Why |
 | --- | --- | --- | --- |
-| Both | They change their page and their private APIs with no notice | The self-checks and the reader rules must find the change. The fix agent repairs it. | `core/checks/`, `apps/instagram/lib/reader.js` |
-| Both | `X-Frame-Options` and CSP refuse frames on other sites | One page cannot show YouTube and Instagram together | — |
-| Both | Their pages are single-page apps | An address change does not always load a new page. The content scripts watch the address and the page. | `apps/kidtube/content/youtube.js`, `apps/instagram/content/app.js` |
-| YouTube | The account can change in the page with no new load | KidTube stops, and a lock covers YouTube until the PIN | `core/content/youtube-page.js`, `core/background/profiles.js` |
-| YouTube | The embedded player needs the embed address and its own protocol | The parent page adds a network rule for `youtube.com/embed/` and uses `enablejsapi=1` | `apps/kidtube/parent/parent.js` |
-| YouTube | Ads and autoplay rules | Ad servers are blocked on Quetta. The time counts only when no ad plays. | `core/background/sites.js`, `apps/kidtube/content/youtube.js` |
-| Instagram | The API needs the `csrftoken` cookie and the `X-IG-App-ID` header. It refuses too many requests. | `api.js` reads the cookie and adds the header. An error shows a problem state. | `apps/instagram/content/api.js`, `apps/instagram/content/app.js` |
-| Instagram | It can block an account for automated use | Read only what the user saved. Do not post, like or follow. | `apps/instagram/` |
+| 1 | Decides the recommendations, the search and the comments | Can only hide them or cover them | They come from YouTube's servers |
+| 2 | Works in YouTube's phone app | Works only in the browser. The phone app opens YouTube without KidTube. | The phone app has no extensions. Delete or block the app on the tablet. |
+| 3 | Shows ads | Blocks ad servers on Quetta. On Orion the ads stay. | Orion has no `declarativeNetRequest` |
+| 4 | Changes the account in the page | Must find the change. Then KidTube stops and a lock covers YouTube until the PIN. | The account belongs to YouTube's page (`core/content/youtube-page.js`) |
+| 5 | Changes its page layout | Can break when YouTube changes its page | The self-checks (`core/checks/`) find the problem and send a report |
+| 6 | Plays every video | Some owners turn off the embed, so the parent page's player cannot play them | The parent page uses YouTube's embedded player (`apps/kidtube/parent/parent.js`) |
+
+### 5.4 Limits of every browser extension
+
+These limits are the same for both apps. They come from the browser, not from the sites.
+
+| Limit | Effect |
+| --- | --- |
+| The service worker stops after about 30 seconds with no work | No state stays only in variables. The store holds it. |
+| The service worker has no DOM, no microphone, no audio | Recording and sound happen in a page or a content script |
+| A content script gets only some `chrome.*` APIs | It sends a message to the service worker |
+| A page-world script gets no `chrome.*` API | It sends `window.postMessage` to the content script |
+| The user can switch the extension off or remove it | KidTube needs the PIN and Guided Access on the iPad |
+| Updates come only through `update_url` or a store | Quetta: `updates.xml` on GitHub Pages. Orion: the parent installs a new .zip. |
+| iOS stops Orion in the background | No sync while Orion is closed. The sync starts when a screen opens. |
 
 ---
 
-## 7. Summary
+## 6. Summary
 
 | Question | Answer |
 | --- | --- |
 | How do the apps communicate across tabs? | Through the service worker (`chrome.runtime.sendMessage`) and the store (`chrome.storage.onChanged`). Both work across sites. A tab never talks to a different tab directly. |
 | Do two apps communicate now? | No. One profile and one app tab are live at a time. |
 | Which browser APIs are the base? | `chrome.storage.local`, `chrome.runtime` messages, `chrome.tabs`, `chrome.alarms`, `declarativeNetRequest`, content scripts in two worlds, `getUserMedia` with `AudioContext`, `fetch` |
+| What can the Instagram app not do, compared with Instagram's site? | Write to Instagram (save, like, post), work with no open tab, sign in, use an official API, keep media addresses, play with Instagram's player. Section 5.2 has 17 points. |
 | What is the largest limit of the extension? | It needs a browser with extensions, and it depends on the pages and private APIs of YouTube and Instagram |
-| What is the largest limit of a real site? | It cannot see or change YouTube and Instagram, and it cannot block other sites |
 | What to test on Orion | `chrome.storage.session`, `chrome.tabs.sendMessage`, `chrome.tabs.remove`, `world: "MAIN"`, `chrome.permissions.request`, `SpeechRecognition` |
