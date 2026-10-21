@@ -40,7 +40,7 @@ Contents:
 | 4 | Page world ↔ content script, in one tab | `window.postMessage` | `core/content/youtube-page.js` sends YouTube's account and video data. `apps/instagram/content/net.js` ↔ `app.js` (`kidtube-ig`, `kidtube-ig-cmd`). | No | No |
 | 5 | Extension frame ↔ YouTube page, in one tab | `window.postMessage` | KidTube's home frame says `frame-ready` (`apps/kidtube/kid/home.js` → `apps/kidtube/content/youtube.js`) | No | No |
 | 6 | Parent page ↔ YouTube player frame | `window.postMessage` (YouTube's `enablejsapi=1` protocol) | `apps/kidtube/parent/parent.js` | No | No |
-| 7 | Service worker → a tab's address | `chrome.tabs.update` | The guard sends a tab to a new address (`core/background/main.js`) | Yes | Yes |
+| 7 | Service worker → a tab's address | `chrome.tabs.update` | The guard sends a tab to a new address (`core/background/main.js`) | Yes | Test first |
 | 8 | Device ↔ server | `fetch` to GitHub, `WebSocket` to the bridge | Sync with the data repo. Dev mode bridge (`core/background/bridge.js`). | Yes, also across devices | Yes |
 
 ### 1.3 Channels that do not work for the apps
@@ -98,11 +98,11 @@ The column "Calls" gives the number of calls in `extension/` (vendor code is not
 
 | API | Calls | What it does here | Files (examples) | Quetta | Orion |
 | --- | --- | --- | --- | --- | --- |
-| `chrome.tabs.update` | 20 | Send a tab to a new address (guard, open an app) | `core/background/main.js`, `core/background/profiles.js` | Yes | Yes |
-| `chrome.tabs.query` | 6 | Find the active tab, or all app tabs | `core/background/tabs.js` | Yes | Yes |
-| `chrome.tabs.create` | 5 | Open a new tab | `core/background/main.js`, `core/background/profiles.js`, `core/background/updates.js` | Yes | Yes |
+| `chrome.tabs.update` | 20 | Send a tab to a new address (guard, open an app) | `core/background/main.js`, `core/background/profiles.js` | Yes | Test first |
+| `chrome.tabs.query` | 6 | Find the active tab, or all app tabs | `core/background/tabs.js` | Yes | Test first |
+| `chrome.tabs.create` | 5 | Open a new tab | `core/background/main.js`, `core/background/profiles.js`, `core/background/updates.js` | Yes | Test first |
 | `chrome.tabs.sendMessage` | 3 | Service worker → one tab | `apps/kidtube/background/handlers.js`, `core/background/bridge.js` | Yes | Test first |
-| `chrome.tabs.onUpdated` | 1 | Every address change goes to `keepOneTab()` and the guard | `core/background/main.js` | Yes | Yes (the guard is the only site block on Orion) |
+| `chrome.tabs.onUpdated` | 1 | Every address change goes to `keepOneTab()` and the guard | `core/background/main.js` | Yes | Test first. On Orion the guard is the only site block. |
 | `chrome.tabs.onRemoved` | 1 | Each app hears that a tab closed (`tabRemoved`) | `core/background/main.js` | Yes | Test first |
 | `chrome.tabs.remove` | 1 | Close the other app tabs | `core/background/tabs.js` | Yes | Test first |
 | `chrome.tabs.reload` | 1 | Reload the YouTube tabs after an update | `core/background/main.js` | Yes | Test first |
@@ -240,7 +240,7 @@ option B of `docs/SAFARI.md`.
 | No background work when iOS stops Orion | iOS limit | Sync when a screen asks for `state` |
 | The site's address bar and Back button belong to the site | The app is a guest on the site's page | `history.pushState` for the post sheet. The guard for addresses. |
 | Two app tabs cannot work together | The design: one live profile, one app tab | `keepOneTab()`. `BROWSER-STORAGE-AND-APPS.md` 5.2 gives the change. |
-| Web Push notifications | An extension can use `chrome.notifications`, but Quetta and Orion support is not known | The header's 🔔 list (`core/background/inbox.js`) |
+| System notifications | The manifest has no `notifications` permission. Support in Quetta and Orion is not known. | The header's 🔔 list (`core/background/inbox.js`) |
 
 ### 5.3 What a real site does better
 
