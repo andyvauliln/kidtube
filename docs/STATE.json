@@ -1,0 +1,3607 @@
+{
+  "//": "The full state of Custom Apps 0.12.40: every object of the extension (core) and of its two apps (KidTube, Instagram), with example data. Generated from the code on 2026-10-21. Keep it current when a shape changes.",
+  "howToRead": {
+    "//": "JSON has no comments, so this file uses keys that start with //.",
+    "rules": [
+      "\"//\": what the object is, where it lives, who writes it, who reads it (file:line or file function).",
+      "\"//<field>\": the variants of <field> (enum values, null cases, limits). The value next to it is one real-looking example.",
+      "\"//shared\": this object is COMMON to KidTube and Instagram (one shape, one code path in extension/core/). Search for //shared to find all common parts.",
+      "Example values are made up but realistic: profile leo.kidtube@gmail.com (KidTube), @anna.saves (Instagram), device tab-3f9a1c2e, the date 2026-10-21.",
+      "Paths without a folder start at extension/. Data repo paths start at the root of the private data repo (default andyvauliln/kidtube-data)."
+    ],
+    "layers": {
+      "chrome.storage.local": "the tablet's state. Core keys + app keys. Per-profile keys move to acct:<key> on a profile switch (core/background/profiles.js useProfile).",
+      "chrome.storage.session": "lost when the browser closes",
+      "Cache Storage": "big files (audio, avatar), fake host https://kidtube.invalid/",
+      "data repo (GitHub, private)": "<app>/<folder>/... per profile; problems/, fixes.json, devices/ at the root",
+      "site/ (GitHub Pages, public)": "latest.json, updates.xml, remote.json, the .crx/.zip",
+      "message": "{ type, ... } from a page or content script to the service worker (core/background/messages.js) and its answer",
+      "view": "what a screen gets and renders"
+    }
+  },
+  "commonParts": {
+    "//": "What KidTube and Instagram share. Every item here is one shape in extension/core/ used the same way by both apps. The app column says what differs.",
+    "list": [
+      {
+        "part": "Registry entry (apps/registry.js APPS[id])",
+        "path": "extension.registry.APPS",
+        "differs": "KidTube: parentPage, modes (kid/parent), contextDocs. Instagram: home (launch address), modes:false."
+      },
+      {
+        "part": "Site of the account (SITES)",
+        "path": "extension.registry.SITES",
+        "differs": "KidTube names a profile by the YouTube email (by:'email'), Instagram by the username (by:'username')."
+      },
+      {
+        "part": "Background part contract (core/background/apps.js)",
+        "path": "extension.appContract",
+        "differs": "Which members each app fills: see apps.<app>.contract."
+      },
+      {
+        "part": "account / accounts / acct:<key>",
+        "path": "extension.storage.account",
+        "differs": "Key: KidTube = the email; Instagram = 'instagram:@<username>'."
+      },
+      {
+        "part": "settings (PIN, mode, GitHub token, dev mode)",
+        "path": "extension.storage.settings",
+        "differs": "Instagram always runs in mode 'parent' (modes:false)."
+      },
+      {
+        "part": "data (what the last sync fetched)",
+        "path": "extension.storage.data",
+        "differs": "KidTube: config, queue, memoryMeta, runStatus, answers… Instagram: handled."
+      },
+      {"part":"syncStatus","path":"extension.storage.syncStatus","differs":"none"},
+      {"part":"shell (apps header on/locked)","path":"extension.storage.shell","differs":"none"},
+      {
+        "part": "ytAccount / igAccount (what the site page reported)",
+        "path": "extension.storage.siteAccounts",
+        "differs": "One key per site: same idea, fields email/datasyncId vs username/id."
+      },
+      {
+        "part": "Data repo <app>/<folder>/profile.json",
+        "path": "extension.dataRepo.profileJson",
+        "differs": "email for KidTube, username for Instagram."
+      },
+      {
+        "part": "Sync loop (15 min alarm, soon, syncIfStale) and the app's sync(ctx)",
+        "path": "extension.sync",
+        "differs": "The files each app reads and writes."
+      },
+      {
+        "part": "Apps header view (the 'header' answer) and its App | site switch",
+        "path": "extension.views.header",
+        "differs": "KidTube: Parent | Kid switch, notes, questions. Instagram: switch App | Instagram, only a 'queued' AI row."
+      },
+      {
+        "part": "Notifications 🔔 rows",
+        "path": "extension.views.inboxRow",
+        "differs": "note/question rows exist only for KidTube (it has notes + questions); Instagram gives the 'queued' row."
+      },
+      {
+        "part": "Checks, problem reports, problems/<day>.json, fixes.json",
+        "path": "extension.checks",
+        "differs": "Check ids: kidtube.* / action.* for KidTube, ig.read / ig.parentSent / instagram.* for Instagram."
+      },
+      {
+        "part": "Updates (latest.json, updateState, the version answer)",
+        "path": "extension.updates",
+        "differs": "none: one extension, one version for both apps."
+      },
+      {
+        "part": "Site rules (DNR: other websites closed, ads)",
+        "path": "extension.siteRules",
+        "differs": "KidTube: from its config. Instagram: fixed { block:true, allowed:[instagram.com, facebook.com], ads:false }."
+      },
+      {
+        "part": "Remote data site/remote.json",
+        "path": "extension.site.remoteJson",
+        "differs": "Only Instagram reads a part of it today (instagram.reader)."
+      },
+      {"part":"Dev mode bridge","path":"extension.devBridge","differs":"none"},
+      {
+        "part": "Listening models and keys (apps/kidtube/lib/voice.js, repoKeys)",
+        "path": "apps.kidtube.voice",
+        "differs": "Lives in KidTube's folder but Instagram's igNote uses the same transcribeAnswer and keys (instagram/keys.json, else kidtube/keys.json)."
+      },
+      {
+        "part": "Voice notes about an item, sent to a server agent",
+        "path": "apps.kidtube.storage.outbox / apps.instagram.storage.ig",
+        "differs": "Same idea, two shapes: KidTube note events (voice/<id>.wav, voice/<id>.json); Instagram post notes (notes/<id>.wav, noteTexts in handled.json)."
+      },
+      {
+        "part": "Server agent run on a request, its status in the data repo",
+        "path": "apps.kidtube.dataRepo.runStatus / apps.instagram.dataRepo.handledJson",
+        "differs": "KidTube: requests/run.json → run-status.json. Instagram: posts.json (queued posts) → handled.json + posts/<id>.json."
+      }
+    ],
+    "onlyKidTube": [
+      "Kid mode and parent mode, the PIN to leave kid mode, time limits, the lock, the list of videos, sessions, the talking friend, quizzes, parent screens (Today, Planned, History, Details, Prompt, Context, Settings), notes and questions for the AI, the nightly helper (memory.json, queue.json, helper.json)."
+    ],
+    "onlyInstagram": [
+      "Saved posts, collections, the reader of Instagram's pages and API (net.js, reader.js, api.js), the To-handle list, post notes, the posts agent's transcripts (handled.json, posts/<id>.json), the export file."
+    ]
+  },
+  "extension": {
+    "//": "The core: extension/core/ + apps/registry.js + manifest.json. It knows profiles, modes, the PIN, the header, sync, updates and checks. It knows nothing about videos or posts.",
+    "manifest": {
+      "//": "extension/manifest.json. ship sets the version; never by hand.",
+      "manifest_version": 3,
+      "name": "Custom Apps",
+      "version": "0.12.40",
+      "permissions": ["storage","alarms","tabs","declarativeNetRequest","unlimitedStorage"],
+      "host_permissions": ["*://*.youtube.com/*","https://api.github.com/*","https://andyvauliln.github.io/*"],
+      "background": {"service_worker":"core/background/main.js","type":"module"},
+      "contentScripts": {
+        "youtube.com": [
+          "core/ui/watch.js",
+          "core/ui/bridge.js",
+          "core/ui/header.js",
+          "core/content/shell.js",
+          "apps/kidtube/kid/render.js",
+          "apps/kidtube/content/youtube.js"
+        ],
+        "youtube.com (MAIN world)": ["core/content/youtube-page.js"],
+        "instagram.com": [
+          "core/ui/watch.js",
+          "core/ui/bridge.js",
+          "core/ui/header.js",
+          "apps/instagram/content/api.js",
+          "apps/instagram/content/app.js"
+        ],
+        "instagram.com (MAIN world)": ["apps/instagram/lib/reader.js","apps/instagram/content/net.js"]
+      },
+      "//contentScripts": "//shared: watch.js, bridge.js, header.js run on both sites."
+    },
+    "constants": {
+      "//": "core/background/constants.js, core/lib/target.js",
+      "TARGET": "quetta",
+      "//TARGET": "'quetta' (Android, the source as written) | 'orion' (iPad/iPhone/Mac; build/build-orion.mjs rewrites it)",
+      "POLL_MINUTES": 15,
+      "DEFAULT_REPO": "andyvauliln/kidtube-data",
+      "PAGES_URL": "https://andyvauliln.github.io/kidtube/",
+      "LATEST_URL": "https://andyvauliln.github.io/kidtube/latest.json",
+      "//LATEST_URL": "orion: https://andyvauliln.github.io/kidtube/orion/latest.json",
+      "PIN_PAGE": "core/pages/pin.html",
+      "BRIDGE_URL": "wss://68-183-124-79.sslip.io/bridge",
+      "SITE_RULE_ID": 100,
+      "AD_RULE_ID": 101,
+      "alarms": ["poll","soon","bridge"],
+      "//alarms": "poll: every 15 min sync. soon: sync in 1 min (while the app waits for the server). bridge: every 1 min while dev mode is on.",
+      "DEVICE_SETTINGS": [
+        "pinHash",
+        "pinSalt",
+        "pinFails",
+        "pinLockedUntil",
+        "deviceId",
+        "mode",
+        "repo",
+        "token",
+        "devMode",
+        "devKey",
+        "devUntil",
+        "bridgeUrl",
+        "readOnly"
+      ],
+      "//DEVICE_SETTINGS": "settings fields that belong to the tablet, not the profile: they move along with every profile switch",
+      "BACKUP_KEYS": ["repo","token","pinSalt","pinHash"]
+    },
+    "registry": {
+      "//": "apps/registry.js: plain data, read by the background and by the pages. //shared: one entry per app, same fields.",
+      "//shared": "kidtube + instagram",
+      "APPS": {
+        "kidtube": {
+          "id": "kidtube",
+          "label": "KidTube (YouTube)",
+          "color": "#ff3b30",
+          "glyph": "play",
+          "about": "His own video list on YouTube, with time limits and a talking friend.",
+          "sites": ["youtube.com"],
+          "account": "youtube",
+          "parentPage": "apps/kidtube/parent/parent.html",
+          "contextDocs": ["kid","strategy","math","letters","world"],
+          "//": "no page, no home: KidTube runs on YouTube itself. modes: default (kid + parent)."
+        },
+        "instagram": {
+          "id": "instagram",
+          "label": "Instagram (saved posts)",
+          "color": "#d62976",
+          "glyph": "camera",
+          "about": "Your saved posts: voice notes, and the AI writes down what each video says.",
+          "sites": ["instagram.com","facebook.com"],
+          "account": "instagram",
+          "home": "https://www.instagram.com/robots.txt?kidtube=app",
+          "modes": false,
+          "contextDocs": [],
+          "//": "no parentPage: its screen is drawn by its content script over Instagram's own Saved page."
+        },
+        "//fields": "id, label, color, glyph (header.js PATH: play|square|camera|link|cloud|download|upload|caret|grid|bell|code), about, sites, account (a SITES key), page? (extension page shown instead of YouTube), parentPage?, home?, modes? (false: no kid/parent), contextDocs"
+      },
+      "DEFAULT_APP": "kidtube",
+      "//DEFAULT_APP": "the app of a profile saved without one (profiles from before there were apps)",
+      "SITES": {
+        "youtube": {
+          "id": "youtube",
+          "label": "YouTube",
+          "hosts": ["youtube.com"],
+          "stored": "ytAccount",
+          "by": "email",
+          "home": null
+        },
+        "instagram": {
+          "id": "instagram",
+          "label": "Instagram",
+          "hosts": ["instagram.com"],
+          "stored": "igAccount",
+          "by": "username",
+          "home": "https://www.instagram.com/"
+        },
+        "//": "the sites whose signed-in account names a profile. stored = the storage key of what the page reported. home null = the YouTube in use (m. or www.)."
+      }
+    },
+    "appContract": {
+      "//": "core/background/apps.js: the background part every app registers (apps/backgrounds.js lists them). All fields optional but id. //shared: the core asks the current profile's app through these members.",
+      "//shared": "kidtube + instagram",
+      "members": {
+        "id": "string, as in apps/registry.js",
+        "stateKeys": "storage keys kept per profile, changed through withState()",
+        "profileKeys": "more storage keys kept per profile, written outside withState",
+        "fileKeys": "storage keys that go into the settings file (header: Save / Load)",
+        "prepare(s)": "fills empty state keys with defaults before withState's fn runs",
+        "guard(s, tabId, c, href)": "a YouTube page in the app (c = lib/youtube.js classifyUrl): a URL to send the tab to, or null",
+        "view(s)": "what the app's screens on YouTube need (spread into the 'state' answer)",
+        "handlers / pageOnly": "{ type: (msg, ctx) => answer }; pageOnly: types only extension pages may send",
+        "sync(ctx)": "the app's files; ctx { loc:{repo,base}, token, data, status, acct }; false = the profile changed meanwhile",
+        "beforeSync(msg)": "the 'sync' message from the app's own pages",
+        "siteRules(stored)": "{ block, allowed, ads }",
+        "created(s)": "a new profile's starting state",
+        "tabRemoved(s, tabId)": "a tab closed",
+        "aiView(s)": "for the 🔔: { held, run, message, at, page, send, report } or { queued }",
+        "notes": "{ list(s), edit(s,id,text), drop(s,id), send(ids), attach(s,id,what,on) }",
+        "questions": "{ list(s), dismiss(s,id) }",
+        "waiting(s)": "true: the core syncs every minute (alarm soon)",
+        "checks": "{ start:[...], actions:{ type: check } }"
+      },
+      "whoFillsWhat": {
+        "//": "✓ = the app gives it. See apps.<app>.contract for the values.",
+        "stateKeys": {"kidtube":"✓ 14 keys","instagram":"✓ ig"},
+        "profileKeys": {"kidtube":"✓ memory, helperInfo, contextDocs","instagram":"✓ igAudio"},
+        "fileKeys": {"kidtube":"✓ voiceKey, geminiKey, groqKey","instagram":"—"},
+        "prepare": {"kidtube":"✓","instagram":"✓"},
+        "created": {"kidtube":"✓","instagram":"✓"},
+        "guard": {"kidtube":"✓ rules.js guard","instagram":"✓ always the app's home"},
+        "view": {"kidtube":"✓ viewState","instagram":"— (uses igState)"},
+        "handlers": {"kidtube":"✓ 27 types","instagram":"✓ 15 ig* types"},
+        "sync": {"kidtube":"✓ syncKidTube","instagram":"✓ syncInstagram"},
+        "beforeSync": {"kidtube":"✓ releases held notes","instagram":"—"},
+        "siteRules": {"kidtube":"✓ from config","instagram":"✓ fixed"},
+        "tabRemoved": {"kidtube":"✓ ends the session","instagram":"—"},
+        "aiView": {"kidtube":"✓ held/run","instagram":"✓ queued"},
+        "notes": {"kidtube":"✓","instagram":"—"},
+        "questions": {"kidtube":"✓","instagram":"—"},
+        "waiting": {"kidtube":"✓","instagram":"—"},
+        "checks": {"kidtube":"✓ KIDTUBE_CHECKS","instagram":"—"}
+      }
+    },
+    "storage": {
+      "//": "chrome.storage.local keys of the core. Per-profile core keys: settings, data, syncStatus (store.js CORE_KEYS).",
+      "settings": {
+        "//": "Per-profile key, but every field in use is a DEVICE_SETTINGS field (moves along on a switch). Writers: core/pages/pin.js, core/lib/pin.js, profiles.js connectGitHub/importSettings, sync.js settingsBackup, bridge.js setDevMode, messages.js setMode/kidHome, apps/kidtube/background/sync.js (deviceId). //shared.",
+        "//shared": "kidtube + instagram",
+        "pinHash": "q3VzZXJwaW5oYXNoZXhhbXBsZWJhc2U2NA==",
+        "//pinHash": "base64 PBKDF2-SHA256, 150000 iterations; missing = no PIN chosen yet",
+        "pinSalt": "x9FhR2tVb0pZcW1aNw==",
+        "pinFails": 0,
+        "//pinFails": "0..5; 5 wrong PINs lock the PIN page",
+        "pinLockedUntil": 0,
+        "//pinLockedUntil": "0 | ms epoch (e.g. 1792575000000) until the PIN page opens again",
+        "deviceId": "tab-1a2b3c4d",
+        "//deviceId": "KidTube's device id (activity files). NOT the same as checks.device (problem reports, dev mode).",
+        "mode": "parent",
+        "//mode": "'kid' | 'parent'. Instagram (modes:false): openApp always sets 'parent'.",
+        "repo": "andyvauliln/kidtube-data",
+        "token": "github_pat_11ABCDEFG0aBcDeFgHiJkL_example",
+        "//token": "a GitHub token with write access to the data repo; missing = nothing syncs",
+        "devMode": false,
+        "//devMode": "true: the dev mode bridge runs (agents test this tablet)",
+        "devKey": null,
+        "//devKey": "64 hex chars while devMode is on; deleted when off",
+        "devUntil": null,
+        "//devUntil": "null (never ends) | ms epoch (life 'hour' | 'day')",
+        "bridgeUrl": null,
+        "//bridgeUrl": "null = BRIDGE_URL",
+        "readOnly": false,
+        "//readOnly": "true only in the lab browser (agent/lab/lab.mjs): putRepoFile writes nothing"
+      },
+      "account": {
+        "//": "The current profile. Built by profiles.js useProfile; folder and app filled by store.js profileBase. Read by nearly every module. //shared: the variant shows the app's own fields.",
+        "//shared": "kidtube + instagram",
+        "variants": {
+          "kidtube": {
+            "key": "leo.kidtube@gmail.com",
+            "email": "leo.kidtube@gmail.com",
+            "name": "Leo",
+            "datasyncId": "112233445566778899||998877665544332211",
+            "app": "kidtube",
+            "folder": "leo.kidtube"
+          },
+          "instagram": {
+            "key": "instagram:@anna.saves",
+            "email": null,
+            "name": null,
+            "datasyncId": null,
+            "username": "anna.saves",
+            "igId": "48211937502",
+            "app": "instagram",
+            "folder": "anna.saves"
+          }
+        },
+        "//key": "keyFor(app, name): KidTube = the lowercase email (or 'yt:<datasyncId part>' without one); other apps = '<app>:<name>' ('instagram:@anna.saves')",
+        "//folder": "profileFolder(): the username or the email's local part, cleaned to [a-z0-9._-]; a clash adds -<domain part>, then -2, -3. Given once, never moves. Repo folder = <app>/<folder>/"
+      },
+      "accounts": {
+        "//": "Map: profile key → record (profiles.js profileRecord). Read by the header (apps list), openApp, profileBase, the start.profile check. //shared.",
+        "//shared": "kidtube + instagram",
+        "leo.kidtube@gmail.com": {
+          "email": "leo.kidtube@gmail.com",
+          "name": "Leo",
+          "datasyncId": "112233445566778899||998877665544332211",
+          "app": "kidtube",
+          "folder": "leo.kidtube",
+          "lastSeen": "2026-10-21T09:12:33.120Z"
+        },
+        "instagram:@anna.saves": {
+          "email": null,
+          "name": null,
+          "datasyncId": null,
+          "username": "anna.saves",
+          "igId": "48211937502",
+          "app": "instagram",
+          "folder": "anna.saves",
+          "lastSeen": "2026-10-21T08:40:02.511Z"
+        }
+      },
+      "acct:<key>": {
+        "//": "A profile that does not run now: all its per-profile keys as they were (profiles.js useProfile). Example key: 'acct:instagram:@anna.saves' while KidTube runs. //shared.",
+        "//shared": "kidtube + instagram",
+        "settings": "{ …see settings }",
+        "data": "{ …see data }",
+        "syncStatus": "{ …see syncStatus }",
+        "//appKeys": "KidTube: watched, today, session, outbox, localConfig, seen, pendingTalk, quizTurn, transcripts, character, repoAvatars, planLog, history, notes, memory, helperInfo, contextDocs. Instagram: ig, igAudio."
+      },
+      "shell": {
+        "//": "The apps header state (store.js shellOf). Writers: profiles.js youtubeAccount, openApp, plainSite, leaveApp. Readers: guard.js, sites.js, core/content/shell.js through 'state', the header. //shared.",
+        "//shared": "kidtube + instagram",
+        "on": false,
+        "//on": "true: no app runs, the site is plain with the apps header on top. Missing key: { on: !account, locked: false }",
+        "locked": false,
+        "//locked": "true: the site is covered until a grown-up enters the PIN (the site's account changed)",
+        "why": "YouTube is signed in to bob@gmail.com, not leo.kidtube@gmail.com: KidTube stopped.",
+        "//why": "only when locked"
+      },
+      "siteAccounts": {
+        "//": "What each site's page reported last: key = SITES[x].stored. Written by profiles.js youtubeAccount / siteAccount. Read by seenOn() (header 'here'), openApp, connect. //shared idea, one key per site.",
+        "//shared": "kidtube (ytAccount) + instagram (igAccount)",
+        "ytAccount": {
+          "email": "leo.kidtube@gmail.com",
+          "loggedIn": true,
+          "datasyncId": "112233445566778899||998877665544332211",
+          "at": 1792574045120
+        },
+        "//ytAccount.email": "null when YouTube is signed out or gives no email",
+        "igAccount": {"loggedIn":true,"username":"anna.saves","id":"48211937502","at":1792573900511},
+        "//igAccount.username": "null when signed out; must match /^[a-z0-9._]{1,30}$/; id must be 1–30 digits"
+      },
+      "data": {
+        "//": "What the last sync fetched for the profile. The core uses only profileFile; the rest belongs to the app (apps.<app>.storage.data). //shared key, app-specific content.",
+        "//shared": "kidtube + instagram",
+        "profileFile": true,
+        "//profileFile": "true: <app>/<folder>/profile.json is written",
+        "etags": {"queue.json":"W/\"9f1c2a\""},
+        "//etags": "{ path: etag } for If-None-Match; both apps keep one"
+      },
+      "syncStatus": {
+        "//": "core/background/sync.js doSync. Read by the 🔔 sync row, syncIfStale, the problem context, KidTube Settings, Instagram's status line. //shared.",
+        "//shared": "kidtube + instagram",
+        "at": "2026-10-21T09:15:00.000Z",
+        "errors": [],
+        "//errors": "e.g. 'GitHub says the token is wrong or expired. …', 'Waiting for the YouTube account: open YouTube once, signed in. …', 'posts.json: …'",
+        "notes": [
+          "New profile: kidtube/leo.kidtube/ has no queue.json yet. The server sets it up within a minute or two."
+        ],
+        "//notes": "optional; KidTube only today"
+      },
+      "repoProfiles": {
+        "//": "Cache of the profiles found in the data repo (profiles.js readRepoProfiles). Fresh for 10 min. Removed by connectGitHub and importSettings. Read by the header's apps list. //shared.",
+        "//shared": "kidtube + instagram",
+        "repo": "andyvauliln/kidtube-data",
+        "at": 1792574040000,
+        "list": [
+          {"app":"kidtube","folder":"leo.kidtube","email":"leo.kidtube@gmail.com","username":null},
+          {"app":"instagram","folder":"anna.saves","email":null,"username":"anna.saves"}
+        ],
+        "error": null,
+        "//error": "null | 'GitHub did not answer in 6 s: …'"
+      },
+      "siteOffer": {
+        "//": "The header's tile opened the plain site and offers 'switch to the app?' (profiles.js plainSite). Valid 1 h. Read by Instagram's igSite; removed by igOfferDone, siteAccount, connect.",
+        "app": "instagram",
+        "at": 1792573800000
+      },
+      "profileDropped": {
+        "//": "A profile removed at start because it cannot be kept (profiles.js migrateProfileKeys). Read by the start.kept check.",
+        "app": "instagram",
+        "at": "2026-10-21T07:00:00.000Z",
+        "why": "no username",
+        "//why": "'no username' (an old Instagram profile named by an email) | 'app gone'"
+      },
+      "updateState": "see extension.updates.updateState",
+      "remote": "see extension.site.remoteJson (cached as { at, data, error? })",
+      "dnrWorks": true,
+      "//dnrWorks": "sites.js: the browser applies declarativeNetRequest rules (Orion may not)",
+      "bgStuck": {"at":"2026-10-21T08:01:12.004Z","from":"at withState (store.js:45) ← at doSync (sync.js:60)"},
+      "//bgStuck": "store.js serial: a background step that took more than 20 s. Shown on the check page.",
+      "checks": "see extension.checks.book",
+      "checkAlert": {
+        "reportId": "5d2f1b7e-8c4a-4f0e-9a51-3b6c2d7e8f90",
+        "at": "2026-10-21T09:20:41.000Z",
+        "check": "rule.deadButton.Save",
+        "expect": "“Save” does something",
+        "saw": "nothing changed for 3 s",
+        "shown": false
+      },
+      "//checkAlert": "runner.js addReport → core/ui/watch.js banner and the header (opens the 🔔). takeAlert adds willSend: !!token.",
+      "bridgeLog": {"n":3,"at":1792574100000,"cmd":"page"},
+      "//bridgeLog": "dev mode: how many commands the agents ran; shown in the dev pill",
+      "inboxHidden": {"problem:rule.deadButton.Save|quetta":"Not sent|1"},
+      "//inboxHidden": "header.js: rows the parent swiped away, by '<status.text>|<tries>' (a new status shows the row again)",
+      "headerUi": {"inboxClosed":false},
+      "checkEcho": "a random string, set and removed by the start.storage check",
+      "//legacy": "profileHold (0.9.4–0.9.7) and settings.parentUntil (<0.8.9) are removed at start (main.js)"
+    },
+    "sessionStorage": {
+      "//": "chrome.storage.session",
+      "checkSteps": [{"at":"2026-10-21T09:20:38.112Z","kind":"message","type":"header","ms":41,"ok":true,"n":2}],
+      "//checkSteps": "≤40 recent steps for problem reports (runner.js step)"
+    },
+    "pageStorage": {
+      "//": "Storage of web pages, not of the extension",
+      "kidtube-settings-backup": {
+        "//": "localStorage of the install page andyvauliln.github.io/kidtube/ (core/content/backup.js). Restores the token and PIN after a reinstall when settings.token is missing.",
+        "kidtubeSettings": 1,
+        "savedAt": "2026-10-21T09:00:00.000Z",
+        "repo": "andyvauliln/kidtube-data",
+        "token": "github_pat_11ABCDEFG0aBcDeFgHiJkL_example",
+        "pinSalt": "x9FhR2tVb0pZcW1aNw==",
+        "pinHash": "q3VzZXJwaW5oYXNoZXhhbXBsZWJhc2U2NA=="
+      }
+    },
+    "memoryState": {
+      "//": "Service worker memory: lost on restart, which is fine",
+      "live": {"host":"m.youtube.com","//host":"'m.youtube.com' | 'www.youtube.com': the YouTube in use"},
+      "others": [
+        "versionKept/versionAt (the version answer, 5 min)",
+        "REPORTS (≤12 run reports)",
+        "the checks book cache",
+        "syncTimer",
+        "the bridge WebSocket"
+      ]
+    },
+    "dataRepo": {
+      "//": "Core files in the data repo. //shared.",
+      "profileJson": {
+        "//": "<app>/<folder>/profile.json: whose folder this is. Written once by core/background/sync.js when data.profileFile is false. Read by readRepoProfiles (header) and the server (poll.sh init-profile). Schema: schemas/profile.schema.json. //shared.",
+        "//shared": "kidtube + instagram",
+        "variants": {
+          "kidtube/leo.kidtube/profile.json": {
+            "schemaVersion": 1,
+            "app": "kidtube",
+            "folder": "leo.kidtube",
+            "email": "leo.kidtube@gmail.com",
+            "name": "Leo",
+            "createdAt": "2026-10-01T07:12:00Z"
+          },
+          "instagram/anna.saves/profile.json": {
+            "schemaVersion": 1,
+            "app": "instagram",
+            "folder": "anna.saves",
+            "email": null,
+            "username": "anna.saves",
+            "name": null,
+            "createdAt": "2026-10-19T07:00:58Z"
+          }
+        }
+      },
+      "problemsDay": {
+        "//": "problems/<YYYY-MM-DD>.json at the repo root: problem reports of all apps (runner.js sendReports, 10 s after a new report). Read by the fix agent (agent/FIX.md). //shared.",
+        "//shared": "kidtube + instagram",
+        "schemaVersion": 1,
+        "date": "2026-10-21",
+        "reports": ["{ …see extension.checks.report }"],
+        "updatedAt": "2026-10-21T09:20:52.000Z"
+      },
+      "fixesJson": {
+        "//": "fixes.json at the repo root: what the fix agent did per problem. Read by the tablet (≤ every 2 min after a report was sent). //shared.",
+        "//shared": "kidtube + instagram",
+        "fixes": [
+          {
+            "key": "rule.deadButton.Save|quetta",
+            "state": "fixed",
+            "version": "0.12.41",
+            "message": "The Save button now saves the rules.",
+            "at": "2026-10-21T10:02:00Z",
+            "tries": 1,
+            "report": "reports/fix-20261021T100200Z.json"
+          }
+        ],
+        "//state": "working | fixed | not-a-bug | not-reproduced | needs-you | no-answer | gave-up"
+      },
+      "bridgeJson": {
+        "//": "devices/<device>/bridge.json at the repo root: dev mode on this tablet (bridge.js publish). Turning off writes on:false.",
+        "schemaVersion": 1,
+        "device": "tab-3f9a1c2e",
+        "on": true,
+        "keyHash": "4b227777d4dd1fc61c6f884f48641d02b4d121d3fd328cb08b5531fcacdabf8a",
+        "until": "2026-10-21T10:20:00.000Z",
+        "url": "wss://68-183-124-79.sslip.io/bridge",
+        "version": "0.12.40",
+        "target": "quetta",
+        "kidtubeDevice": "tab-1a2b3c4d",
+        "userAgent": "Mozilla/5.0 (Linux; Android 14; SM-X210) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36",
+        "at": "2026-10-21T09:20:00.000Z"
+      },
+      "runReport": {
+        "//": "reports/<kind>-<ts>.json (repo root for fix reports, profile folder for notes/helper reports). Written by agent/report.mjs. Read by the 'runReport' message → the header's Details. //shared.",
+        "//shared": "kidtube + instagram",
+        "title": "Your 2 notes are done",
+        "ok": true,
+        "at": "2026-10-21T18:32:00Z",
+        "minutes": 3.4,
+        "turns": 18,
+        "costUsd": 0.41,
+        "model": "claude-opus-5-5",
+        "forYou": [{"tone":"ok","text":"Cotton candy is on tomorrow's list."}],
+        "//forYou.tone": "'bad' | 'do' | 'ok' | ''",
+        "input": [{"title":"Note about a video","detail":"Is this video too hard for him?"}],
+        "said": "I kept the video and added an easier one next to it.",
+        "answers": [{"answer":"It is fine for age 6; the words are simple."}],
+        "released": null,
+        "tests": {"pass":0,"fail":0},
+        "commits": [{"sha":"a1b2c3d","subject":"notes: 2 notes"}],
+        "files": [{"path":"kidtube/leo.kidtube/memory.json","add":12,"del":3}],
+        "steps": [{"kind":"read","what":"memory.json","detail":"","out":"","failed":false}],
+        "//steps.kind": "say | think | read | search | edit | run | test | release | commit | agent | skill | plan | device | lab | other"
+      }
+    },
+    "site": {
+      "//": "site/ on GitHub Pages (public). ship makes these files; never by hand.",
+      "latestJson": {
+        "//": "site/latest.json (Quetta). Read by core/background/updates.js (version, zipUrl, changes) and the start.latest check. //shared: one release for both apps.",
+        "//shared": "kidtube + instagram",
+        "version": "0.12.40",
+        "target": "quetta",
+        "sourceCommit": "5fd85f2fc8e0f77067f99e948ac63a4e824643cc",
+        "id": "mpgpgldgfogdipaaaobleoppocmhlidp",
+        "crxUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.40.crx",
+        "zipUrl": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.40.zip",
+        "quizTypes": ["text","choice","audio","voice"],
+        "changes": [
+          {
+            "version": "0.12.40",
+            "at": "2026-10-20",
+            "changed": [
+              "Instagram: the App | Instagram switch in the header now shows the view you see, and App works from Instagram's page"
+            ],
+            "test": [
+              "Instagram's Saved page in the Instagram view, reload: the switch says Instagram; tap App: the app shows at once"
+            ]
+          }
+        ],
+        "//changes": "the last 10 releases; the header shows ≤12 lines × ≤400 chars per release (from ship -m / -t)"
+      },
+      "orionLatestJson": {
+        "//": "site/orion/latest.json (Orion build; only when the parent asks for --orion). No changes list.",
+        "version": "0.12.8",
+        "target": "orion",
+        "zipUrl": "https://andyvauliln.github.io/kidtube/orion/custom-apps-orion-0.12.8.zip",
+        "stableZipUrl": "https://andyvauliln.github.io/kidtube/orion/custom-apps-orion.zip",
+        "sourceCommit": "0c3d5e7f9a1b2c4d6e8f0a1b3c5d7e9f1a2b4c6d",
+        "sourceHash": "9e107d9d372bb6826bd81d3542a419d6",
+        "builtAt": "2026-10-13T12:00:00Z",
+        "quizTypes": ["text","choice","audio","voice"]
+      },
+      "updatesXml": "site/updates.xml: gupdate appid='mpgpgldgfogdipaaaobleoppocmhlidp', codebase = the .crx, version = 0.12.40 (Quetta asks it through manifest update_url)",
+      "remoteJson": {
+        "//": "site/remote.json: data fixes without a new version (core/background/remote.js, refreshed every 30 min, cached in storage 'remote'). Must be schemaVersion 1. //shared mechanism; only Instagram has a part today.",
+        "//shared": "kidtube + instagram (mechanism)",
+        "schemaVersion": 1,
+        "note": "Data fixes for the apps, read by the tablet every 30 minutes.",
+        "instagram": {
+          "reader": {
+            "savedPath": "/{user}/saved/all-posts/",
+            "savedMatch": ["saved"],
+            "collectionsMatch": ["collection"],
+            "cursorKeys": ["next_max_id","end_cursor","max_id"],
+            "moreKeys": ["more_available","has_next_page"],
+            "cursorVars": ["max_id","after","cursor"],
+            "api": true
+          }
+        }
+      }
+    },
+    "sync": {
+      "//": "core/background/sync.js. //shared: the core finds the folder, writes profile.json, then calls the app's sync(ctx).",
+      "//shared": "kidtube + instagram",
+      "when": [
+        "alarm poll (15 min)",
+        "alarm soon (1 min while app.waiting(s))",
+        "syncIfStale(2) on each 'state' message (checked ≤ every 30 s)",
+        "syncSoon(ms) from app handlers",
+        "after openApp / connectGitHub / importSettings / a settings restore",
+        "the 'sync' message",
+        "checkUpdate"
+      ],
+      "ctx": {
+        "loc": {"repo":"andyvauliln/kidtube-data","base":"kidtube/leo.kidtube/"},
+        "//loc.base": "null before the profile has a key; 'instagram/anna.saves/' for Instagram",
+        "token": "github_pat_11ABCDEFG0aBcDeFgHiJkL_example",
+        "data": "{ …the profile's data }",
+        "status": {"at":"2026-10-21T09:15:00.000Z","errors":[]},
+        "acct": "leo.kidtube@gmail.com"
+      },
+      "githubHelpers": {
+        "//": "core/lib/github.js",
+        "fetchDataFile": "→ { json, etag } | { notModified: true }; throws, with e.missing for a 404",
+        "getRepoFile": "→ { json, sha } | null",
+        "putRepoFile": "→ true | false on a conflict (409/422); readOnly: writes nothing, returns true"
+      }
+    },
+    "siteRules": {
+      "//": "core/background/sites.js rulesInput(): DNR rule 100 closes other websites (main_frame), rule 101 blocks ad servers. //shared: the app gives { block, allowed, ads }.",
+      "//shared": "kidtube + instagram",
+      "input": {
+        "block": true,
+        "allowed": ["youtube.com","accounts.google.com","consent.youtube.com","andyvauliln.github.io"],
+        "ads": true,
+        "signingIn": false,
+        "//signingIn": "true while the header is open for a sign-in: google.com and every app's sites stay open too"
+      },
+      "alwaysAllowed": ["youtube.com","accounts.google.com","andyvauliln.github.io"],
+      "AD_DOMAINS": [
+        "doubleclick.net",
+        "googlesyndication.com",
+        "googleadservices.com",
+        "googletagservices.com",
+        "adservice.google.com"
+      ],
+      "classifyUrl": {
+        "//": "core/lib/youtube.js classifyUrl(href) → { kind, ... }; the app's guard gets it",
+        "kind": "watch",
+        "videoId": "9bNaBpSh0vU",
+        "//kind": "internal | external {host} | signin {host} | home | watch {videoId} | shorts | search | channel | other"
+      }
+    },
+    "messages": {
+      "//": "core/background/messages.js. The core HANDLERS win; other types go to the app part that owns them. A thrown error becomes { error }. PAGE_ONLY types from a content script get { ok:false, error:'Refused: the request did not come from one of the extension’s pages (<url>).' }. Wait: 8 s (runHelper, sync, inbox, updateApp: 60 s). //shared: every app's screens send these.",
+      "//shared": "kidtube + instagram",
+      "ctx": {"tabId":812,"host":"m.youtube.com","sender":"chrome.runtime.MessageSender"},
+      "pageOnly": ["leaveApp","apps","setMode","kidHome","checks","runChecks","clearChecks","sendChecks","readFixes"],
+      "types": {
+        "ping": {
+          "request": {},
+          "answer": {
+            "ok": true,
+            "version": "0.12.40",
+            "target": "quetta",
+            "at": "2026-10-21T09:20:00.000Z",
+            "apis": ["alarms","storage","tabs","declarativeNetRequest"]
+          }
+        },
+        "state": {
+          "request": {},
+          "answer": "{ ...app.view(s), app: 'kidtube', parentMode: false, shell: { on, locked, why? } } — see apps.kidtube.views.kidState",
+          "//": "also runs syncIfStale(2); sender: core/content/shell.js, KidTube's kid screens"
+        },
+        "account": {
+          "request": {
+            "loggedIn": true,
+            "datasyncId": "112233445566778899||998877665544332211",
+            "switcher": "<raw text of /getAccountSwitcherEndpoint, ≤400000 chars>"
+          },
+          "answer": {"ok":true},
+          "//answer": "{ ok:true } | { ok:true, shell } (the account changed: the app stops, the header locks)",
+          "//": "sender: core/content/shell.js on YouTube (every 10 s while the header or parent mode shows)"
+        },
+        "siteAccount": {
+          "request": {"loggedIn":true,"username":"anna.saves","id":"48211937502"},
+          "answer": {"ok":true,"switched":{"from":"@old.account","to":"@anna.saves","created":false}},
+          "//answer": "{ ok:true } | { ok:true, switched:{from,to,created} } | { ok:true, error } | { ok:false, error }",
+          "//": "sender: a non-YouTube site page (apps/instagram/content/app.js reportMe)"
+        },
+        "header": {"request":{"refresh":false},"answer":"see extension.views.header"},
+        "openApp": {
+          "request": {"app":"instagram","mode":"kid","create":false},
+          "//request": "mode only for apps with modes; create: true makes a new profile for the signed-in account",
+          "answer": {
+            "ok": true,
+            "url": "https://www.instagram.com/robots.txt?kidtube=app",
+            "navigated": true,
+            "created": false,
+            "who": "@anna.saves"
+          },
+          "//answer": "or { ok:false, error:'No Instagram for @x yet: press Connect on Instagram.' }"
+        },
+        "connect": {
+          "request": {},
+          "answer": {
+            "ok": true,
+            "app": "instagram",
+            "who": "@anna.saves",
+            "message": "Connected: @anna.saves. A new Instagram profile starts now, empty.",
+            "url": "https://www.instagram.com/robots.txt?kidtube=app",
+            "navigated": true,
+            "created": true
+          },
+          "//answer": "same:true + 'Already connected: @anna.saves (Instagram). Nothing changed.' | { ok:false, error }"
+        },
+        "plainSite": {
+          "request": {"site":"instagram","offer":"instagram"},
+          "answer": {"ok":true,"url":"https://www.instagram.com/","navigated":true}
+        },
+        "plainYouTube": {"request":{},"answer":"same as plainSite('youtube')"},
+        "openAiPage": {
+          "request": {"page":"checks"},
+          "answer": {
+            "ok": true,
+            "url": "chrome-extension://mpgpgldgfogdipaaaobleoppocmhlidp/core/pages/check.html#problems"
+          },
+          "//request": "'checks' → the check page; other → the app's parentPage"
+        },
+        "inbox": {
+          "request": {"do":"note.send","id":"3b0e9c8a-1f2d-4e5b-9c6a-7d8e9f0a1b2c"},
+          "answer": {"ok":true},
+          "//": "see extension.views.inboxActions"
+        },
+        "runReport": {
+          "request": {"path":"reports/notes-20261021T183200Z.json","root":false},
+          "answer": {"ok":true,"report":"{ …see extension.dataRepo.runReport }"}
+        },
+        "connectGitHub": {
+          "request": {"repo":"andyvauliln/kidtube-data","token":"github_pat_…"},
+          "answer": {"ok":true,"repo":"andyvauliln/kidtube-data","profiles":2,"synced":true}
+        },
+        "exportSettings": {
+          "request": {},
+          "answer": {
+            "ok": true,
+            "file": {
+              "kidtubeSettings": 1,
+              "savedAt": "2026-10-21T09:00:00.000Z",
+              "repo": "andyvauliln/kidtube-data",
+              "token": "github_pat_…",
+              "pinSalt": "x9Fh…",
+              "pinHash": "q3Vz…",
+              "voiceKey": "sk-or-v1-…",
+              "geminiKey": "AIza…",
+              "groqKey": "gsk_…"
+            }
+          },
+          "//": "the header saves it as custom-apps-settings.json; voiceKey/geminiKey/groqKey = KidTube's fileKeys"
+        },
+        "importSettings": {
+          "request": {"file":"{ same shape; kidtubeSettings must be 1 }"},
+          "answer": {"ok":true,"errors":[]}
+        },
+        "openApps": {"request":{},"answer":{"ok":true},"//":"moves the tab to pin.html?for=unlock"},
+        "parentGate": {"request":{},"answer":{"ok":true},"//":"moves the tab to pin.html?for=parent"},
+        "leaveApp": {"request":{},"answer":{"ok":true,"open":"https://m.youtube.com/"},"//":"page only; sets shell on"},
+        "apps": {"request":{},"answer":"see extension.views.pinPage","//":"page only"},
+        "setMode": {
+          "request": {"mode":"parent"},
+          "answer": {"ok":true,"parentMode":true},
+          "//request": "'kid' | 'parent'; other → { ok:false, error:'Unknown mode.' }"
+        },
+        "openParent": {"request":{},"answer":{"ok":true}},
+        "recheck": {
+          "request": {"url":"https://m.youtube.com/watch?v=9bNaBpSh0vU"},
+          "answer": {"ok":true},
+          "//": "runs the guard again"
+        },
+        "kidHome": {"request":{},"answer":{"ok":true,"url":"https://m.youtube.com/"},"//":"page only; sets mode kid"},
+        "settingsBackup": {
+          "request": {"saved":"{ …kidtube-settings-backup or null }"},
+          "answer": {
+            "ok": true,
+            "backup": {
+              "kidtubeSettings": 1,
+              "savedAt": "2026-10-21T09:00:00.000Z",
+              "repo": "andyvauliln/kidtube-data",
+              "token": "github_pat_…",
+              "pinSalt": "x9Fh…",
+              "pinHash": "q3Vz…"
+            }
+          },
+          "//answer": "{ ok:false } (wrong sender) | { ok:true } | { ok:true, restored:true } | { ok:true, backup }"
+        },
+        "sync": {
+          "request": {"notes":true},
+          "answer": {"at":"2026-10-21T09:15:00.000Z","errors":[]},
+          "//request": "notes: KidTube's beforeSync releases the held notes"
+        },
+        "checkUpdate": {
+          "request": {},
+          "answer": {
+            "installed": "0.12.40",
+            "check": {"status":"no_update"},
+            "latest": "0.12.40",
+            "installPage": null,
+            "download": null,
+            "sync": {"at":"2026-10-21T09:15:00.000Z","errors":[]}
+          }
+        },
+        "version": {"request":{"fresh":false},"answer":"see extension.updates.versionAnswer"},
+        "updateApp": {
+          "request": {},
+          "answer": {"ok":true,"status":"update_available"},
+          "//answer": "Orion: { ok:false, error }"
+        },
+        "openUpdate": {
+          "request": {"manual":false},
+          "answer": {"ok":true,"kind":"quetta","status":"update_available","latest":"0.12.41"},
+          "//answer": "not quetta: { ok, kind, url, manual, why, latest }"
+        },
+        "checkResult": {
+          "request": {
+            "result": "{ id, kind, area, expect, code, strikes, status, mismatch, evidence, ms, page, skipped?, quiet? }",
+            "steps": []
+          },
+          "answer": {"ok":true,"status":"fail","again":false}
+        },
+        "checks": {"request":{"seen":true},"answer":"see extension.checks.checksView","//":"page only"},
+        "runChecks": {
+          "request": {},
+          "answer": {
+            "ok": true,
+            "start": {"reason":"asked","at":"2026-10-21T09:21:00.000Z","version":"0.12.40","pass":14,"fail":0,"skip":1},
+            "results": []
+          }
+        },
+        "clearChecks": {"request":{},"answer":{"ok":true}},
+        "sendChecks": {"request":{},"answer":{"ok":true,"sent":2}},
+        "readFixes": {"request":{},"answer":{"ok":true,"error":null}},
+        "checkAlert": {
+          "request": {},
+          "answer": {
+            "ok": true,
+            "alert": {
+              "reportId": "5d2f1b7e-8c4a-4f0e-9a51-3b6c2d7e8f90",
+              "at": "2026-10-21T09:20:41.000Z",
+              "check": "rule.deadButton.Save",
+              "expect": "“Save” does something",
+              "saw": "nothing changed for 3 s",
+              "shown": false,
+              "willSend": true
+            }
+          }
+        },
+        "devMode": {
+          "request": {"on":true,"life":"hour","url":""},
+          "answer": {"ok":true,"dev":"{ …see extension.devBridge.devView }"},
+          "//request": "{ get:true } | { on, life:'hour'|'day'|'never', url }"
+        },
+        "devStop": {"request":{},"answer":{"ok":true,"dev":"{ on:false, … }"}},
+        "bridgeFrame": {
+          "request": {"id":"c17","fid":0,"url":"https://m.youtube.com/","top":true,"result":{}},
+          "answer": {"ok":true}
+        }
+      },
+      "toPages": {
+        "bridgePage": {"type":"bridgePage","id":"c17","tabId":812,"fid":0,"do":"snapshot","args":{}},
+        "//bridgePage": "background → core/ui/bridge.js (dev mode); answered with bridgeFrame"
+      },
+      "pageWorld": {
+        "//": "window.postMessage from core/content/youtube-page.js (MAIN world) to the content scripts",
+        "account": {"kidtube":"account","loggedIn":true,"datasyncId":"112233445566778899||998877665544332211"},
+        "details": {
+          "kidtube": "details",
+          "videoId": "9bNaBpSh0vU",
+          "channelId": "UCRFIPG2u1DxKLNuE3y2SjHA",
+          "lengthSeconds": 287,
+          "isLive": false
+        },
+        "//details": "KidTube forwards it as the 'details' message"
+      }
+    },
+    "views": {
+      "header": {
+        "//": "The apps header (core/ui/header.js) on top of YouTube, Instagram and KidTube's parent page. It asks the 'header' message (profiles.js headerView). //shared: one header for every app.",
+        "//shared": "kidtube + instagram",
+        "answer": {
+          "ok": true,
+          "shell": {"on":false,"locked":false},
+          "open": true,
+          "//open": "headerOpen: an unlocked shell, or parent mode. false: the header can not act (kid mode or locked)",
+          "mode": "parent",
+          "//mode": "'parent' | 'kid'",
+          "running": "kidtube",
+          "//running": "app id | null (shell on, or no account)",
+          "site": "youtube",
+          "//site": "'youtube' | 'instagram' | null (an extension page)",
+          "here": {
+            "site": "youtube",
+            "label": "YouTube",
+            "seen": true,
+            "signedIn": true,
+            "name": "leo.kidtube@gmail.com",
+            "checkedAt": 1792574045120,
+            "info": {"email":"leo.kidtube@gmail.com","datasyncId":"112233445566778899||998877665544332211"}
+          },
+          "//here": "null on extension pages. Instagram: name '@anna.saves', info { username, igId }",
+          "connected": {"app":"kidtube","label":"KidTube","who":"leo.kidtube@gmail.com","site":"YouTube"},
+          "//connected": "null without a profile; who falls back to 'a YouTube account without an email'",
+          "github": {"connected":true,"repo":"andyvauliln/kidtube-data","tokenHint":"github_pat_…mple"},
+          "//github.tokenHint": "first 11 chars (2 when ≤20) + '…' + last 4",
+          "switch": {"app":"kidtube","label":"KidTube","site":"youtube","siteLabel":"YouTube","on":"app"},
+          "//switch": "the App | site switch. on: 'app' | 'site'. null when no app runs. Instagram: { app:'instagram', label:'Instagram', site:'instagram', siteLabel:'Instagram', on }; the mount option side overrides on",
+          "apps": [
+            {
+              "id": "kidtube",
+              "label": "KidTube",
+              "color": "#ff3b30",
+              "glyph": "play",
+              "about": "His own video list on YouTube, with time limits and a talking friend.",
+              "site": "YouTube",
+              "siteId": "youtube",
+              "who": "leo.kidtube@gmail.com",
+              "has": true,
+              "active": true,
+              "folder": "leo.kidtube",
+              "parentScreens": true
+            },
+            {
+              "id": "instagram",
+              "label": "Instagram",
+              "color": "#d62976",
+              "glyph": "camera",
+              "about": "Your saved posts: voice notes, and the AI writes down what each video says.",
+              "site": "Instagram",
+              "siteId": "instagram",
+              "who": "@anna.saves",
+              "has": true,
+              "active": false,
+              "folder": "anna.saves",
+              "parentScreens": false
+            }
+          ],
+          "//apps": "[] when GitHub is not connected. has: a profile exists for the signed-in account. active: it runs now",
+          "error": null,
+          "//error": "null | the repoProfiles error",
+          "inbox": ["{ …see extension.views.inboxRow }"],
+          "//inbox": "null when the header is not open",
+          "dev": "{ …see extension.devBridge.devView }"
+        },
+        "mountOptions": {
+          "//": "KidTubeHeader.mount(host, opts) → { refresh(force), setDark(on), destroy() }",
+          "dark": false,
+          "side": "site",
+          "//side": "'app' | 'site': which side of the switch this page is. Instagram's app layer: 'app' + siteView(); Instagram pages: 'site' + appView(). YouTube (shell.js): { dark } only; KidTube's parent page: no options",
+          "siteView": "function: show the site (Instagram view)",
+          "appView": "function → true when this page can show the app at once"
+        },
+        "clientState": {
+          "//": "header.js memory only",
+          "ui": {
+            "menu": false,
+            "github": false,
+            "apps": false,
+            "inbox": true,
+            "all": false,
+            "edit": null,
+            "sure": null,
+            "dev": false,
+            "devLife": "never",
+            "detail": null,
+            "rep": null
+          },
+          "//ui.edit": "{ id, text } while a note is edited; rep: { key, state:'loading'|'ok'|'err', report?, error? }",
+          "busy": "",
+          "//busy": "'' | 'Opening…' | 'Connecting…' | 'Updating…' | 'Loading…' | 'Saving…' | 'Deleting…' | 'Sending…' | 'Closing…' | 'Asking…' | 'Working…' | 'Turning on…' | 'Turning off…'"
+        },
+        "draws": [
+          "Brand: logo, 'Custom Apps', installed version, a new-version button (↓ v installing… | ↑ v · by hand | ↑ v)",
+          "App | site switch",
+          "🔔 with a badge (rows not done and not system; red when a row is bad)",
+          "Apps grid (GitHub connected)",
+          "DEV mark (dev.on)",
+          "Account button (connected.who)",
+          "Connect (site && open)",
+          "KidTube only: the Parent | Kid switch (modeSwitch)"
+        ],
+        "refreshesOn": {
+          "atOnce": ["ytAccount","igAccount","settings","accounts","repoProfiles","account","shell"],
+          "after1s": ["outbox","data","ig","checks","notes","syncStatus","bridgeLog"],
+          "other": ["checkAlert opens the 🔔","updateState reads the version again","inboxHidden redraws"]
+        }
+      },
+      "inboxRow": {
+        "//": "One 🔔 row (core/background/inbox.js inboxOf + header.js updateRow/installedRow/system). Order: bad or fresh first, then the rest, then done. 5 shown, 'Show all N' for the rest. //shared: same row shape for every app.",
+        "//shared": "kidtube + instagram",
+        "example": {
+          "id": "note:3b0e9c8a-1f2d-4e5b-9c6a-7d8e9f0a1b2c",
+          "type": "question",
+          "status": {"text":"Not sent","tone":"wait"},
+          "title": "Is this video too hard for him?",
+          "detail": "the video “How Is Cotton Candy Made? | SciShow Kids”",
+          "at": "2026-10-21T19:02:44.501Z",
+          "count": null,
+          "editText": "Is this video too hard for him?",
+          "checks": [
+            {"key":"screen","label":"Screen","on":true,"can":true,"title":"Send what the screen showed"},
+            {"key":"app","label":"App","on":true,"can":true,"title":"Send the app's state"},
+            {"key":"ask","label":"Question","on":true,"can":true,"title":"The AI answers it"}
+          ],
+          "actions": [
+            {"do":"note.edit","label":"Edit"},
+            {"do":"note.drop","label":"Delete"},
+            {"do":"note.send","label":"Send"}
+          ],
+          "view": {"sections":[{"title":"Your note","text":"Is this video too hard for him?"}],"report":null}
+        },
+        "//type": "error | validation | data | note | question | update | system (labels: Error, Validation, Data update, My note, Question, App update, System)",
+        "//status.tone": "'bad' | 'wait' | 'ok' | ''",
+        "//view.sections": "{ title, text } | { title, rows:[[label, value, 'time'?]] } | { title, steps:[…] } | { title, list:[…] }; view.report: { path, root } | null",
+        "kinds": [
+          {
+            "source": "problem (inbox.js problemRow)",
+            "id": "problem:<check>|<target>",
+            "type": "error | validation",
+            "statuses": "unsent 'Not sent'(bad), waiting 'Sent to the AI'(wait), late 'AI did not reply'(bad), working 'AI working'(wait), reload 'Fixed: update'(wait), fixed 'Fixed'(ok), checked 'Closed'(ok), needs-you 'Needs you'(bad), retry 'AI retrying'(wait), gave-up 'AI stopped'(bad), old 'Not seen since'(ok)",
+            "actions": "problems.send, update, open checks",
+            "apps": "both"
+          },
+          {
+            "source": "run (aiView.run)",
+            "id": "run",
+            "type": "data",
+            "statuses": "queued 'Sent'(wait), running 'Handling'(wait), late 'Not started'(bad), done 'Done'(ok, 3 min), failed 'Failed'(bad, 24 h)",
+            "actions": "run 'Ask again', open",
+            "apps": "kidtube"
+          },
+          {
+            "source": "queued posts (aiView.queued)",
+            "id": "queued",
+            "type": "data",
+            "statuses": "'Waiting'(wait): '3 posts in your list wait for the server’s AI'",
+            "actions": "—",
+            "apps": "instagram"
+          },
+          {
+            "source": "sync errors",
+            "id": "sync",
+            "type": "error",
+            "statuses": "'Failed'(bad), count = gh.sync problems",
+            "actions": "sync 'Try again'",
+            "apps": "both"
+          },
+          {
+            "source": "held note (notes.list)",
+            "id": "note:<id>",
+            "type": "note | question",
+            "statuses": "'Not sent'(wait)",
+            "actions": "note.edit, note.drop, note.send",
+            "apps": "kidtube"
+          },
+          {
+            "source": "voice note",
+            "id": "note:<id>",
+            "type": "note | question",
+            "statuses": "upload 'Uploading'(wait), server 'Writing down'(wait), failed 'Failed'(bad)",
+            "actions": "note.drop (+ note.edit when failed)",
+            "apps": "kidtube"
+          },
+          {
+            "source": "question (questions.list)",
+            "id": "question:<id>",
+            "type": "question | note",
+            "statuses": "answered 'Answered'(ok, fresh) | 'Done'(ok); none 'No answer'(bad) | 'Done'; waiting 'Waiting'(wait)",
+            "actions": "question.dismiss 'Got it'",
+            "apps": "kidtube"
+          },
+          {
+            "source": "update (header.js)",
+            "id": "update",
+            "type": "update",
+            "statuses": "'New'(wait, not quetta), 'Installing'(wait), 'By hand'(bad), 'Waiting'(wait)",
+            "actions": "update 'Get it' | 'Install now', update.manual 'By hand'",
+            "apps": "both"
+          },
+          {
+            "source": "installed (header.js)",
+            "id": "installed:0.12.40",
+            "type": "update",
+            "statuses": "'Installed'(ok, done)",
+            "actions": "hide 'Remove'",
+            "apps": "both"
+          },
+          {
+            "source": "system (header.js)",
+            "id": "system",
+            "type": "system",
+            "statuses": "'Failed'(bad) | 'Done'(ok) | 'Info'('')",
+            "actions": "dismiss '✕'",
+            "apps": "both"
+          }
+        ]
+      },
+      "inboxActions": {
+        "//": "The 'inbox' message (inbox.js inboxAct). Needs headerOpen, else { ok:false, error:'Unlock with the PIN first.' }. Header-only actions (never sent): hide, dismiss, update, update.manual, open (→ openAiPage).",
+        "note.edit": {
+          "request": {"do":"note.edit","id":"3b0e9c8a-…","text":"Is this video too hard?"},
+          "answer": {"ok":true}
+        },
+        "note.drop": {"request":{"do":"note.drop","id":"3b0e9c8a-…"},"answer":{"ok":true}},
+        "note.attach": {
+          "request": {"do":"note.attach","id":"3b0e9c8a-…","what":"screen","on":false},
+          "//what": "'screen' | 'app' | 'ask'"
+        },
+        "note.send": {"request":{"do":"note.send","id":"3b0e9c8a-…"},"answer":{"ok":true}},
+        "run": {"request":{"do":"run"},"answer":{"ok":true},"//":"sends all held notes ('Send all (N)')"},
+        "question.dismiss": {"request":{"do":"question.dismiss","id":"3b0e9c8a-…"}},
+        "problems.send": {
+          "request": {"do":"problems.send"},
+          "answer": {"ok":true,"sent":2,"message":"Sent 2 reports to the server."}
+        },
+        "sync": {
+          "request": {"do":"sync"},
+          "answer": {"ok":true,"message":"Saved to GitHub."},
+          "//answer": "or { ok:false, error:'Saving to GitHub failed again: …' }"
+        }
+      },
+      "shell": {
+        "//": "core/content/shell.js on YouTube: shows the header when shell.on (or parent mode on /watch), the lock when shell.locked. Exposes globalThis.KidTubeShell = { ask, Z, refresh, whenAccount, onState(fn) } and KidTubeAccount = { read }.",
+        "state": {
+          "app": "kidtube",
+          "shell": {
+            "on": true,
+            "locked": true,
+            "why": "YouTube is signed in to bob@gmail.com, not leo.kidtube@gmail.com: KidTube stopped."
+          },
+          "parentMode": false
+        },
+        "//state": "onState(fn) gets { app, shell, parentMode, ...the app's view }. Lock text: shell.why or 'The apps are locked.'; its button sends openApps",
+        "timers": "account report every 10 s while the header or parent mode shows; refresh every 5 s (shell on) or 30 s"
+      },
+      "pinPage": {
+        "//": "core/pages/pin.html?for=parent|unlock|kid|settings (pin.js) + the 'apps' answer. options.html → pin.html?for=settings.",
+        "for": "parent",
+        "//for": "parent (to parent mode) | unlock (the locked header) | kid (choose a PIN before kid mode) | settings (the app's settings)",
+        "appsAnswer": {
+          "ok": true,
+          "shell": {"on":false,"locked":false},
+          "parentMode": false,
+          "home": "https://m.youtube.com/",
+          "settings": "chrome-extension://mpgpgldgfogdipaaaobleoppocmhlidp/apps/kidtube/parent/parent.html#settings",
+          "//settings": "null for an app without parentPage (Instagram)",
+          "running": {"email":"leo.kidtube@gmail.com","who":"leo.kidtube@gmail.com","app":"KidTube"}
+        },
+        "newPin": "/^\\d{4,8}$/, typed twice; writes { pinSalt, pinHash, pinFails:0 }",
+        "after": "kid → kidHome; unlock → leaveApp → open; else setMode parent → apps → settings or home"
+      },
+      "checkPage": {
+        "//": "core/pages/check.html: browser checks (ping, storage, state, bgStuck, default-config fetch, APIs) + the checks view",
+        "problemIcons": ["unsent","waiting","late","working","reload","fixed","checked","needs-you","retry","gave-up"],
+        "resultIcons": ["pass","fail","warn","skip","cleared"]
+      },
+      "watchBanner": {
+        "//": "core/ui/watch.js: '⚠ Something did not work: <expect>' + saw + the willSend text, for 15 s, from checkAlert. Also the page steps and dead-button checks for both sites.",
+        "//shared": "kidtube + instagram",
+        "pageStep": {
+          "at": "2026-10-21T09:20:37.900Z",
+          "where": "apps/kidtube/parent/parent.html#settings",
+          "kind": "tap",
+          "label": "Save",
+          "area": "settings"
+        },
+        "//pageStep.kind": "tap | page | ai (≤20 kept)"
+      }
+    },
+    "updates": {
+      "//": "core/background/updates.js. //shared: one extension, one version.",
+      "//shared": "kidtube + instagram",
+      "updateState": {
+        "//": "storage 'updateState': the browser's update check for a newer latest.json version. Reset when the version differs; removed when latest is not newer. Asked again only after 30 min.",
+        "version": "0.12.41",
+        "since": 1792574000000,
+        "askedAt": 1792574300000,
+        "status": "update_available",
+        "//status": "'asking' | 'update_available' | 'throttled' | 'no_update' | 'error' | null",
+        "tries": 2
+      },
+      "versionAnswer": {
+        "//": "The 'version' message (kept 5 min). The header's brand button and the update row use it.",
+        "ok": true,
+        "installed": "0.12.40",
+        "target": "quetta",
+        "kind": "quetta",
+        "//kind": "'quetta' | 'orion' (TARGET orion) | 'dev' (installType development and not Android: latest = manifest.json on GitHub main)",
+        "installType": "normal",
+        "//installType": "'normal' | 'development' | 'sideload' | 'other' | null",
+        "latest": "0.12.41",
+        "newer": true,
+        "phase": "installing",
+        "//phase": "only when newer && kind quetta: 'installing' (update_available < 5 min ago) | 'waiting' | 'manual' (asked and ≥10 min since 'since', or a .zip install: why 'zip')",
+        "why": null,
+        "status": null,
+        "askedAt": 1792574300000,
+        "updating": "update_available",
+        "download": "https://andyvauliln.github.io/kidtube/custom-apps-0.12.41.zip",
+        "installPage": "https://andyvauliln.github.io/kidtube/",
+        "changes": {
+          "coming": [{"version":"0.12.41","at":"2026-10-21","changed":["Saved tab: …"],"test":["Saved tab: …"]}],
+          "here": {"version":"0.12.40","at":"2026-10-20","changed":["Instagram: …"],"test":["Instagram's Saved page …"]}
+        }
+      }
+    },
+    "checks": {
+      "//": "core/checks/runner.js: checks at start, on every message (observe), on pages (watch.js), and their problem reports. //shared: one book for every app.",
+      "//shared": "kidtube + instagram",
+      "book": {
+        "//": "storage 'checks'",
+        "results": {
+          "start.github": {
+            "id": "start.github",
+            "kind": "start",
+            "area": "sync",
+            "expect": "GitHub answers with the token",
+            "code": ["core/checks/start.js"],
+            "status": "pass",
+            "at": "2026-10-21T07:00:05.000Z",
+            "ms": 412,
+            "saw": "200",
+            "passes": 31,
+            "fails": 0
+          }
+        },
+        "//results.kind": "start | action | rule | probe | screen; status: pass | fail | warn (a fail below 'strikes') | skip | cleared",
+        "reports": ["{ ≤30, see report }"],
+        "start": {"reason":"update","at":"2026-10-21T07:00:00.000Z","version":"0.12.40","pass":14,"fail":0,"skip":1},
+        "//start.reason": "install | update | startup | asked",
+        "seen": "2026-10-21T08:00:00.000Z",
+        "last": {
+          "version": "0.12.40",
+          "at": "2026-10-21T07:00:00.000Z",
+          "had": {"token":true,"pin":true,"repo":true,"profile":true}
+        },
+        "device": "tab-3f9a1c2e",
+        "fixes": {"at":"2026-10-21T10:03:00.000Z","list":["{ …fixes.json entries }"],"error":null}
+      },
+      "checkIds": {
+        "core": [
+          "start.storage",
+          "start.files",
+          "start.alarm",
+          "start.rules",
+          "start.profile",
+          "start.kept",
+          "start.latest",
+          "start.github",
+          "start.content",
+          "gh.sync",
+          "yt.switcher",
+          "rule.deadButton.<slug>",
+          "rule.noAnswer.<type>",
+          "rule.pageError.<file_line>",
+          "rule.handlerError.<type>",
+          "rule.slowAnswer.<type>",
+          "rule.noReason.<type>",
+          "rule.bgStuck",
+          "action.<type>",
+          "header.where",
+          "header.loads",
+          "header.detailCloses",
+          "header.noteAttach",
+          "header.sendAll",
+          "header.editFits",
+          "header.inboxHide",
+          "header.appsToggle",
+          "page.notBlank.<page>",
+          "page.start"
+        ],
+        "kidtube": [
+          "kidtube.files",
+          "kidtube.lists",
+          "kidtube.avatar",
+          "server.run",
+          "action.tick",
+          "action.open",
+          "action.quizResults",
+          "action.note",
+          "action.saveRules",
+          "action.plan"
+        ],
+        "instagram": ["ig.read","ig.parentSent","instagram.offer","instagram.siteHeader"]
+      },
+      "report": {
+        "//": "One problem report per fingerprint. A repeat on the same version: count++ and lastAt (never sent again). A new version = a new fingerprint, so tries = the number of versions. Sent to problems/<day>.json. Redacted: token/key/hash/salt/secret/password/switcher/cookie keys hidden; text/comment/answers/screen/email/name/prompt… as '(hidden, N chars)'.",
+        "type": "problem",
+        "reportId": "5d2f1b7e-8c4a-4f0e-9a51-3b6c2d7e8f90",
+        "deviceId": "tab-3f9a1c2e",
+        "fingerprint": "rule.deadButton.Save|0.12.40|quetta",
+        "check": "rule.deadButton.Save",
+        "kind": "rule",
+        "area": "settings",
+        "auto": true,
+        "expect": "“Save” does something",
+        "saw": "nothing changed for 3 s",
+        "mismatch": [{"what":"the button “Save”","expected":"a change on the screen or a message","actual":"nothing"}],
+        "evidence": {"button":"Save","page":"apps/kidtube/parent/parent.html#settings"},
+        "code": ["apps/kidtube/parent/settings.js"],
+        "firstAt": "2026-10-21T09:20:41.000Z",
+        "lastAt": "2026-10-21T09:22:03.000Z",
+        "count": 2,
+        "context": {
+          "app": {
+            "version": "0.12.40",
+            "versionName": "0.12.40",
+            "target": "quetta",
+            "workerStartedAt": "2026-10-21T07:00:00.000Z",
+            "installType": "normal",
+            "update": null,
+            "devMode": false
+          },
+          "browser": {
+            "userAgent": "Mozilla/5.0 (Linux; Android 14; SM-X210) …",
+            "online": true,
+            "language": "en-US",
+            "timeZone": "Europe/Moscow"
+          },
+          "profile": {
+            "app": "kidtube",
+            "folder": "leo.kidtube",
+            "running": true,
+            "mode": "parent",
+            "shell": {"on":false,"locked":false},
+            "youtube": {"signedIn":true,"sameAsProfile":true,"checkedSecondsAgo":12},
+            "github": {"connected":true,"repo":"andyvauliln/kidtube-data"},
+            "pinSet": true
+          },
+          "sync": {"at":"2026-10-21T09:15:00.000Z","errors":[],"notes":null},
+          "worker": {"blockingRules":true,"stuckStep":null},
+          "page": {"url":"chrome-extension://…/apps/kidtube/parent/parent.html#settings","inFrame":false,"tabId":812}
+        },
+        "steps": [
+          {
+            "at": "2026-10-21T09:20:38.000Z",
+            "where": "apps/kidtube/parent/parent.html#settings",
+            "kind": "tap",
+            "label": "Save",
+            "page": true
+          }
+        ],
+        "sentAt": null,
+        "//sentAt": "tablet only; stripped before the upload"
+      },
+      "problem": {
+        "//": "runner.js problemsOf: reports grouped by <check>|<target>, merged with fixes.json. Feeds the 🔔 problem rows and the check page.",
+        "key": "rule.deadButton.Save|quetta",
+        "check": "rule.deadButton.Save",
+        "area": "settings",
+        "expect": "“Save” does something",
+        "saw": "nothing changed for 3 s",
+        "count": 3,
+        "versions": ["0.12.38","0.12.40"],
+        "firstAt": "2026-10-18T10:00:00.000Z",
+        "lastAt": "2026-10-21T09:22:03.000Z",
+        "sentAt": "2026-10-21T09:20:52.000Z",
+        "unsent": 0,
+        "reportIds": ["5d2f1b7e-8c4a-4f0e-9a51-3b6c2d7e8f90"],
+        "kind": "error",
+        "//kind": "'error' | 'validation'",
+        "title": "Tapping “Save” did nothing",
+        "detail": "The settings page did not answer.",
+        "tries": 2,
+        "fix": {
+          "state": "working",
+          "version": null,
+          "message": "The AI is looking at it.",
+          "at": "2026-10-21T09:25:00Z",
+          "report": null
+        },
+        "state": "working",
+        "//state": "unsent | waiting | late | working | reload | fixed | checked | old | needs-you | retry | gave-up",
+        "label": "The AI works on it",
+        "done": false
+      },
+      "checksView": {
+        "//": "the 'checks' answer",
+        "ok": true,
+        "version": "0.12.40",
+        "target": "quetta",
+        "start": "{ …book.start }",
+        "results": [],
+        "reports": [],
+        "problems": [],
+        "fixesAt": "2026-10-21T10:03:00.000Z",
+        "fixesError": null,
+        "unseen": 0
+      }
+    },
+    "devBridge": {
+      "//": "Dev mode (core/background/bridge.js, core/ui/bridge.js): the server's agents drive this tablet through a WebSocket relay. Refused for: devMode, devStop, bridgeFrame, connectGitHub, exportSettings, importSettings, settingsBackup, saveRules, resetToday, clearChecks, and /pin|token|secret|password/i. //shared.",
+      "//shared": "kidtube + instagram",
+      "devView": {
+        "on": true,
+        "until": 1792578000000,
+        "url": "wss://68-183-124-79.sslip.io/bridge",
+        "defaultUrl": "wss://68-183-124-79.sslip.io/bridge",
+        "connected": true,
+        "error": null,
+        "//error": "null | 'The bridge server could not be reached.'",
+        "pictures": false,
+        "device": "tab-3f9a1c2e",
+        "actions": {"n":3,"at":1792574100000,"cmd":"page"}
+      },
+      "frames": {
+        "tabletToRelay": [
+          {
+            "type": "hello",
+            "device": "tab-3f9a1c2e",
+            "key": "<devKey>",
+            "version": "0.12.40",
+            "target": "quetta",
+            "kidtubeDevice": "tab-1a2b3c4d",
+            "userAgent": "Mozilla/5.0 …"
+          },
+          {"type":"ping"},
+          {"type":"answer","id":"c17","ok":true,"result":{}}
+        ],
+        "relayToTablet": [
+          {"type":"welcome"},
+          {"type":"refused","error":"wrong key"},
+          {"type":"cmd","id":"c17","cmd":"page","args":{"do":"snapshot"}}
+        ],
+        "//cmd": "state | storage {keys} | tabs | message {msg, tab?} | navigate {url, tab?, newTab?} | screenshot {tab?, quality} | page {do: snapshot|tap|type|scroll|wait|errors, ref?, frame?}"
+      },
+      "snapshot": {
+        "title": "KidTube — parent",
+        "href": "chrome-extension://…/apps/kidtube/parent/parent.html#today",
+        "viewport": "800×1280",
+        "scrollY": 0,
+        "lines": ["- button \"↻ Update\" [ref=k3f9a:12]"],
+        "cut": false
+      }
+    }
+  },
+  "apps": {
+    "//": "The apps. Each one plugs into extension.appContract. Parts marked //shared point back to extension.",
+    "kidtube": {
+      "//": "KidTube: a child's own video list over YouTube, time limits, a talking friend with quizzes, parent screens, a nightly helper on the server. Code: extension/apps/kidtube/, agent/. Schemas: schemas/*.json.",
+      "contract": {
+        "//": "apps/kidtube/background/index.js: KidTube's part of extension.appContract",
+        "id": "kidtube",
+        "stateKeys": [
+          "watched",
+          "today",
+          "session",
+          "outbox",
+          "localConfig",
+          "seen",
+          "pendingTalk",
+          "quizTurn",
+          "transcripts",
+          "character",
+          "repoAvatars",
+          "planLog",
+          "history",
+          "notes"
+        ],
+        "profileKeys": ["memory","helperInfo","contextDocs"],
+        "fileKeys": ["voiceKey","geminiKey","groqKey"],
+        "prepare": "watched ??= {}, outbox ??= [], seen ??= {}",
+        "created": "data.queue = { schemaVersion: 1, updatedAt, videos: [] } (the starter list in data/default-queue.json is NOT used for a new profile)",
+        "guard": "background/rules.js guard",
+        "view": "background/rules.js viewState → see views.kidState",
+        "pageOnly": [
+          "watchHere",
+          "parentData",
+          "videoDetail",
+          "helperData",
+          "promptNote",
+          "runHelper",
+          "runStatus",
+          "contextData",
+          "contextNote",
+          "heldNotes",
+          "dropNote",
+          "plan"
+        ],
+        "sync": "background/sync.js syncKidTube (order: parent-config.json + queue.json → memory, helper, run-status, notes-done, answers, runs, server → keys.json, context/*.md → dropDoneNotes, keepResults → site rules → uploadLocalConfig → flushOutbox → pullPlan → syncVoice → uploadTranscripts → loadCharacter → syncAudio → syncAvatar)",
+        "beforeSync": "msg.notes → releaseNotes()",
+        "siteRules": "{ block: config.blockOutboundLinks, allowed: config.allowedSiteDomains, ads: config.blockAds }",
+        "tabRemoved": "leaveSession(…, 'closed')",
+        "aiView": {
+          "held": 2,
+          "run": "none",
+          "message": "",
+          "at": null,
+          "page": "parent",
+          "send": "↻ Update",
+          "report": null,
+          "//run": "none | queued | late | running | done | failed"
+        },
+        "waiting": "true while a question waits, the run is queued or running, or a voice note waits",
+        "checks": {
+          "start": ["kidtube.files","kidtube.lists","kidtube.avatar"],
+          "actions": [
+            "tick",
+            "open",
+            "goHome",
+            "ended",
+            "quizResults",
+            "note",
+            "wish",
+            "contextNote",
+            "promptNote",
+            "dropNote",
+            "saveRules",
+            "runHelper",
+            "resetToday",
+            "plan"
+          ]
+        }
+      },
+      "storage": {
+        "//": "chrome.storage.local keys of KidTube. stateKeys + profileKeys are per profile (move to acct:<key>).",
+        "watched": {
+          "//": "Per profile. { videoId: ISO }: the videos that count as watched. Writers: rules.js markWatchedIfCounts (the video ended or playedSeconds ≥ minSecondsBeforeLeave), the details handler (blocked video). talkDone with rewatch removes one. Readers: lib/queue.js visibleVideos (unless allowRewatch), parent cards, history.",
+          "asNWTdlBG14": "2026-10-20T15:40:02.000Z",
+          "A7LU5Wxc_0Y": "2026-10-21T15:12:40.120Z"
+        },
+        "today": {
+          "//": "Per profile. The minutes of today (in config.timezone). Writers: todayPlayed (new object on a new date), tick (+≤15 s), talkDone (rewatched, stopped), resetToday (null). Readers: lockNow, viewState, status, parentData.minutes.",
+          "date": "2026-10-21",
+          "playedSeconds": 1835,
+          "rewatched": ["9bNaBpSh0vU"],
+          "//rewatched": "a failed quiz with onFail 'rewatch' replays a video once a day",
+          "stopped": false,
+          "//stopped": "true after a failed quiz with onFail 'stopForToday' → lock reason 'stopped'"
+        },
+        "session": {
+          "//": "Per profile. The video that plays now. guard creates it; tick, ended, details change it; endSession sets null. null = no video open.",
+          "tabId": 812,
+          "videoId": "kjV7CxqY9jU",
+          "playedSeconds": 95,
+          "ended": false,
+          "startedAt": 1792595512000,
+          "durationSeconds": 271
+        },
+        "outbox": {
+          "//": "Per profile. Activity events not yet in activity/<date>.json (see dataRepo.activity.events). Plus tablet-only fields on notes: held, offer, context, ask, voice. flushOutbox sends the not-held ones.",
+          "example": [
+            {
+              "eventId": "3b0e9c8a-1f2d-4e5b-9c6a-7d8e9f0a1b2c",
+              "type": "parentNote",
+              "at": "2026-10-21T19:02:44.501Z",
+              "videoId": "9bNaBpSh0vU",
+              "comment": "Is this video too hard for him?",
+              "ask": true,
+              "held": true,
+              "offer": {
+                "screen": {
+                  "where": "video 9bNaBpSh0vU",
+                  "path": "apps/kidtube/parent/parent.html#v=9bNaBpSh0vU",
+                  "viewport": "800×1280"
+                }
+              },
+              "voice": null
+            },
+            {
+              "eventId": "c1d2e3f4-5a6b-4c7d-8e9f-0a1b2c3d4e5f",
+              "type": "wish",
+              "at": "2026-10-21T19:05:10.000Z",
+              "text": "🎤 A recorded note: the server writes it down…",
+              "list": "today",
+              "held": true,
+              "voice": {
+                "id": "c1d2e3f4-5a6b-4c7d-8e9f-0a1b2c3d4e5f",
+                "state": "server",
+                "seconds": 42,
+                "sentAt": "2026-10-21T19:05:30.000Z"
+              }
+            }
+          ],
+          "//held": "true: waits for ↻ Update or Send (releaseNotes removes it; requestRun sets it again when GitHub refuses)",
+          "//offer": "{ screen?, app? }: context kept with a note; goes out only when the parent ticks it",
+          "//context": "{ screen?, app? }: context that goes out with the note (see dataRepo.activity.noteContext)",
+          "//voice": "null | { id, state: 'upload' (WAV in storage voice:<id>) | 'server' (voice/<id>.wav on GitHub) | 'failed', seconds, sentAt?, error? }. failed errors: 'The recording is no longer on this tablet.' | the server's error | 'The server did not write it down in 30 minutes (it may be off).'"
+        },
+        "localConfig": {
+          "//": "Per profile. Rules saved on the tablet that are not on GitHub yet: a partial parent-config patch (deep merge: objects merge, arrays and scalars replace, null = the default). saveRules writes it; uploadLocalConfig sets null after the PUT. null = nothing waits.",
+          "time": {
+            "allowed": [{"days":["mon","tue","wed","thu","fri"],"from":"16:00","to":"18:30"}],
+            "maxMinutesPerDay": 40
+          },
+          "queueSize": 8
+        },
+        "seen": {
+          "//": "Per profile. ≤60 titles of videos he opened (guard), so history and notes have a title after the video left the queue.",
+          "9bNaBpSh0vU": {
+            "title": "How Is Cotton Candy Made? | SciShow Kids",
+            "channelTitle": "SciShow Kids",
+            "durationSeconds": 287,
+            "thumbnailUrl": "https://i.ytimg.com/vi/9bNaBpSh0vU/mqdefault.jpg"
+          }
+        },
+        "pendingTalk": {
+          "//": "Per profile. The friend's screen before or after a video. open sets an intro, ended an outro; quizResults sets next; talkDone sets null.",
+          "mode": "outro",
+          "//mode": "'intro' | 'outro'",
+          "videoId": "9bNaBpSh0vU",
+          "host": "m.youtube.com",
+          "quizIds": ["v-1k2j3h-1"],
+          "next": "home",
+          "//next": "'home' | 'rewatch' | 'stopForToday'"
+        },
+        "quizTurn": 3,
+        "//quizTurn": "Per profile. Round-robin index into quiz.defaultIds (only for videos without quizIds)",
+        "transcripts": {
+          "//": "Per profile. State of the transcript uploads (transcripts.js: ≤12 per sync; an error is tried again after 24 h). Read by Settings → Status.",
+          "9bNaBpSh0vU": {"status":"uploaded","at":1792570000000,"available":true},
+          "kjV7CxqY9jU": {"status":"error","at":1792570000000,"error":"YouTube gave no captions"},
+          "//status": "'uploaded' | 'error'"
+        },
+        "character": {
+          "//": "Per profile. The friend's picture from the data repo (media.js loadCharacter), only when presenter.imageUrl starts with 'repo:'; else null.",
+          "path": "characters/pikachu.svg",
+          "etag": "W/\"c0ffee\"",
+          "svg": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 200 200\">…</svg>",
+          "//svg": "svg (≤300000 chars) | src: 'data:image/png;base64,…' (≤2 MB)"
+        },
+        "repoAvatars": ["pikachu"],
+        "//repoAvatars": "Per profile. Folder names in avatars/ of the profile (media.js syncAvatar) → Settings' avatar select",
+        "planLog": {
+          "//": "Per profile. The parent's plan changes the helper has not read yet (lib/plan.js), so the lists show them at once. pullPlan merges the plan events of other devices and prunes them after memory.processedThrough.",
+          "events": [
+            {
+              "eventId": "8f7e6d5c-4b3a-4291-8f7e-6d5c4b3a2918",
+              "type": "plan",
+              "at": "2026-10-21T19:10:00.000Z",
+              "videoId": "LHQVf1gaLI8",
+              "action": "today"
+            }
+          ],
+          "entries": {
+            "LHQVf1gaLI8": {
+              "videoId": "LHQVf1gaLI8",
+              "title": "How Wolves Became Dogs | Dr. Binocs Show",
+              "channelTitle": "Peekaboo Kidz",
+              "durationSeconds": 301,
+              "thumbnailUrl": "https://i.ytimg.com/vi/LHQVf1gaLI8/mqdefault.jpg",
+              "addedAt": "2026-10-19T03:40:00Z"
+            }
+          },
+          "items": {},
+          "//action": "today | notToday | drop | restore | required (value true|false) | approve (value true|false)"
+        },
+        "history": {
+          "//": "Per profile. ≤300 rows of the parent's History (endSession when ≥5 s played or the video ended; quizResults adds quiz).",
+          "example": [
+            {
+              "videoId": "A7LU5Wxc_0Y",
+              "title": "Blobfish: The World’s Ugliest Animal | SciShow Kids",
+              "at": "2026-10-21T15:12:40Z",
+              "watchedSeconds": 186,
+              "durationSeconds": 186,
+              "endReason": "ended",
+              "quiz": [{"quizId":"v-9xk2a1-1","result":"passed","attempts":1}]
+            }
+          ],
+          "//endReason": "ended ('to the end') | leftAfterLock ('left early') | closeAfter ('time for this video was up') | timeUp ('daily time ran out') | closed | blockedOnLoad ('blocked')"
+        },
+        "notes": {
+          "//": "Per profile. The parent's notes for the AI, kept on this tablet so the screens show them.",
+          "lists": {
+            "today": [{"id":"c1d2e3f4-…","at":"2026-10-21T19:05:10.000Z","text":"More drawing videos, please"}],
+            "planned": [],
+            "history": [],
+            "settings": []
+          },
+          "//lists": "today | planned | history | settings, ≤20 each",
+          "videos": {
+            "9bNaBpSh0vU": [
+              {"id":"3b0e9c8a-…","at":"2026-10-21T19:02:44.501Z","text":"Is this video too hard for him?"}
+            ]
+          },
+          "liked": {"A7LU5Wxc_0Y":true,"kjV7CxqY9jU":false},
+          "contextNotes": [
+            {
+              "eventId": "e5f6…",
+              "type": "context",
+              "at": "2026-10-20T20:00:00Z",
+              "doc": "math",
+              "text": "He can add up to 10 now."
+            }
+          ],
+          "promptOps": [
+            {
+              "eventId": "a9b8…",
+              "type": "prompt",
+              "at": "2026-10-19T21:00:00Z",
+              "action": "add",
+              "noteId": "a9b8…",
+              "text": "Prefer videos under 6 minutes."
+            }
+          ],
+          "questions": [
+            {
+              "id": "3b0e9c8a-…",
+              "at": "2026-10-21T19:02:44.501Z",
+              "type": "parentNote",
+              "text": "Is this video too hard for him?",
+              "ask": true,
+              "version": "0.12.40",
+              "videoId": "9bNaBpSh0vU",
+              "sentWith": ["screen"],
+              "result": null,
+              "report": null
+            }
+          ],
+          "//questions": "≤30; the state shown (waiting | answered | none) comes from data.answers and data.notesDone"
+        },
+        "memory": "Profile key: the whole memory.json (see dataRepo.memoryJson)",
+        "helperInfo": "Profile key: the whole helper.json (see dataRepo.helperJson)",
+        "contextDocs": {
+          "//": "Profile key. context/<id>.md texts (sync.js pullContext) → the Context tab",
+          "kid": {"text":"# About the child\n\n## Likes\n- sharks, drawing\n","at":"2026-10-21T03:52:10Z"},
+          "math": {"text":"# Math\n\nAdds up to 10.\n","at":"2026-10-20T03:50:00Z"}
+        },
+        "voiceKey": "sk-or-v1-0123456789abcdef_example",
+        "geminiKey": "AIzaSyExampleExampleExampleExample00",
+        "groqKey": "gsk_ExampleExampleExampleExample00",
+        "//keys": "File keys (go into the settings file), written in Settings → Hearing. The local key wins over repoKeys.",
+        "repoKeys": {"groq":"gsk_…","gemini":"AIza…","openrouter":""},
+        "//repoKeys": "Tablet-global. From kidtube/keys.json (Instagram reads instagram/keys.json first). //shared: Instagram's notes use the same keys.",
+        "listenCooldown": {"gemini:gemini-3.5-flash-lite":1792575060000,"groq:whisper-large-v3":1792574460000},
+        "//listenCooldown": "Tablet-global. Routes that rest until a time (429 → Retry-After or 60 s, ≤600 s; 401/403/404 → 300 s; other → 30 s). //shared with Instagram's igNote.",
+        "voice:<id>": "base64 WAV (16 kHz mono) of a recorded note waiting to upload, e.g. key 'voice:c1d2e3f4-5a6b-4c7d-8e9f-0a1b2c3d4e5f' = 'UklGRiQAAQBXQVZF…'",
+        "data": {
+          "//": "KidTube's content of the core 'data' key (what syncKidTube fetched)",
+          "config": "{ …parent-config.json }",
+          "queue": "{ …queue.json }",
+          "etags": {
+            "parent-config.json": "W/\"1a2b\"",
+            "queue.json": "W/\"3c4d\"",
+            "memory.json": "W/\"5e6f\"",
+            "helper.json": "W/\"7a8b\"",
+            "context/kid.md": "W/\"9c0d\"",
+            "keys.json": "W/\"ef01\""
+          },
+          "memoryMeta": {"updatedAt":"2026-10-21T03:52:10Z","processedThrough":"2026-10-21T03:40:00Z"},
+          "helperMeta": {"updatedAt":"2026-10-21T03:52:10Z"},
+          "runStatus": "{ …run-status.json }",
+          "notesDone": ["c1d2e3f4-5a6b-4c7d-8e9f-0a1b2c3d4e5f"],
+          "answers": ["{ ≤50, answers.json answers }"],
+          "runs": ["{ ≤10, runs.json runs }"],
+          "server": "{ …server.json }",
+          "runRequest": {"id":"c0f1e2d3-…","at":"2026-10-21T18:30:00.000Z"},
+          "profileFile": true
+        }
+      },
+      "caches": {
+        "//": "Cache Storage, fake host https://kidtube.invalid/",
+        "kidtube-audio": [
+          "audio/0a1b2c3d4e5f6071.mp3 (the helper's recordings that queue/rules name)",
+          "audio/lips.json { schemaVersion:1, lines:{ '0a1b2c3d4e5f6071.mp3': [[0.12,'a'],[0.31,'n']] } }"
+        ],
+        "kidtube-avatar": [
+          "avatars/pikachu/rig.json",
+          "avatars/pikachu/built/*.png|json (≤120 files, ≤3 MB each)",
+          "avatars/pikachu/.files { path: githubSha }"
+        ],
+        "kidtube-tts": ["tts/<sha1-20>.wav and tts/<sha1-20>.lips.json: lines the tablet recorded itself (≤300)"],
+        "localStorage": {
+          "kidtubeFullSize": "1",
+          "//kidtubeFullSize": "'1' | '0': the parent list shows one big video at a time"
+        }
+      },
+      "bundled": {
+        "//": "extension/apps/kidtube/data/: read only. default-config.json is the base under every profile's rules.",
+        "defaultConfig": {
+          "timezone": "local",
+          "blockShorts": true,
+          "blockLive": true,
+          "blockOutboundLinks": true,
+          "blockAds": true,
+          "allowSkip": false,
+          "allowedSiteDomains": ["youtube.com","accounts.google.com","consent.youtube.com","andyvauliln.github.io"],
+          "minVideoDurationSeconds": 60,
+          "maxVideoDurationSeconds": 1200,
+          "minSecondsBeforeLeave": 120,
+          "closeAfterSeconds": 0,
+          "queueSize": 10,
+          "requiredFirst": "first",
+          "time": {
+            "allowed": [{"days":["mon","tue","wed","thu","fri","sat","sun"],"from":"08:00","to":"20:00"}],
+            "maxMinutesPerDay": 60
+          },
+          "quiz": {
+            "enabled": false,
+            "when": "afterEachVideo",
+            "maxAttempts": 3,
+            "itemsPerVideo": 1,
+            "defaultIds": [],
+            "items": {},
+            "onFail": "continue"
+          },
+          "presenter": {
+            "intro": false,
+            "outro": false,
+            "name": "Zippy",
+            "imageUrl": "",
+            "avatar": "",
+            "voice": {"lang":"en-US","pitch":1.9,"rate":1.05},
+            "catchphrase": ""
+          }
+        },
+        "defaultQueue": "11 starter videos (asNWTdlBG14, 9bNaBpSh0vU, kjV7CxqY9jU, A7LU5Wxc_0Y, …); used only when data.queue is missing",
+        "quizTypes": ["text","choice","audio","voice"],
+        "//quizTypes": "sent in activity.device.quizTypes and talk.items[].supported"
+      },
+      "dataRepo": {
+        "//": "Files in kidtube/<folder>/ of the data repo (e.g. kidtube/leo.kidtube/). profile.json: see extension.dataRepo.profileJson (//shared).",
+        "parentConfigJson": {
+          "//": "parent-config.json (schemas/parent-config.schema.json): the rules, the friend, the quiz items. Written by the helper and by the tablet (Settings → saveRules). The tablet uses default-config ← this ← localConfig ← planLog.items (config.js effective).",
+          "schemaVersion": 1,
+          "updatedAt": "2026-10-21T03:52:10Z",
+          "minExtensionVersion": "0.0.0",
+          "//minExtensionVersion": "no code reads it today",
+          "timezone": "Europe/Moscow",
+          "//timezone": "'local' | an IANA name: the day boundary for today, history and activity files",
+          "blockShorts": true,
+          "//blockShorts": "no code reads it: the guard always blocks /shorts/",
+          "blockLive": true,
+          "blockOutboundLinks": true,
+          "blockAds": true,
+          "allowSkip": false,
+          "//allowSkip": "false: the player undoes a seek forward and a speed above 1 (always true in parent mode)",
+          "allowedSiteDomains": [
+            "youtube.com",
+            "accounts.google.com",
+            "consent.youtube.com",
+            "andyvauliln.github.io",
+            "wikipedia.org"
+          ],
+          "minVideoDurationSeconds": 60,
+          "maxVideoDurationSeconds": 1200,
+          "//maxVideoDurationSeconds": "0 = no limit; a video shorter than the minimum is blocked on load as 'shorts'",
+          "minSecondsBeforeLeave": 120,
+          "//minSecondsBeforeLeave": "0–3600: he can leave a video only after this (or the end); also the 'watched' line",
+          "closeAfterSeconds": 0,
+          "//closeAfterSeconds": "0 = never; else tick sends him home after this many seconds",
+          "queueSize": 10,
+          "//queueSize": "1–30 videos he sees; also the helper's videos per day",
+          "requiredFirst": "first",
+          "//requiredFirst": "'off' (nothing waits) | 'first' (⭐ videos first) | 'mix' (free videos wait while free ≥ required today)",
+          "time": {
+            "allowed": [
+              {"days":["mon","tue","wed","thu","fri"],"from":"16:00","to":"19:00"},
+              {"days":["sat","sun"],"from":"10:00","to":"18:30"}
+            ],
+            "//allowed": "windows [from, to) in config.timezone; no window past midnight",
+            "maxMinutesPerDay": 60,
+            "//maxMinutesPerDay": "0–1440, 0 = no limit"
+          },
+          "blockedChannelIds": ["UCxlJ45KjG4XVcQ_hd8j227A"],
+          "agents": {
+            "notesPerDay": 10,
+            "helperPerDay": 6,
+            "fixPerDay": 6,
+            "//": "Settings → AI server; read by agent/limits.mjs (0–30 / 0–12 / 0–20)"
+          },
+          "quiz": {
+            "enabled": true,
+            "when": "afterEachVideo",
+            "//when": "no code reads it",
+            "maxAttempts": 3,
+            "itemsPerVideo": 1,
+            "defaultIds": ["add-3-3"],
+            "items": {
+              "v-1k2j3h-1": {
+                "type": "voice",
+                "prompt": "What is cotton candy made from?",
+                "lang": "en",
+                "answer": {"kind":"text","accept":["sugar"]},
+                "audioRef": "repo:audio/9c1e2a3b4c5d6e7f.mp3",
+                "answerAudioRef": "repo:audio/77ab88cd99ef0011.mp3"
+              },
+              "add-3-3": {
+                "type": "choice",
+                "prompt": "What is 3 + 3?",
+                "lang": "en",
+                "answer": {"kind":"choice","options":["5","6","7"],"correct":"6"}
+              }
+            },
+            "//items": "{ quizId: item | null } (schemas/quiz-item.schema.json). quizId: ^[a-z0-9][a-z0-9-]{0,63}$; helper ids add-3-4 (add | subtract | next-number | number-before | bigger) or v-<hash36>-<n>. type: text (he types) | choice (he taps) | audio (needs audioUrl) | voice (he says it; answer.kind text). answer: { kind:'text', accept:[…] } | { kind:'choice', options:[2–6], correct }. Spoken answer: right when an accepted answer occurs as whole words (number words en/ru ≤20 = digits)",
+            "onFail": "continue",
+            "//onFail": "'continue' | 'rewatch' (once a day) | 'stopForToday'"
+          },
+          "presenter": {
+            "intro": true,
+            "outro": true,
+            "name": "Pikachu",
+            "imageUrl": "repo:characters/pikachu.svg",
+            "//imageUrl": "'' | 'https://…' | 'repo:characters/<x>.(svg|png|jpg|jpeg|webp|gif)'",
+            "avatar": "miko-qipao",
+            "//avatar": "'' | a bundled avatar name | 'repo:<name>' (avatars/<name>/ in the profile folder)",
+            "voice": {
+              "lang": "en-US",
+              "pitch": 1.9,
+              "rate": 1.05,
+              "//pitch": "pitch and rate are not used now: the friend never uses the device voice",
+              "listen": {
+                "provider": "cloud",
+                "freeModels": ["gemini-3.5-flash-lite","gemini-3.1-flash-lite"],
+                "models": ["google/gemini-3.5-flash-lite","openai/gpt-audio-mini"],
+                "seconds": 6
+              },
+              "//listen.provider": "'cloud' (default) | 'device' (browser only) | 'openrouter' (older name of cloud). seconds 2–15",
+              "recorded": true
+            },
+            "catchphrase": "Pika pika!",
+            "catchphraseAudioRef": "repo:audio/3f9a0c1d2e4b5a67.mp3",
+            "phrases": {
+              "en": {
+                "praise": [{"text":"Yes! Great job!","audioRef":"repo:audio/aa11bb22cc33dd44.mp3"}],
+                "retry": [{"text":"Almost! Try again."}],
+                "hello": [{"text":"Let's see what you remember!"}],
+                "rewatch": [{"text":"Let's watch it once more."}],
+                "stop": [{"text":"That's all for today."}],
+                "great": [{"text":"You got them all!"}],
+                "tried": [{"text":"Good trying!"}]
+              },
+              "ru": {"praise":[{"text":"Ура! Молодец!"}]},
+              "//": "{ en, ru: { praise, retry, hello, rewatch, stop, great, tried: [{ text, audioRef? }] ≤6 } }, written by the helper"
+            }
+          }
+        },
+        "queueJson": {
+          "//": "queue.json (schemas/queue.schema.json): today's list + ≤10 spares, and what comes next. Written by the helper (kt.mjs save). Read by visibleVideos, talk, pickQuiz, parent screens, uploadTranscripts, audioRefs. videos ≤50, upcoming ≤80.",
+          "schemaVersion": 1,
+          "updatedAt": "2026-10-21T03:52:10Z",
+          "videos": [
+            {
+              "videoId": "9bNaBpSh0vU",
+              "title": "How Is Cotton Candy Made? | SciShow Kids",
+              "channelId": "UCRFIPG2u1DxKLNuE3y2SjHA",
+              "channelTitle": "SciShow Kids",
+              "durationSeconds": 287,
+              "thumbnailUrl": "https://i.ytimg.com/vi/9bNaBpSh0vU/mqdefault.jpg",
+              "addedAt": "2026-10-18T03:41:12Z",
+              "required": true,
+              "lang": "en",
+              "intro": {
+                "text": "Did you know that cotton candy is just sugar and air?",
+                "moods": [{"at":0,"mood":"surprised"}],
+                "audioRef": "repo:audio/0a1b2c3d4e5f6071.mp3"
+              },
+              "outro": {
+                "text": "Today we learned how sugar turns into fluffy threads!",
+                "moods": [{"at":0,"mood":"happy"},{"at":42,"mood":"curious"}]
+              },
+              "//intro": "{ text 1–600, audioUrl? (https), audioRef?, moods? ≤12 }; moods: happy | excited | surprised | curious | thinking | calm | sad | playful (lib/moods.js); at = % of the line",
+              "quizIds": ["v-1k2j3h-1"],
+              "allowRewatch": false,
+              "note": "He liked the blobfish video; a calm SciShow Kids follow-up."
+            },
+            {
+              "videoId": "asNWTdlBG14",
+              "title": "I’m a Top Shopkeeper | Learn to Count | Numberblocks",
+              "channelId": "UCPlwvN0w4qFSP1FllALB92w",
+              "channelTitle": "Numberblocks",
+              "durationSeconds": 403,
+              "thumbnailUrl": "https://i.ytimg.com/vi/asNWTdlBG14/mqdefault.jpg",
+              "addedAt": "2026-10-17T03:40:00Z",
+              "required": false
+            }
+          ],
+          "upcoming": [{"videoId":"LHQVf1gaLI8","title":"How Wolves Became Dogs | Dr. Binocs Show"}]
+        },
+        "activity": {
+          "//": "activity/YYYY-MM-DD.json (schemas/activity.schema.json): what happened on the tablet. Written by flushOutbox (merged by eventId, sorted by at, 3 tries). Read by the helper (kt.mjs start applyActivity) and pullPlan of other devices.",
+          "file": {
+            "schemaVersion": 1,
+            "date": "2026-10-21",
+            "device": {
+              "deviceId": "tab-1a2b3c4d",
+              "extensionVersion": "0.12.40",
+              "target": "quetta",
+              "quizTypes": ["text","choice","audio","voice"],
+              "configUpdatedAt": "2026-10-21T03:52:10Z",
+              "queueUpdatedAt": "2026-10-21T03:52:10Z",
+              "lastSyncAt": "2026-10-21T15:20:02Z"
+            },
+            "events": ["{ …see events }"]
+          },
+          "events": {
+            "//": "Every event has eventId (UUID), type, at.",
+            "watch": {
+              "eventId": "11111111-2222-4333-8444-555555555555",
+              "type": "watch",
+              "at": "2026-10-21T15:12:40Z",
+              "videoId": "A7LU5Wxc_0Y",
+              "watchedSeconds": 186,
+              "durationSeconds": 186,
+              "endReason": "ended",
+              "//endReason": "ended | leftAfterLock | closeAfter | timeUp | blockedOnLoad | closed"
+            },
+            "quiz": {
+              "eventId": "…",
+              "type": "quiz",
+              "at": "2026-10-21T15:14:00Z",
+              "videoId": "9bNaBpSh0vU",
+              "quizId": "v-1k2j3h-1",
+              "result": "passed",
+              "attempts": 1,
+              "answers": ["sugar"],
+              "answeredBy": "spoken",
+              "//result": "passed | failed | skippedByParent (PIN box) | unsupported",
+              "//answeredBy": "typed | tapped | spoken"
+            },
+            "parentNote": {
+              "eventId": "…",
+              "type": "parentNote",
+              "at": "2026-10-21T19:02:44.501Z",
+              "videoId": "9bNaBpSh0vU",
+              "liked": null,
+              "comment": "Is this video too hard for him?",
+              "ask": true,
+              "context": "{ …noteContext }",
+              "//": "liked or comment is required (comment ≤2000)"
+            },
+            "blocked": {
+              "eventId": "…",
+              "type": "blocked",
+              "at": "2026-10-21T15:30:00Z",
+              "target": "shorts",
+              "url": "https://m.youtube.com/shorts/xYz12345678",
+              "//target": "shorts | search | channel | video (schema also allows ad, external: never written)"
+            },
+            "timeUp": {
+              "eventId": "…",
+              "type": "timeUp",
+              "at": "2026-10-21T17:00:00Z",
+              "reason": "dailyCap",
+              "playedMinutes": 60,
+              "//reason": "dailyCap | outsideHours"
+            },
+            "wish": {
+              "eventId": "…",
+              "type": "wish",
+              "at": "2026-10-21T19:05:10Z",
+              "text": "More drawing videos, please",
+              "list": "today",
+              "section": null,
+              "ask": false,
+              "//list": "today | planned | history | settings (settings: only the notes agent gets it); section ≤60 = the Settings box"
+            },
+            "plan": {
+              "eventId": "…",
+              "type": "plan",
+              "at": "2026-10-21T19:10:00Z",
+              "videoId": "LHQVf1gaLI8",
+              "action": "required",
+              "value": true,
+              "//action": "today | notToday | drop | restore | required* | approve* (*need value)"
+            },
+            "prompt": {
+              "eventId": "…",
+              "type": "prompt",
+              "at": "2026-10-19T21:00:00Z",
+              "action": "add",
+              "noteId": "a9b8c7d6-…",
+              "text": "Prefer videos under 6 minutes.",
+              "//action": "add (noteId = eventId) | remove"
+            },
+            "context": {
+              "eventId": "…",
+              "type": "context",
+              "at": "2026-10-20T20:00:00Z",
+              "doc": "math",
+              "text": "He can add up to 10 now.",
+              "//doc": "kid | strategy | math | letters | world"
+            }
+          },
+          "noteContext": {
+            "//": "What goes with a note when the parent ticks Screen / App (parent.js noteContext, redacted). Shown in the 🔔 row checks.",
+            "screen": {
+              "where": "the Today tab, button “✕ Remove”",
+              "element": "Path: main > .card:nth-child(2) > button\nSelector: button.remove\nWords: ✕ Remove\nPlace: 12,340 300×44 px",
+              "title": "KidTube — parent",
+              "path": "apps/kidtube/parent/parent.html#today",
+              "text": "Today · 34 of 60 min …",
+              "viewport": "800×1280",
+              "userAgent": "Mozilla/5.0 (Linux; Android 14; SM-X210) …"
+            },
+            "app": {
+              "version": "0.12.40",
+              "target": "quetta",
+              "profile": "kidtube/leo.kidtube",
+              "mode": "parent",
+              "rules": "{ …config without quiz.items (count only) and presenter.phrases }",
+              "list": [{"videoId":"9bNaBpSh0vU","title":"How Is Cotton Candy Made? | SciShow Kids","required":true}],
+              "playedMinutesToday": 30,
+              "sync": {"at":"2026-10-21T19:00:00Z","errors":[]},
+              "waitingEvents": 2
+            }
+          }
+        },
+        "memoryJson": {
+          "//": "memory.json (schemas/memory.schema.json, loose): the helper's notes on every video. Written by the helper (kt.mjs save). Read by the tablet (profile key memory → parent screens) and pullPlan.",
+          "schemaVersion": 1,
+          "updatedAt": "2026-10-21T03:52:10Z",
+          "processedThrough": "2026-10-21T03:40:00Z",
+          "//processedThrough": "the helper has read the activity up to here",
+          "likes": ["sharks","drawing"],
+          "dislikes": ["loud songs"],
+          "channels": {"UCRFIPG2u1DxKLNuE3y2SjHA":{"verdict":"good"}},
+          "//channels.verdict": "good | ok | bad",
+          "journal": [
+            {
+              "at": "2026-10-21T03:52:10Z",
+              "summary": "He watched 4 videos, passed 3 of 4 questions; more drawing tomorrow."
+            }
+          ],
+          "shown": {"9bNaBpSh0vU":"2026-10-21"},
+          "helper": {
+            "videos": {
+              "9bNaBpSh0vU": {
+                "title": "How Is Cotton Candy Made? | SciShow Kids",
+                "channelId": "UCRFIPG2u1DxKLNuE3y2SjHA",
+                "channelTitle": "SciShow Kids",
+                "durationSeconds": 287,
+                "lang": "en",
+                "topics": ["food","science"],
+                "subject": "world",
+                "//subject": "math | letters | world | other | null",
+                "why": "He liked the blobfish video; a calm SciShow Kids follow-up.",
+                "addedAt": "2026-10-18T03:41:12Z",
+                "status": "today",
+                "//status": "idea | planned | today | watched | no",
+                "approved": true,
+                "required": "yes",
+                "//required": "null | 'yes' | 'today'",
+                "day": "2026-10-21",
+                "watchedAt": "2026-10-21T15:10:00Z",
+                "liked": true,
+                "comment": "He loved it",
+                "quiz": [{"quizId":"v-1k2j3h-1","result":"passed","attempts":1,"at":"2026-10-21T15:14:00Z"}],
+                "content": {
+                  "source": "transcript",
+                  "//source": "transcript | title",
+                  "at": "2026-10-20T03:50:00Z",
+                  "summary": "A machine spins hot sugar into thin threads.",
+                  "learned": ["Sugar melts into a liquid","Spinning makes threads"],
+                  "intro": "Did you know that cotton candy is just sugar and air?",
+                  "outro": "Today we learned how sugar turns into fluffy threads!",
+                  "introMoods": [{"at":0,"mood":"surprised"}],
+                  "outroMoods": [{"at":0,"mood":"happy"}],
+                  "talkAbout": ["What other sweets are made from sugar?"],
+                  "quizIds": ["v-1k2j3h-1"],
+                  "items": {"v-1k2j3h-1":"{ …quiz item }"},
+                  "tooHard": null
+                }
+              }
+            },
+            "processedThrough": "2026-10-21T03:40:00Z",
+            "lastRunAt": "2026-10-21T03:52:10Z",
+            "promptNotes": [{"id":"a9b8c7d6-…","at":"2026-10-19T21:00:00Z","text":"Prefer videos under 6 minutes."}],
+            "wishes": [{"at":"2026-10-21T19:05:10Z","text":"More drawing videos, please","aboutList":"today"}],
+            "noticed": "He stops long videos after 4 minutes.",
+            "plan": "This week: numbers to 20, animals of the sea.",
+            "planAt": "2026-10-19T03:50:00Z"
+          }
+        },
+        "helperJson": {
+          "//": "helper.json: what the helper is and does (agent/lib/info.mjs, at every save). The tablet keeps it only when schemaVersion is 1 and prompt is a string. Read by the Prompt tab.",
+          "schemaVersion": 1,
+          "updatedAt": "2026-10-21T03:52:10Z",
+          "prompt": "You are KidTube's helper… (SYSTEM.md + DAILY.md)",
+          "prompts": [{"file":"agent/DAILY.md","title":"The daily run","when":"every night","text":"…"}],
+          "skills": [{"name":"helper-find-videos","file":".claude/skills/helper-find-videos/SKILL.md","text":"…"}],
+          "run": {
+            "schedule": "30 3 * * *",
+            "timezone": "UTC",
+            "runner": "claude",
+            "model": "claude-opus-5-5",
+            "maxTurns": 250,
+            "fallbackToNode": true,
+            "tools": ["Bash","Read","Write"]
+          },
+          "//run.runner": "'claude' | 'node'",
+          "commands": [{"command":"node agent/kt.mjs start","what":"reads the data, makes session.json"}],
+          "defaults": {
+            "videosPerDay": 10,
+            "newIdeas": 10,
+            "planTarget": 50,
+            "spares": 10,
+            "languageMins": {},
+            "requiredFirst": "first",
+            "maxQuestions": 2,
+            "searchResults": 8,
+            "contentPerRun": 14,
+            "planEveryDays": 7
+          },
+          "transcripts": {
+            "provider": "gemini",
+            "maxVideosPerDay": 10,
+            "maxMinutesPerDay": 120,
+            "secondsPerRequest": 120,
+            "models": ["gemini-3.5-flash"]
+          },
+          "voices": {
+            "provider": "gemini",
+            "voice": "Puck",
+            "maxMinutes": 20,
+            "style": "cheerful",
+            "models": ["gemini-3.8-flash-tts"],
+            "//provider": "gemini | device | openrouter"
+          },
+          "backupText": {
+            "mode": "free",
+            "preferred": ["gemini-3.5-flash"],
+            "paidModel": "google/gemini-3.5-flash",
+            "maxCallsPerRun": 40
+          },
+          "reads": ["activity/*.json","memory.json","context/*.md"],
+          "writes": ["queue.json","parent-config.json","memory.json","audio/*"]
+        },
+        "runStatus": {
+          "//": "The ↻ Update run. requests/run.json (tablet, requestRun) → poll.sh on the server (every minute) → run-status.json. //shared idea with Instagram's posts.json → handled.json.",
+          "//shared": "same pattern as apps.instagram.dataRepo.handledJson",
+          "requests/run.json": {
+            "schemaVersion": 1,
+            "id": "c0f1e2d3-4b5a-4c6d-8e7f-9a0b1c2d3e4f",
+            "at": "2026-10-21T18:30:00.000Z"
+          },
+          "run-status.json": {
+            "schemaVersion": 1,
+            "requestId": "c0f1e2d3-4b5a-4c6d-8e7f-9a0b1c2d3e4f",
+            "state": "done",
+            "message": "The new lists are on the tablet after the next sync.",
+            "report": "reports/notes-20261021T183200Z.json",
+            "startedAt": "2026-10-21T18:31:00Z",
+            "finishedAt": "2026-10-21T18:34:30Z"
+          },
+          "//state": "running | done | failed; the tablet's runView adds queued (request newer than the run), late (queued > 10 min), none (no status)",
+          "notes-done.json": {
+            "schemaVersion": 1,
+            "updatedAt": "2026-10-21T18:34:30Z",
+            "ids": ["c1d2e3f4-5a6b-4c7d-8e9f-0a1b2c3d4e5f"],
+            "//ids": "≤300 eventIds the notes agent handled → the tablet drops those notes"
+          },
+          "answers.json": {
+            "schemaVersion": 1,
+            "updatedAt": "2026-10-21T18:34:30Z",
+            "answers": [
+              {
+                "eventId": "3b0e9c8a-1f2d-4e5b-9c6a-7d8e9f0a1b2c",
+                "question": "Is this video too hard for him?",
+                "answer": "It is fine for age 6; the words are simple. I added an easier one next to it.",
+                "at": "2026-10-21T18:34:00Z",
+                "report": "reports/notes-20261021T183200Z.json"
+              }
+            ]
+          },
+          "runs.json": {
+            "schemaVersion": 1,
+            "runs": [
+              {
+                "at": "2026-10-21T03:58:00Z",
+                "kind": "nightly",
+                "ok": true,
+                "minutes": 22.4,
+                "turns": 131,
+                "costUsd": 4.12,
+                "tokens": {"input":1840000,"output":62000},
+                "models": ["claude-opus-5-5"],
+                "report": "reports/helper-20261021T035800Z.json"
+              }
+            ],
+            "//kind": "nightly | request; ≤60 runs"
+          },
+          "server.json": {
+            "schemaVersion": 1,
+            "day": "2026-10-21",
+            "account": "server@example.com",
+            "runs": {
+              "notes": {"used":2,"perDay":10,"default":10,"max":30},
+              "helper": {"used":1,"perDay":6,"default":6,"max":12},
+              "fix": {"used":0,"perDay":6,"default":6,"max":20}
+            },
+            "updatedAt": "2026-10-21T18:34:30Z",
+            "//": "Settings → AI on the server"
+          }
+        },
+        "voiceNotes": {
+          "//": "A note recorded when no model on the tablet could write it down. //shared idea with Instagram's notes/<id>.wav.",
+          "voice/<id>.wav": "base64 of a 16 kHz mono WAV; id = UUID ^[A-Za-z0-9-]{8,64}$; commit 'tablet: a recorded note to write down (42 s)'",
+          "voice/<id>.json": {
+            "schemaVersion": 1,
+            "id": "c1d2e3f4-5a6b-4c7d-8e9f-0a1b2c3d4e5f",
+            "at": "2026-10-21T19:06:10Z",
+            "text": "More drawing videos, please, and fewer songs.",
+            "model": "whisper-large-v3"
+          },
+          "//voice/<id>.json": "or { …, error: 'The server heard no words in it.' }; written by notes.mjs voice (Groq Whisper), which deletes the .wav. The tablet puts the words into the note (setWords) and sets ask when the text has '?'"
+        },
+        "otherFiles": {
+          "transcripts/<videoId>.json": {
+            "schemaVersion": 1,
+            "videoId": "9bNaBpSh0vU",
+            "title": "How Is Cotton Candy Made? | SciShow Kids",
+            "channelTitle": "SciShow Kids",
+            "durationSeconds": 287,
+            "description": "Cotton candy is…",
+            "fetchedAt": "2026-10-20T15:00:00Z",
+            "available": true,
+            "lang": "en",
+            "kind": "auto",
+            "text": "[0:00] Hi, I'm Jessi…\n[0:21] Sugar is…",
+            "source": "tablet",
+            "//kind": "manual | auto | ai | null",
+            "//source": "tablet (InnerTube) | gemini (the helper)"
+          },
+          "audio/<hash16>.mp3": "the helper's recordings; name = sha1 of [text, lang, provider, voice, style, pitch, by?]",
+          "audio/lips.json": {
+            "schemaVersion": 1,
+            "lines": {"0a1b2c3d4e5f6071.mp3":[[0.12,"a"],[0.31,"n"],[0.44,"o"]]},
+            "//lines": "mouth shapes a | i | u | e | o | n (closed)"
+          },
+          "characters/<x>.svg": "the friend's picture (presenter.imageUrl 'repo:characters/x.svg')",
+          "avatars/<name>/rig.json + built/*": "a mesh avatar (presenter.avatar 'repo:<name>')",
+          "context/{kid,strategy,math,letters,world}.md": "Markdown written by the helper (registry contextDocs)",
+          "reports/<kind>-<ts>.json": "see extension.dataRepo.runReport (//shared)",
+          "../keys.json (kidtube/keys.json)": {
+            "schemaVersion": 1,
+            "groqKey": "gsk_…",
+            "geminiKey": "AIza…",
+            "openrouterKey": "sk-or-v1-…",
+            "//": "written by the parent by hand; //shared: Instagram falls back to it"
+          }
+        }
+      },
+      "messages": {
+        "//": "KidTube's handlers (background/handlers.js). Core messages its screens also send: state, parentGate, openParent, sync {notes}, inbox, setMode, kidHome, version.",
+        "frameReady": {"request":{},"answer":{"ok":true},"//":"kid/home.js; the tab gets { type:'frameReady' }"},
+        "open": {
+          "request": {"videoId":"9bNaBpSh0vU"},
+          "answer": {"ok":true},
+          "//answer": "ok false when locked, another session is still locked, or the video cannot open"
+        },
+        "talk": {"request":{"videoId":"9bNaBpSh0vU","mode":"outro"},"answer":"see views.talk"},
+        "quizResults": {
+          "request": {
+            "videoId": "9bNaBpSh0vU",
+            "results": [
+              {"quizId":"v-1k2j3h-1","result":"passed","attempts":1,"answers":["sugar"],"answeredBy":"spoken"}
+            ]
+          },
+          "answer": {"next":"home"},
+          "//next": "home | rewatch | stopForToday"
+        },
+        "talkDone": {
+          "request": {"videoId":"9bNaBpSh0vU"},
+          "answer": null,
+          "//": "moves the tab to the video, home or a rewatch"
+        },
+        "goHome": {"request":{},"answer":{"ok":true},"//answer":"ok false while the session is still locked"},
+        "tick": {
+          "request": {"videoId":"kjV7CxqY9jU","seconds":5},
+          "answer": {"action":"none"},
+          "//": "seconds clamped 0–15; counted only while playing, visible, no ad, not parent mode",
+          "//action": "none | lock | home"
+        },
+        "ended": {"request":{"videoId":"kjV7CxqY9jU"},"answer":null,"//":"opens the outro or home"},
+        "details": {
+          "request": {"videoId":"kjV7CxqY9jU","channelId":"UC5XMF3Inoi8R9nSI8ChOsdQ","lengthSeconds":271,"isLive":false},
+          "answer": null,
+          "//": "blocks a blocked channel, a live video (blockLive), or one shorter than the minimum"
+        },
+        "note": {
+          "request": {
+            "videoId": "9bNaBpSh0vU",
+            "liked": null,
+            "comment": "Is this video too hard for him?",
+            "ask": true,
+            "screen": "{ …snapshot }",
+            "withApp": true,
+            "offer": true,
+            "pointed": false,
+            "voice": null
+          },
+          "answer": {"ok":true,"eventId":"3b0e9c8a-1f2d-4e5b-9c6a-7d8e9f0a1b2c"},
+          "//voice": "null | { id, audio (base64 WAV), seconds }"
+        },
+        "wish": {
+          "request": {"text":"More drawing videos, please","list":"today","section":null,"ask":false},
+          "answer": {"ok":true,"eventId":"c1d2e3f4-…"}
+        },
+        "watchHere": {
+          "request": {"videoId":"9bNaBpSh0vU","intro":true},
+          "answer": {"ok":true},
+          "//": "parent mode only; intro adds &kidtube=intro"
+        },
+        "parentData": {"request":{},"answer":"see views.parentLists"},
+        "videoDetail": {"request":{"videoId":"9bNaBpSh0vU"},"answer":"see views.videoDetail"},
+        "helperData": {"request":{},"answer":"see views.promptTab"},
+        "promptNote": {
+          "request": {"action":"add","text":"Prefer videos under 6 minutes.","ask":false},
+          "answer": {"ok":true,"noteId":"a9b8c7d6-…","eventId":"a9b8c7d6-…"},
+          "//action": "add | remove (with noteId)"
+        },
+        "runHelper": {
+          "request": {},
+          "answer": {
+            "ok": true,
+            "state": "queued",
+            "at": "2026-10-21T18:30:00.000Z",
+            "message": "Sent: the server starts in a minute.",
+            "held": 0,
+            "report": null
+          },
+          "//answer": "or { ok:false, error }"
+        },
+        "runStatus": {
+          "request": {},
+          "answer": {
+            "ok": true,
+            "state": "running",
+            "at": "2026-10-21T18:31:00Z",
+            "message": "Handling your 2 notes…",
+            "held": 0,
+            "report": null
+          }
+        },
+        "contextData": {
+          "request": {},
+          "answer": {
+            "ok": true,
+            "docs": {"kid":{"text":"# About the child…","at":"2026-10-21T03:52:10Z"}},
+            "notes": [
+              {
+                "eventId": "e5f6…",
+                "type": "context",
+                "doc": "math",
+                "text": "He can add up to 10 now.",
+                "at": "2026-10-20T20:00:00Z"
+              }
+            ]
+          }
+        },
+        "contextNote": {
+          "request": {"doc":"math","text":"He can add up to 10 now.","ask":false},
+          "answer": {"ok":true,"eventId":"e5f6…"},
+          "//": "parent mode and a known doc only"
+        },
+        "heldNotes": {
+          "request": {},
+          "answer": {
+            "ok": true,
+            "notes": [
+              {
+                "id": "3b0e9c8a-…",
+                "at": "2026-10-21T19:02:44.501Z",
+                "type": "parentNote",
+                "text": "Is this video too hard for him?",
+                "videoId": "9bNaBpSh0vU",
+                "title": "How Is Cotton Candy Made? | SciShow Kids",
+                "version": "0.12.40",
+                "attached": ["screen"],
+                "offered": ["screen","app"],
+                "ask": true,
+                "voice": null
+              }
+            ]
+          }
+        },
+        "dropNote": {
+          "request": {"id":"3b0e9c8a-…"},
+          "answer": {"ok":true,"removed":1},
+          "//request": "{ id } | { all: true }"
+        },
+        "plan": {
+          "request": {"action":"notToday","videoId":"asNWTdlBG14","refill":true},
+          "answer": {"ok":true,"added":"LHQVf1gaLI8"},
+          "//answer": "added: the video that refilled today's list | null"
+        },
+        "getRules": {
+          "request": {},
+          "answer": {
+            "config": "{ …effective rules }",
+            "pending": false,
+            "repoAvatars": ["pikachu"],
+            "server": "{ …server.json }"
+          }
+        },
+        "saveRules": {
+          "request": {"patch":"{ …see views.settings.savePatch }"},
+          "answer": {"saved":"github"},
+          "//answer": "{ saved:'github' } | { saved:'tablet', error } (kept in localConfig)"
+        },
+        "resetToday": {"request":{},"answer":{"ok":true}},
+        "status": {
+          "request": {},
+          "answer": {
+            "version": "0.12.40",
+            "repo": "andyvauliln/kidtube-data",
+            "folder": "kidtube/leo.kidtube/",
+            "hasToken": true,
+            "sync": {"at":"2026-10-21T19:00:00Z","errors":[]},
+            "configUpdatedAt": "2026-10-21T03:52:10Z",
+            "queueUpdatedAt": "2026-10-21T03:52:10Z",
+            "queueSource": "GitHub",
+            "visible": 8,
+            "playedMinutesToday": 30,
+            "maxMinutesPerDay": 60,
+            "outbox": 2,
+            "transcripts": {"total":21,"uploaded":18,"missing":3}
+          },
+          "//queueSource": "'GitHub' | 'built-in starter list'"
+        }
+      },
+      "rules": {
+        "//": "background/rules.js, lib/schedule.js, lib/queue.js: what decides allow or block in kid mode. Parent mode: no rules, nothing counted.",
+        "lock": {
+          "reason": "outsideHours",
+          "opens": {"day":"tomorrow","at":"16:00"},
+          "//reason": "outsideHours (no window now) → dailyCap (played ≥ max) → stopped (today.stopped); checked in this order",
+          "//opens": "{ day: 'today' | 'tomorrow' | 'mon'…'sun', at: 'HH:MM' } | null"
+        },
+        "visibleVideo": "valid id, no duplicate, not watched (or allowRewatch), channel not blocked, min ≤ duration ≤ max (max 0 = none); ≤ queueSize",
+        "waiting": "requiredFirst first: non-⭐ videos wait while a ⭐ video is on the list; mix: free videos wait while free ≥ required today. A waiting card shakes and does not open",
+        "sessionUnlock": "he may leave when ended or playedSeconds ≥ minSecondsBeforeLeave; before that the strip shows 'Another video in m:ss' and goHome is refused",
+        "guard": "parent mode: home → parent.html, others open. Kid: a watch page that may open → seen + new session; any other page → a 'blocked' event (shorts | search | channel | video) and back",
+        "quizPick": "the video's quizIds that exist in items (≤5), else itemsPerVideo ids from defaultIds in turn",
+        "afterQuiz": "all passed → home; a fail → rewatch (once a day) | stopForToday | home, by quiz.onFail"
+      },
+      "voice": {
+        "//": "lib/voice.js + background/voice.js. //shared: transcribeAnswer, listenKeys and the cooldowns are also used by Instagram's igNote.",
+        "//shared": "kidtube + instagram (listening)",
+        "speaking": "the friend never uses the device voice: 1) audioRef (the helper's mp3 + lips.json) 2) a tablet recording: Groq canopylabs/orpheus-v1-english (voice hannah, English only), then Gemini TTS gemini-3.8-flash-tts → gemini-3.8-flash-lite-tts → gemini-2.5-flash-preview-tts (voice Puck), lips from Groq Whisper 3) no audio: the bubble shows for 1500 ms + 60 ms per char",
+        "listenRoutes": [
+          {"provider":"groq","models":["whisper-large-v3","whisper-large-v3-turbo"]},
+          {
+            "provider": "gemini",
+            "models": ["gemini-3.5-flash-lite","gemini-3.1-flash-lite"],
+            "//": "FREE_LISTEN_MODELS or listen.freeModels; 20 s timeout"
+          },
+          {
+            "provider": "openrouter",
+            "models": ["google/gemini-3.5-flash-lite","openai/gpt-audio-mini"],
+            "//": "PAID_LISTEN_MODELS or listen.models; 30 s timeout"
+          }
+        ],
+        "//listenRoutes": "staggered 2.5 s + 50 ms per audio second; the first good answer wins; then the browser SpeechRecognition",
+        "noteModels": ["gemini-3.5-transcribe","gemini-3.5-flash-lite","gemini-3.1-flash-lite"],
+        "//noteModels": "NOTE_LISTEN_MODELS (maxTokens 6000) for parent notes and Instagram post notes"
+      },
+      "views": {
+        "kidState": {
+          "//": "The 'state' answer on YouTube in kid mode = viewState + core fields. Asked by render.js (home list every 30 s, strip every 1 s).",
+          "videos": [
+            {
+              "videoId": "9bNaBpSh0vU",
+              "title": "How Is Cotton Candy Made? | SciShow Kids",
+              "channelTitle": "SciShow Kids",
+              "durationSeconds": 287,
+              "thumbnailUrl": "https://i.ytimg.com/vi/9bNaBpSh0vU/mqdefault.jpg",
+              "required": true
+            },
+            {
+              "videoId": "asNWTdlBG14",
+              "title": "I’m a Top Shopkeeper | Learn to Count | Numberblocks",
+              "channelTitle": "Numberblocks",
+              "durationSeconds": 403,
+              "thumbnailUrl": "https://i.ytimg.com/vi/asNWTdlBG14/mqdefault.jpg",
+              "required": false,
+              "waiting": true
+            }
+          ],
+          "//videos": "whole queue entries without the video that plays now; waiting: true = 🔒⭐ first",
+          "lock": null,
+          "//lock": "null | { reason, opens } (see rules.lock)",
+          "minutesLeft": 23,
+          "maxMinutes": 60,
+          "//minutesLeft": "null when no daily limit; the sun meter turns 'low' at ≤5",
+          "session": {"videoId":"kjV7CxqY9jU","secondsUntilUnlock":25},
+          "//session": "null | the video that plays now",
+          "rules": {"allowSkip":false,"blockAds":true},
+          "friend": "Pikachu",
+          "app": "kidtube",
+          "parentMode": false,
+          "shell": {"on":false,"locked":false}
+        },
+        "kidScreens": {
+          "home": "kid/home.html over YouTube's home: 'Pikachu says: pick a video', the sun meter, cards { title, thumbnail, '5 min', ⭐ required, 🔒⭐ first }. Empty: 🌱 'New videos are coming'. No answer: 🔧 + link to core/pages/check.html",
+          "lock": "home.html?locked=1: dailyCap 🌙 'That’s all for today' | stopped 🌟 'Good work today / Let’s try again tomorrow' | outsideHours ⏰ 'Videos are sleeping / See you {day} at {at}'",
+          "watch": "4 cover iframes around the player + strip.html (Home, 'Another video in 0:25', small cards, Parent). Orion: a closed shadow root in the page",
+          "talk": "kid/talk.html?mode=intro|outro&v=<id>: '👆 Tap Pikachu' → lines with moods → questions (choice buttons | voice mic 'I heard: …' | text input) → praise | retry | answerIs → quizResults → great | tried | rewatch | stop → catchphrase → talkDone. 🔒 PIN box = skippedByParent"
+        },
+        "talk": {
+          "//": "The 'talk' answer (handlers.js). Without intro/outro text in the queue: intro 'Hi! I'm {name}! Now we're going to watch: {title}. …' (excited), outro 'That was: {title}. Well done for watching it all!' (happy).",
+          "name": "Pikachu",
+          "imageUrl": "",
+          "svg": "<svg …>…</svg>",
+          "avatar": "../avatars/miko-qipao",
+          "//avatar": "'' | '../avatars/<bundled>' | 'repo:<name>'",
+          "catchphrase": "Pika pika!",
+          "catchphraseAudioRef": "repo:audio/3f9a0c1d2e4b5a67.mp3",
+          "phrases": "{ …presenter.phrases }",
+          "recorded": true,
+          "listen": {"provider":"cloud","seconds":6},
+          "voice": {"lang":"en-US","pitch":1.9,"rate":1.05},
+          "lang": "en-US",
+          "title": "How Is Cotton Candy Made? | SciShow Kids",
+          "lines": [
+            {
+              "text": "Today we learned how sugar turns into fluffy threads!",
+              "moods": [{"at":0,"mood":"happy"},{"at":42,"mood":"curious"}],
+              "audioRef": null
+            }
+          ],
+          "items": [
+            {
+              "quizId": "v-1k2j3h-1",
+              "type": "voice",
+              "prompt": "What is cotton candy made from?",
+              "answer": {"kind":"text","accept":["sugar"]},
+              "lang": "en",
+              "supported": true,
+              "audioRef": "repo:audio/9c1e2a3b4c5d6e7f.mp3",
+              "answerAudioRef": "repo:audio/77ab88cd99ef0011.mp3"
+            }
+          ],
+          "//items": "outro only",
+          "maxAttempts": 3,
+          "onFail": "continue",
+          "friendTypes": "mesh avatar (moods: happy → happy; excited → happy + giggle; surprised; curious → tilt; thinking → think; calm → relaxed; sad; playful → happy + wink) | SVG rig (happy or sad only) | image | the built-in SVG. Lips: shapes a i u e o n from lips tracks, else loudness"
+        },
+        "parentLists": {
+          "//": "The 'parentData' answer (background/parent.js) → apps/kidtube/parent/parent.html tabs Today, Planned, History. Under the core header.",
+          "account": {"key":"leo.kidtube@gmail.com","app":"kidtube","folder":"leo.kidtube"},
+          "app": "kidtube",
+          "parentMode": true,
+          "mode": "parent",
+          "today": [
+            {
+              "videoId": "9bNaBpSh0vU",
+              "title": "How Is Cotton Candy Made? | SciShow Kids",
+              "channelTitle": "SciShow Kids",
+              "durationSeconds": 287,
+              "thumbnailUrl": "https://i.ytimg.com/vi/9bNaBpSh0vU/mqdefault.jpg",
+              "lang": "en",
+              "status": "today",
+              "approved": true,
+              "required": true,
+              "day": "2026-10-21",
+              "why": "He liked the blobfish video; a calm SciShow Kids follow-up.",
+              "tooHard": null,
+              "hasWords": true,
+              "quizCount": 1,
+              "notes": 1,
+              "liked": null,
+              "watchedAt": null
+            }
+          ],
+          "//today.card": "cardOf: status idea | planned | today | watched | no | null. Chips: ⭐ Must watch, ✓ Watched, ✓ Approved / Idea, Day N, ⚠️ maybe too hard, RU, 'no words yet', 'N questions', 👍/👎, 📝 N. Buttons: ⭐/☆ Must watch (plan required), ✕ Remove (plan notToday + refill, undo)",
+          "planned": [
+            {
+              "videoId": "LHQVf1gaLI8",
+              "title": "How Wolves Became Dogs | Dr. Binocs Show",
+              "channelTitle": "Peekaboo Kidz",
+              "durationSeconds": 301,
+              "thumbnailUrl": "https://i.ytimg.com/vi/LHQVf1gaLI8/mqdefault.jpg",
+              "lang": "en",
+              "status": "planned",
+              "approved": false,
+              "required": null,
+              "day": "2026-10-22",
+              "why": "Dogs are his favourite animal.",
+              "tooHard": null,
+              "hasWords": false,
+              "quizCount": 0,
+              "notes": 0,
+              "liked": null,
+              "watchedAt": null
+            }
+          ],
+          "//planned": "queue.upcoming order, then records by addedAt; buttons Must watch, Approve, → Today, ✕ Remove (undo restore)",
+          "history": [
+            {
+              "date": "2026-10-21",
+              "minutes": 34,
+              "items": [
+                {
+                  "videoId": "A7LU5Wxc_0Y",
+                  "title": "Blobfish: The World’s Ugliest Animal | SciShow Kids",
+                  "at": "2026-10-21T15:12:40Z",
+                  "watchedSeconds": 186,
+                  "endReason": "ended",
+                  "quiz": [
+                    {"quizId":"v-9xk2a1-1","result":"passed","attempts":1,"prompt":"Where does the blobfish live?"}
+                  ],
+                  "liked": true
+                }
+              ]
+            }
+          ],
+          "//history": "≤60 days; buttons 👍/👎 (note liked)",
+          "lists": "{ …notes.lists }",
+          "minutes": {"played":30,"max":60,"stopped":false},
+          "hasMemory": true,
+          "memoryAt": "2026-10-21T03:52:10Z",
+          "queueUpdatedAt": "2026-10-21T03:52:10Z",
+          "hasToken": true,
+          "waiting": 2,
+          "sync": {"at":"2026-10-21T19:00:00Z","errors":[]}
+        },
+        "videoDetail": {
+          "//": "The 'videoDetail' answer → parent.html#v=<id> (Details). Sections: Why it’s on the list, What he learns, Summary, ⚠️ Maybe too hard, Intro / Outro (🔊), Questions ('Try the quiz yourself'), Things to talk about, When he watched it, Your earlier comments. ▶ Play intro (today only): an embed plays 8 clips of 3 s.",
+          "ok": true,
+          "videoId": "9bNaBpSh0vU",
+          "title": "How Is Cotton Candy Made? | SciShow Kids",
+          "status": "today",
+          "where": "today",
+          "//where": "today | planned | watched | removed | other",
+          "summary": "A machine spins hot sugar into thin threads.",
+          "learned": ["Sugar melts into a liquid","Spinning makes threads"],
+          "talkAbout": ["What other sweets are made from sugar?"],
+          "madeFrom": "transcript",
+          "//madeFrom": "transcript | title | null",
+          "intro": {
+            "text": "Did you know that cotton candy is just sugar and air?",
+            "moods": [{"at":0,"mood":"surprised"}],
+            "audioRef": "repo:audio/0a1b2c3d4e5f6071.mp3"
+          },
+          "outro": {"text":"Today we learned how sugar turns into fluffy threads!"},
+          "items": [
+            {
+              "quizId": "v-1k2j3h-1",
+              "type": "voice",
+              "prompt": "What is cotton candy made from?",
+              "answer": {"kind":"text","accept":["sugar"]},
+              "lang": "en-US"
+            }
+          ],
+          "notes": [{"id":"3b0e9c8a-…","at":"2026-10-21T19:02:44.501Z","text":"Is this video too hard for him?"}],
+          "helperNotes": ["He loved it"],
+          "history": [],
+          "friend": {"name":"Pikachu","voice":{"lang":"en-US"},"recorded":true}
+        },
+        "promptTab": {
+          "//": "The 'helperData' answer → the Prompt tab: what the helper is, its runs, what it noticed, its plan, the parent's messages and prompt changes. Boxes: flow, runs, noticed, plan, messages, changes, steps, skills, settings, io, prompts. A double tap on a text sends promptNote 'Edit in <source>: replace “…” with “…”.'",
+          "ok": true,
+          "info": "{ …helper.json }",
+          "hasToken": true,
+          "waiting": 0,
+          "lastRunAt": "2026-10-21T03:52:10Z",
+          "processedThrough": "2026-10-21T03:40:00Z",
+          "runs": ["{ …runs.json, newest first, ≤10 }"],
+          "journal": [{"at":"2026-10-21T03:52:10Z","summary":"He watched 4 videos, passed 3 of 4 questions."}],
+          "noticed": "He stops long videos after 4 minutes.",
+          "studyPlan": "This week: numbers to 20, animals of the sea.",
+          "studyPlanAt": "2026-10-19T03:50:00Z",
+          "messages": [{"at":"2026-10-21T19:05:10Z","text":"More drawing videos, please","aboutList":"today"}],
+          "notes": [
+            {"id":"a9b8c7d6-…","at":"2026-10-19T21:00:00Z","text":"Prefer videos under 6 minutes.","pending":false}
+          ],
+          "removing": [],
+          "rules": {
+            "maxMinutesPerDay": 60,
+            "hours": "Mon–Fri 16:00–19:00, Sat–Sun 10:00–18:30",
+            "queueSize": 10,
+            "requiredFirst": "first",
+            "minSecondsBeforeLeave": 120,
+            "allowSkip": false,
+            "minVideoMinutes": 1,
+            "maxVideoMinutes": 20,
+            "quiz": {"enabled":true,"maxAttempts":3,"onFail":"continue"},
+            "friend": {"name":"Pikachu","intro":true,"outro":true,"recorded":true,"listen":"Cloud (Groq, Gemini)"},
+            "blockSites": true
+          }
+        },
+        "contextTab": "The 'contextData' answer: chips kid 'About him', Strategy, Math, Letters, World, each with the count of notes that wait; a double tap sends contextNote",
+        "settings": {
+          "//": "apps/kidtube/parent/settings.js: sections Status (the 'status' answer), Time and list, Websites, Talking friend, Hearing (keys → storage only), AI server (server.json), PIN.",
+          "savePatch": {
+            "time": {
+              "allowed": [{"days":["mon","tue","wed","thu","fri"],"from":"16:00","to":"19:00"}],
+              "maxMinutesPerDay": 60
+            },
+            "queueSize": 10,
+            "minSecondsBeforeLeave": 120,
+            "closeAfterSeconds": 0,
+            "minVideoDurationSeconds": 60,
+            "maxVideoDurationSeconds": 1200,
+            "requiredFirst": "first",
+            "allowSkip": false,
+            "blockAds": true,
+            "blockOutboundLinks": true,
+            "allowedSiteDomains": ["wikipedia.org"],
+            "blockedChannelIds": [],
+            "presenter": {
+              "intro": true,
+              "outro": true,
+              "name": "Pikachu",
+              "imageUrl": "repo:characters/pikachu.svg",
+              "avatar": "miko-qipao",
+              "catchphrase": "Pika pika!",
+              "voice": {
+                "listen": {
+                  "provider": "cloud",
+                  "freeModels": ["gemini-3.5-flash-lite"],
+                  "models": ["google/gemini-3.5-flash-lite"]
+                }
+              }
+            },
+            "quiz": {"enabled":true,"onFail":"continue","maxAttempts":3},
+            "agents": {"notesPerDay":10,"helperPerDay":6,"fixPerDay":6}
+          },
+          "//validation": "≥1 window, each with days and from < to; domains ^[a-z0-9.-]+\\.[a-z]{2,}$; channel ids UC + 22 chars; imageUrl https://… or repo:….(svg|png|jpg|jpeg|webp|gif)"
+        },
+        "noteCard": {
+          "//": "apps/kidtube/parent/kit.js: the note box on every parent screen (text or 🎤). save() sends note | wish | contextNote | promptNote with screen, withApp:true, offer:true, pointed? (long press 3 s), voice?. The note then shows in the core 🔔 (extension.views.inboxRow, //shared).",
+          "target": {"videoId":"9bNaBpSh0vU"},
+          "//target": "{ videoId } | { doc } | { prompt: true } | { list: 'settings', section } | { list }",
+          "about": "the video “How Is Cotton Candy Made? | SciShow Kids”",
+          "//about": "the 🔔 row detail: the video “…” | the context document “Strategy” | the helper’s prompt | the settings box “…” | the Today list"
+        }
+      },
+      "server": {
+        "//": "The server side (agent/): who reads and writes KidTube's files.",
+        "kt.mjs start": "reads memory.json, queue.json, parent-config.json, activity/* since processedThrough, context/*.md, transcripts/ → session.json",
+        "kt.mjs save": "writes queue.json, parent-config.json (quiz.items, requiredFirst, catchphraseAudioRef, phrases), memory.json, helper.json, audio/*, audio/lips.json, context/*.md",
+        "poll.sh (every minute)": "reads requests/run.json, the new notes, profile.json → writes run-status.json, notes-done.json, answers.json, voice/<id>.json, server.json, reports/",
+        "runlog.mjs": "writes runs.json, reports/helper-*.json",
+        "notesAgentInput": [
+          {
+            "eventId": "3b0e9c8a-1f2d-4e5b-9c6a-7d8e9f0a1b2c",
+            "at": "2026-10-21T19:02:44.501Z",
+            "where": "note about a video",
+            "text": "Is this video too hard for him?",
+            "videoId": "9bNaBpSh0vU",
+            "question": true,
+            "context": "{ …noteContext }"
+          }
+        ],
+        "//notesAgentInput.where": "'note about the today list' | 'message to the helper' | 'note about a video' | 'standing change to the helper’s prompt' | 'note on the context document “kid”' | 'note about the app (Settings, the box “…”)'",
+        "notesAgentResult": {
+          "summary": "Kept the video, added an easier one.",
+          "runHelper": false,
+          "version": null,
+          "answers": [{"eventId":"3b0e9c8a-1f2d-4e5b-9c6a-7d8e9f0a1b2c","answer":"It is fine for age 6."}]
+        },
+        "state": "~/.local/share/kidtube/state/kidtube/<folder>/: session.json, last-save, last-request, on-demand, notes-runs.log, notes-handled.json, notes-in.json, notes-result.json"
+      }
+    },
+    "instagram": {
+      "//": "Instagram: the connected account's saved posts, with voice notes; the server's posts agent (agent/instagram.mjs) writes down what each queued video says. No kid or parent mode. Code: extension/apps/instagram/.",
+      "contract": {
+        "//": "apps/instagram/background/index.js: Instagram's part of extension.appContract",
+        "id": "instagram",
+        "stateKeys": ["ig"],
+        "profileKeys": ["igAudio"],
+        "fileKeys": [],
+        "prepare": "s.ig ??= emptyIg()",
+        "created": "s.ig = emptyIg() (a new profile from Connect)",
+        "guard": "() => 'https://www.instagram.com/robots.txt?kidtube=app': every YouTube page goes to the launch address",
+        "view": null,
+        "//view": "no core 'state' view: the screen asks igState",
+        "handlers": [
+          "igSite",
+          "igOfferDone",
+          "igState",
+          "igExport",
+          "igSaved",
+          "igStop",
+          "igResume",
+          "igPosts",
+          "igCollections",
+          "igCollection",
+          "igDefault",
+          "igHandle",
+          "igNote",
+          "igDropNote",
+          "igResult"
+        ],
+        "pageOnly": [],
+        "sync": "background/sync.js syncInstagram",
+        "siteRules": {"block":true,"allowed":["instagram.com","facebook.com"],"ads":false},
+        "aiView": {"queued":3},
+        "//aiView": "→ the 🔔 row 'queued': '3 posts in your list wait for the server’s AI'",
+        "//notMembers": "fileKeys, view, beforeSync, tabRemoved, notes, questions, waiting, checks: none"
+      },
+      "storage": {
+        "//": "chrome.storage.local keys of Instagram. ig and igAudio are per profile (move to acct:<key>).",
+        "ig": {
+          "//": "Per profile, through withState. emptyIg() = { posts:{}, order:[], collections:[], defaultCollection:'all', loadedAt:null, complete:false, cursor:null, top:0, rev:0, pushedRev:0 } (lib/posts.js).",
+          "posts": {
+            "3712849506627153920": {
+              "//": "One Post (lib/posts.js cleanPost + mergeSaved)",
+              "id": "3712849506627153920",
+              "//id": "digits: the media pk (the _<owner> part cut off)",
+              "code": "DPq7xYzKa1B",
+              "//code": "the shortcode, /^[\\w-]+$/",
+              "kind": "video",
+              "//kind": "'image' | 'video' | 'carousel' (anything else becomes image). There is no 'photo' or 'reel' kind",
+              "reel": true,
+              "//reel": "product_type === 'clips'; a reel is normally kind video",
+              "author": "chef.marta",
+              "caption": "Pasta in 10 minutes 🍝\n#recipe #quickdinner",
+              "//caption": "≤2200 chars",
+              "takenAt": "2026-10-18T13:42:10.000Z",
+              "duration": 27.4,
+              "//duration": "video seconds | null",
+              "thumb": "https://scontent-ams2-1.cdninstagram.com/v/t51.2885-15/464512345_s320.jpg",
+              "//thumb": "only *.cdninstagram.com / *.fbcdn.net; the smallest candidate ≥320 wide | null",
+              "items": [
+                {
+                  "kind": "video",
+                  "src": "https://scontent-ams2-1.cdninstagram.com/v/t51.2885-15/464512345_p1080.jpg",
+                  "video": "https://scontent-ams2-1.cdninstagram.com/o1/v/t16/f2/m86/AQN_example.mp4"
+                }
+              ],
+              "//items": "≤20; kind video | image; src ≥1080 wide or the largest; video = the first video_versions URL | null",
+              "collections": ["17912345678901234"],
+              "//collections": "≤50 collection ids",
+              "notes": [
+                {"id":"nmvhwaxfkk3f9","at":"2026-10-21T09:14:05.120Z","text":null,"audio":"notes/nmvhwaxfkk3f9.wav"},
+                {"id":"nmvhx1b2c3d4e","at":"2026-10-21T09:20:00.000Z","text":"Make this on Sunday"}
+              ],
+              "//notes": "id 'n' + base36 time + 4 random; text ≤4000 | null (a recording: audio 'notes/<id>.wav'; sync fills text from handled.json noteTexts)",
+              "handle": {"at":"2026-10-21T09:15:40.003Z","why":"note"},
+              "//handle": "null | { at, why: 'asked' (Add to the list) | 'note' (a note was added) | 'again' (Handle again / Try again) | 'kept' (Take out of the list after an earlier result) }",
+              "seenAt": "2026-10-19T07:01:22.511Z",
+              "//seenAt": "first time this tablet saw it; null after a restore from posts.json",
+              "mediaAt": "2026-10-21T09:14:05.120Z",
+              "//mediaAt": "when the picture/video URLs were read (refreshed after 12 h on open)"
+            },
+            "3709911200443781120": {
+              "id": "3709911200443781120",
+              "code": "DPm2kQrLb7C",
+              "kind": "carousel",
+              "reel": false,
+              "author": "lisbon.walks",
+              "caption": "5 places for a rainy day in Lisbon",
+              "takenAt": "2026-10-12T08:00:00.000Z",
+              "duration": null,
+              "thumb": "https://scontent-ams2-1.cdninstagram.com/v/t51.2885-15/463000111_s320.jpg",
+              "items": [
+                {
+                  "kind": "image",
+                  "src": "https://scontent-ams2-1.cdninstagram.com/v/t51.2885-15/463000111_p1080.jpg",
+                  "video": null
+                },
+                {
+                  "kind": "image",
+                  "src": "https://scontent-ams2-1.cdninstagram.com/v/t51.2885-15/463000112_p1080.jpg",
+                  "video": null
+                }
+              ],
+              "collections": [],
+              "notes": [],
+              "handle": null,
+              "seenAt": "2026-10-19T07:01:22.600Z",
+              "mediaAt": "2026-10-19T07:01:22.600Z"
+            }
+          },
+          "order": ["3712849506627153920","3709911200443781120"],
+          "//order": "post ids, newest saved first (mergeSaved: 'top' inserts at top++, 'end' pushes)",
+          "collections": [{"id":"17912345678901234","name":"Recipes","count":42}],
+          "//collections": "numeric ids only; name ≤80 (fallback 'Collection')",
+          "defaultCollection": "all",
+          "//defaultCollection": "'all' | a collection id (★ on the Saved tab)",
+          "loadedAt": "2026-10-21T09:14:05.120Z",
+          "complete": false,
+          "//complete": "true: the whole list was read (or Stop was pressed); then a read only takes the newest pages ('top' mode)",
+          "cursor": "QVFDdGhpc0lzQUN1cnNvcg==",
+          "//cursor": "Instagram's next_max_id / end_cursor where the long read goes on | null",
+          "top": 0,
+          "rev": 57,
+          "pushedRev": 56,
+          "//rev": "rev ≠ pushedRev: posts.json must be written again",
+          "postsSha": "a3f1c9e2b4d6f8a0c2e4f6a8b0d2f4a6c8e0a2b4",
+          "restored": true,
+          "//restored": "posts.json was read back once on this tablet",
+          "stopped": {"at":"2026-10-20T18:03:11.402Z","cursor":"QVFEc3RvcHBlZEN1cnNvcg==","count":1240},
+          "//stopped": "absent | set by igStop; igResume removes it (Read the rest)"
+        },
+        "igAudio": {
+          "//": "Per profile (written outside withState). { noteId: base64 WAV 16 kHz mono PCM16 }: recordings no tablet model could write down. sync uploads each to notes/<id>.wav, then deletes it. //shared idea with KidTube's voice:<id>.",
+          "nmvhwaxfkk3f9": "UklGRiQAAQBXQVZFZm10IBAAAAABAAEAgD4AAAB9AAACABAAZGF0YQ…"
+        },
+        "igAccount": "core key: see extension.storage.siteAccounts (//shared)",
+        "siteOffer": "core key: see extension.storage.siteOffer",
+        "repoKeys": "core-level key filled by pullKeys from instagram/keys.json, else kidtube/keys.json: see apps.kidtube.storage.repoKeys (//shared)",
+        "data": {
+          "//": "Instagram's content of the core 'data' key",
+          "handled": "{ …handled.json }",
+          "etags": {"handled.json":"W/\"9f1c2a\""},
+          "profileFile": true
+        },
+        "pageSide": {
+          "//": "Not chrome.storage: the content script's own page storage",
+          "sessionStorage.kidtubeIgView": "app",
+          "//sessionStorage.kidtubeIgView": "'app' | 'instagram' (default 'instagram')",
+          "history.state": {"post":"3712849506627153920"},
+          "//history.state": "an open post sheet; URL …/saved/all-posts/#3712849506627153920",
+          "globals": [
+            "window.__kidtubeIgNet",
+            "KidTubeIgReader",
+            "KidTubeIgApi",
+            "KidTubeInstagram",
+            "KidTubeAccount = { read: reportMe }"
+          ]
+        }
+      },
+      "dataRepo": {
+        "//": "Files in instagram/<folder>/ of the data repo (e.g. instagram/anna.saves/). profile.json: see extension.dataRepo.profileJson (//shared).",
+        "postsJson": {
+          "//": "posts.json: the tablet is the only writer (sync.js, when rev ≠ pushedRev; commit 'instagram: <N> saved posts'). Read by restoreFromRepo (a fresh tablet) and the posts agent (which posts are due). //shared pattern: like KidTube's requests/run.json, a post with handle.at newer than its handled entry asks the server for work.",
+          "schemaVersion": 1,
+          "updatedAt": "2026-10-21T09:14:10.551Z",
+          "defaultCollection": "all",
+          "collections": [{"id":"17912345678901234","name":"Recipes","count":42}],
+          "posts": [
+            {
+              "id": "3712849506627153920",
+              "code": "DPq7xYzKa1B",
+              "url": "https://www.instagram.com/reel/DPq7xYzKa1B/",
+              "//url": "/reel/<code>/ when reel, else /p/<code>/",
+              "kind": "video",
+              "reel": true,
+              "author": "chef.marta",
+              "caption": "Pasta in 10 minutes 🍝\n#recipe #quickdinner",
+              "//caption": "cut to 500 chars",
+              "takenAt": "2026-10-18T13:42:10.000Z",
+              "duration": 27.4,
+              "collections": ["17912345678901234"],
+              "notes": [
+                {"id":"nmvhwaxfkk3f9","at":"2026-10-21T09:14:05.120Z","text":null,"audio":"notes/nmvhwaxfkk3f9.wav"}
+              ],
+              "handle": {"at":"2026-10-21T09:15:40.003Z","why":"note"},
+              "videos": ["https://scontent-ams2-1.cdninstagram.com/o1/v/t16/f2/m86/AQN_example.mp4"],
+              "mediaAt": "2026-10-21T09:14:05.120Z",
+              "//videos": "videos and mediaAt only while the post is queued. Never in the file: thumb, items, seenAt"
+            }
+          ]
+        },
+        "notesWav": "notes/<noteId>.wav: base64 of a 16 kHz mono 16-bit WAV from igAudio; commit 'note recording <noteId>'. Read by the posts agent (ffmpeg + Groq Whisper)",
+        "handledJson": {
+          "//": "handled.json: written by the posts agent (agent/instagram.mjs). Read by the tablet's sync (only schemaVersion 1, with an etag) → statusOf, the 🔔 queued row, the export. //shared pattern with KidTube's run-status.json + answers.json.",
+          "//shared": "same pattern as apps.kidtube.dataRepo.runStatus",
+          "schemaVersion": 1,
+          "posts": {
+            "3712849506627153920": {
+              "at": "2026-10-21T09:16:02.871Z",
+              "request": "2026-10-21T09:15:40.003Z",
+              "//request": "the handle.at it answered; a newer handle.at makes the post queued again",
+              "notes": ["nmvhwaxfkk3f9"],
+              "transcript": 412,
+              "//transcript": "a CHARACTER COUNT (0 = no words), not the text: the text is in posts/<id>.json",
+              "error": null,
+              "//error": "null | e.g. 'The video address expired. Open the post in the app and tap Try again.'",
+              "noteTexts": {"nmvhwaxfkk3f9":"Try this with gluten-free pasta for Sasha."},
+              "//noteTexts": "only when a recording was written down"
+            }
+          },
+          "updatedAt": "2026-10-21T09:16:02.900Z"
+        },
+        "postResultJson": {
+          "//": "posts/<id>.json: the agent's result for one post. Read by the tablet through igResult → the post sheet's 'What the video says'.",
+          "schemaVersion": 1,
+          "id": "3712849506627153920",
+          "code": "DPq7xYzKa1B",
+          "url": "https://www.instagram.com/reel/DPq7xYzKa1B/",
+          "kind": "video",
+          "author": "chef.marta",
+          "caption": "Pasta in 10 minutes 🍝",
+          "handledAt": "2026-10-21T09:16:02.871Z",
+          "request": "2026-10-21T09:15:40.003Z",
+          "notes": [
+            {"id":"nmvhwaxfkk3f9","at":"2026-10-21T09:14:05.120Z","text":"Try this with gluten-free pasta for Sasha."}
+          ],
+          "transcript": {
+            "text": "Boil the water first. While it heats, chop two cloves of garlic…",
+            "language": "english",
+            "model": "whisper-large-v3",
+            "parts": [
+              {
+                "index": 0,
+                "text": "Boil the water first. While it heats, chop two cloves of garlic…",
+                "language": "english",
+                "seconds": 27.4
+              }
+            ]
+          },
+          "//transcript": "null when no video had words; with more videos text = '[1] …\\n\\n[2] …'",
+          "skipped": null,
+          "//skipped": "null | 'A picture: there is nothing to write down.' | 'No video among its items.' | 'The video has no words.'",
+          "metadata": {},
+          "//metadata": "always {} for now (no LLM on posts yet)"
+        },
+        "keysJson": "instagram/keys.json (beside the profile folders): { groqKey, geminiKey, openrouterKey }; fallback kidtube/keys.json (//shared)"
+      },
+      "pageWorld": {
+        "//": "window.postMessage between apps/instagram/content/net.js (MAIN world, watches Instagram's own requests) and app.js",
+        "commands": {
+          "//": "app.js → net.js, marker 'kidtube-ig-cmd': true",
+          "rules": {"kidtube-ig-cmd":true,"cmd":"rules","rules":"{ …ReaderRules }"},
+          "record": {"kidtube-ig-cmd":true,"cmd":"record","tag":"t3"},
+          "replay": {
+            "kidtube-ig-cmd": true,
+            "cmd": "replay",
+            "id": 12,
+            "cursor": "QVFE…",
+            "tag": "t4",
+            "//cursor": "null = the newest page again"
+          }
+        },
+        "events": {
+          "//": "net.js → app.js, marker 'kidtube-ig': true",
+          "hello": {"kidtube-ig":true,"type":"hello"},
+          "answer": {
+            "kidtube-ig": true,
+            "type": "answer",
+            "meta": "{ …RequestMeta without shape }",
+            "found": {"saved":["{ …IgMedia }"],"collection":null,"collections":null,"next":"QVFE…"},
+            "tag": null
+          },
+          "record": {"kidtube-ig":true,"type":"record","tag":"t3","requests":["{ …RequestMeta with shape, ≤40 }"]},
+          "replayed": {
+            "kidtube-ig": true,
+            "type": "replayed",
+            "tag": "t4",
+            "status": 200,
+            "posts": 12,
+            "//error": "or error: 'The page’s request is gone.' | 'It came with the page itself.' | 'The page’s request has no place for the next page.' | a network message"
+          }
+        },
+        "requestMeta": {
+          "id": 12,
+          "at": "2026-10-21T09:14:03.002Z",
+          "method": "POST",
+          "//method": "GET | POST | 'PAGE' (JSON embedded in the page, query '(the page itself)')",
+          "path": "/graphql/query",
+          "params": [],
+          "query": "PolarisSavedPostsGridQuery",
+          "docId": "8845758582119845",
+          "vars": ["after","first","data"],
+          "collectionId": null,
+          "status": 200,
+          "type": "application/json",
+          "bytes": 48211,
+          "posts": 12,
+          "collections": 0
+        },
+        "readerRules": {
+          "//": "lib/rules.js defaults; site/remote.json instagram.reader overrides them (//shared remote mechanism). A bad list keeps its default.",
+          "savedPath": "/{user}/saved/all-posts/",
+          "savedMatch": ["saved"],
+          "collectionsMatch": ["collection"],
+          "cursorKeys": ["next_max_id","end_cursor","max_id"],
+          "moreKeys": ["more_available","has_next_page"],
+          "cursorVars": ["max_id","after","cursor"],
+          "api": true,
+          "//api": "false: never call /api/v1/, only read the page's own requests"
+        }
+      },
+      "instagramApi": {
+        "//": "What the app reads from Instagram (content/api.js, headers X-IG-App-ID 936619743392459, X-Requested-With, X-CSRFToken; 429 retried after 20, 40, 60 s).",
+        "igMedia": {
+          "//": "Instagram's media object cut down ('slim'): the format of every media array sent to the background",
+          "media_type": 2,
+          "//media_type": "1 image | 2 video | 8 carousel",
+          "image_versions2": {
+            "candidates": [
+              {"url":"https://scontent-ams2-1.cdninstagram.com/v/t51.2885-15/464512345_p1080.jpg","width":1080},
+              {"url":"https://scontent-ams2-1.cdninstagram.com/v/t51.2885-15/464512345_s320.jpg","width":320}
+            ]
+          },
+          "video_versions": [
+            {"url":"https://scontent-ams2-1.cdninstagram.com/o1/v/t16/f2/m86/AQN_example.mp4","width":720}
+          ],
+          "pk": "3712849506627153920",
+          "id": "3712849506627153920_48211937502",
+          "code": "DPq7xYzKa1B",
+          "product_type": "clips",
+          "//product_type": "clips (reel) | feed | carousel_container | null",
+          "taken_at": 1792330930,
+          "video_duration": 27.4,
+          "user": {"username":"chef.marta"},
+          "caption": {"text":"Pasta in 10 minutes 🍝"},
+          "saved_collection_ids": ["17912345678901234"],
+          "carousel_media": [],
+          "//forms": "also accepted: old GraphQL (shortcode, display_url, __typename GraphImage|GraphVideo|GraphSidecar, edge_media_to_caption, edge_sidecar_to_children, owner.username, taken_at_timestamp, video_url, is_video)"
+        },
+        "endpoints": [
+          {
+            "fn": "saved(maxId)",
+            "url": "/api/v1/feed/saved/posts/?max_id=",
+            "uses": "items[].media, more_available, next_max_id → { media, next }"
+          },
+          {"fn":"collection(id, maxId)","url":"/api/v1/feed/collection/<id>/posts/?max_id=","uses":"same"},
+          {
+            "fn": "collections()",
+            "url": "/api/v1/collections/list/?collection_types=[\"ALL_MEDIA_AUTO_COLLECTION\",\"MEDIA\",\"AUDIO_AUTO_COLLECTION\"]&…",
+            "uses": "items[]{collection_id, collection_name, collection_media_count, collection_type} (≤20 pages)"
+          },
+          {
+            "fn": "me()",
+            "url": "/api/v1/accounts/edit/web_form_data/ (fallback /api/v1/users/<ds_user_id>/info/)",
+            "uses": "→ { username: 'anna.saves', id: '48211937502' } (id from the ds_user_id cookie)"
+          },
+          {"fn":"media(id)","url":"/api/v1/media/<id>/info/","uses":"items[0] → slim (fresh URLs)"}
+        ],
+        "errors": {
+          "LoginNeeded": {
+            "message": "Sign in to Instagram first.",
+            "detail": "/api/v1/feed/saved/posts/ → the sign-in page",
+            "//": "redirect to /accounts/login, require_login, login_required, 401/403 without JSON"
+          },
+          "Error": {"message":"Instagram refused /api/v1/feed/saved/posts/ → 500, not data: <html>…","status":500}
+        }
+      },
+      "messages": {
+        "//": "Instagram's handlers (background/handlers.js). All but igSite, igOfferDone, igResult need Instagram to be the running app, else { ok:false, notHere:true, error:'Instagram is not the app that runs now.' }. Core messages it also sends: siteAccount, connect, openApp, plainSite, sync, checkResult, header (see extension.messages, //shared).",
+        "igSite": {
+          "request": {},
+          "answer": {"ok":true,"open":true,"who":"anna.saves","offer":false,"rules":"{ …readerRules }"},
+          "//answer": "open = headerOpen (false in kid mode or locked: no app, no bar, no header); offer: siteOffer for instagram < 60 min old"
+        },
+        "igOfferDone": {"request":{},"answer":{"ok":true}},
+        "igState": {"request":{},"answer":"see views.igState"},
+        "igExport": {
+          "request": {},
+          "answer": {"ok":true,"file":"{ …see views.exportFile }","name":"instagram-saved-anna.saves-2026-10-21.json"}
+        },
+        "igSaved": {
+          "request": {"media":["{ …IgMedia }"],"at":"end","page":3,"cursor":"QVFE…","finished":false},
+          "answer": {"ok":true,"added":12,"known":0},
+          "//at": "'top' (newest pages) | 'end' (the long read; sets cursor, no cursor → complete) | 'none' (with finished: sets loadedAt)"
+        },
+        "igStop": {
+          "request": {},
+          "answer": {"ok":true,"stopped":{"at":"2026-10-20T18:03:11.402Z","cursor":"QVFE…","count":1240}},
+          "//answer": "stopped null when the list was already complete"
+        },
+        "igResume": {"request":{},"answer":{"ok":true},"//answer":"or { ok:false, error:'The list was not stopped.' }"},
+        "igPosts": {
+          "request": {"media":["{ …IgMedia }"]},
+          "answer": {"ok":true,"updated":1},
+          "//": "fresh URLs of known posts only; no rev bump"
+        },
+        "igCollections": {
+          "request": {"list":[{"id":"17912345678901234","name":"Recipes","count":42}]},
+          "answer": {"ok":true,"collections":[{"id":"17912345678901234","name":"Recipes","count":42}]}
+        },
+        "igCollection": {
+          "request": {"id":"17912345678901234","media":["{ …IgMedia }"],"done":true,"ids":["3712849506627153920"]},
+          "answer": {"ok":true,"added":1},
+          "//": "done + ids: posts not in ids leave the collection"
+        },
+        "igDefault": {
+          "request": {"collection":"17912345678901234"},
+          "answer": {"ok":true,"defaultCollection":"17912345678901234"},
+          "//answer": "or { ok:false, error:'No such collection.' }"
+        },
+        "igHandle": {
+          "request": {"id":"3712849506627153920","off":false,"media":null},
+          "answer": {"ok":true,"status":"queued"},
+          "//answer": "status new | queued | handled | failed; errors 'No such post.' | 'It is not waiting in the list.'"
+        },
+        "igNote": {
+          "request": {"id":"3712849506627153920","audio":"UklGRiQAAQBXQVZF…","lang":"en-US"},
+          "//request": "{ id, text } (≤4000) or { id, audio (base64 WAV), lang (default en-US) }",
+          "answer": {
+            "ok": true,
+            "note": {"id":"nmvhwaxfkk3f9","at":"2026-10-21T09:14:05.120Z","text":null,"audio":"notes/nmvhwaxfkk3f9.wav"},
+            "notice": "Kept as a recording: the agent writes it down (Groq: 429)."
+          },
+          "//answer": "notice only when not written down on the tablet; errors 'Heard nothing. Try again closer to the microphone.' | 'An empty note.' | 'No such post.'. Uses KidTube's transcribeAnswer (//shared)"
+        },
+        "igDropNote": {"request":{"id":"3712849506627153920","noteId":"nmvhwaxfkk3f9"},"answer":{"ok":true}},
+        "igResult": {
+          "request": {"id":"3712849506627153920"},
+          "answer": {"ok":true,"result":"{ …posts/<id>.json }"},
+          "//answer": "errors 'GitHub is not connected.' | 'The agent has not written anything for this post yet.' | an HTTP error"
+        },
+        "checkResultFromApp": {
+          "//": "The problem report the app sends (core 'checkResult', //shared): automatically after a failed read (ig.read) or by 'Report a problem to the AI' (ig.parentSent). The username is replaced by {user}.",
+          "type": "checkResult",
+          "result": {
+            "id": "ig.read",
+            "kind": "probe",
+            "area": "instagram",
+            "status": "fail",
+            "expect": "The app reads the saved posts from Instagram’s own Saved page",
+            "mismatch": [
+              {
+                "what": "the saved posts",
+                "expected": "read from Instagram",
+                "actual": "Instagram refused /api/v1/feed/saved/posts/ → 500, not data: …"
+              }
+            ],
+            "evidence": {
+              "pageWorld": true,
+              "via": "api",
+              "rules": "{ …readerRules }",
+              "page": "/{user}/saved/all-posts/",
+              "posts": 1240,
+              "requests": ["{ …RequestMeta ≤30 }"],
+              "dom": ["<main> …"]
+            },
+            "code": [
+              "apps/instagram/lib/reader.js",
+              "apps/instagram/lib/rules.js (site/remote.json instagram.reader)",
+              "apps/instagram/content/net.js",
+              "apps/instagram/content/app.js readInstagram"
+            ],
+            "page": {"path":"/{user}/saved/all-posts/","tab":"saved"},
+            "quiet": false
+          }
+        }
+      },
+      "sync": {
+        "//": "background/sync.js syncInstagram(ctx) (//shared ctx). Steps: 1) no token → stop 2) GET handled.json (etag) 3) pullKeys → repoKeys 4) an empty tablet: GET posts.json → restoreFromRepo 5) copy noteTexts into notes 6) PUT each igAudio → notes/<id>.wav 7) rev ≠ pushedRev → PUT posts.json. A 409/422 reads the sha again and tries once more.",
+        "errors": [
+          "Note recording: GitHub said 403",
+          "posts.json: GitHub kept refusing the write (someone else writes it too?)."
+        ],
+        "triggers": [
+          "syncSoon(4000/5000) from the handlers",
+          "{ type:'sync' } from the screen (every 60 s while posts are queued)",
+          "the core alarms"
+        ]
+      },
+      "views": {
+        "igState": {
+          "//": "The 'igState' answer → app.js. ViewPost = Post + status, error, handledAt, transcript, notes with noteTexts.",
+          "ok": true,
+          "folder": "instagram/anna.saves/",
+          "who": "@anna.saves",
+          "posts": [
+            {
+              "id": "3712849506627153920",
+              "code": "DPq7xYzKa1B",
+              "kind": "video",
+              "reel": true,
+              "author": "chef.marta",
+              "caption": "Pasta in 10 minutes 🍝\n#recipe #quickdinner",
+              "takenAt": "2026-10-18T13:42:10.000Z",
+              "duration": 27.4,
+              "thumb": "https://scontent-ams2-1.cdninstagram.com/v/t51.2885-15/464512345_s320.jpg",
+              "items": [
+                {
+                  "kind": "video",
+                  "src": "https://scontent-ams2-1.cdninstagram.com/v/t51.2885-15/464512345_p1080.jpg",
+                  "video": "https://scontent-ams2-1.cdninstagram.com/o1/v/t16/f2/m86/AQN_example.mp4"
+                }
+              ],
+              "collections": ["17912345678901234"],
+              "notes": [
+                {
+                  "id": "nmvhwaxfkk3f9",
+                  "at": "2026-10-21T09:14:05.120Z",
+                  "text": "Try this with gluten-free pasta for Sasha.",
+                  "audio": "notes/nmvhwaxfkk3f9.wav"
+                }
+              ],
+              "handle": {"at":"2026-10-21T09:15:40.003Z","why":"note"},
+              "seenAt": "2026-10-19T07:01:22.511Z",
+              "mediaAt": "2026-10-21T09:14:05.120Z",
+              "status": "handled",
+              "//status": "statusOf: a handled entry with request ≥ handle.at → 'failed' (error) | 'handled'; else handle.at → 'queued'; else 'new'. Labels: Not handled, In the list, Handled, Failed",
+              "error": null,
+              "handledAt": "2026-10-21T09:16:02.871Z",
+              "transcript": 412,
+              "//transcript": "the character count from handled.json (the screen does not show it)"
+            }
+          ],
+          "collections": [{"id":"17912345678901234","name":"Recipes","count":42}],
+          "defaultCollection": "all",
+          "loadedAt": "2026-10-21T09:14:05.120Z",
+          "complete": false,
+          "cursor": "QVFDdGhpc0lzQUN1cnNvcg==",
+          "stopped": null,
+          "sync": {"at":"2026-10-21T09:14:10.004Z","errors":[]},
+          "unsent": false,
+          "//unsent": "rev ≠ pushedRev or igAudio not empty → 'Changes wait to go to GitHub…'",
+          "github": true
+        },
+        "uiState": {
+          "//": "app.js memory",
+          "tab": "saved",
+          "//tab": "'saved' | 'queue' (To handle)",
+          "collection": "all",
+          "filter": "all",
+          "//filter": "all | new | queued | handled | failed",
+          "open": null,
+          "//open": "post id of the open sheet | null",
+          "reading": "Reading your saved posts… 120",
+          "//reading": "'' | 'Reading your collections…' | 'Reading your saved posts… N' | 'Reading the collection… N'",
+          "readError": "",
+          "login": false,
+          "me": {"loggedIn":true,"username":"anna.saves","detail":""},
+          "notHere": false,
+          "other": null,
+          "via": "page",
+          "//via": "'page' (Instagram's own requests, replayed) | 'api' (/api/v1/)",
+          "results": {"3712849506627153920":{"result":"{ …posts/<id>.json }"}},
+          "//results": "{ id: { loading:true } | { result } | { error } }",
+          "rec": null,
+          "//rec": "{ started, stop() } while recording | null"
+        },
+        "savedTab": {
+          "//": "App view, tab Saved",
+          "titleBar": "h1 'Saved', ⤓ Export (igExport), ↻ (readInstagram + sync)",
+          "collectionSelect": ["All saved (1240)","Recipes (42)"],
+          "star": "★ the default collection (igDefault): 'Already the default.' | 'The Saved tab now opens with this one.'",
+          "chips": ["All 1240","Not handled 1236","In the list 2","Handled 2","Failed 0 (shown only when > 0)"],
+          "tile": {
+            "id": "3712849506627153920",
+            "title": "chef.marta: Pasta in 10 minutes 🍝",
+            "img": "https://scontent-ams2-1.cdninstagram.com/v/t51.2885-15/464512345_s320.jpg",
+            "badge": "reel",
+            "dot": "Handled",
+            "notes": "🎤 1"
+          },
+          "//tile": "badge: carousel | reel (any video) | none (image); dot hidden for 'new'; no thumb → caption[0..60] or @author",
+          "empty": "'Loading…' | 'Nothing here.' | 'No saved posts yet. Save posts on Instagram, then tap ↻.'"
+        },
+        "statusLine": {
+          "//": "Under the chips (app.js): the reader's state. Stop and Read the rest.",
+          "states": [
+            {"state":"reading","shows":"Reading your saved posts… 120 + Stop (then 'Stopping…')"},
+            {"state":"idle, complete","shows":"Read from Instagram 3 min ago"},
+            {"state":"idle, not complete","shows":"Read from Instagram 3 min ago · not all read yet"},
+            {
+              "state": "stopped",
+              "shows": "Stopped by you at 1240 posts (20/10/2026): older saves are not read. + Read the rest (igResume)"
+            },
+            {"state":"read error","shows":"the error in red"},
+            {
+              "state": "no collections",
+              "shows": "Collections: not found yet (the saved posts do not need them). To see them here, open Instagram → your Saved page once."
+            },
+            {
+              "state": "GitHub off",
+              "shows": "GitHub is not connected: the notes stay on this device (header → account menu)."
+            },
+            {"state":"unsent","shows":"Changes wait to go to GitHub…"},
+            {"state":"always","shows":"Report a problem to the AI (→ ig.parentSent)"}
+          ]
+        },
+        "queueTab": {
+          "//": "App view, tab 'To handle (N)'",
+          "sections": ["Waiting · N (queued, by handle.at)","Failed · N","Handled lately (≤30, by handledAt)"],
+          "row": {
+            "author": "@chef.marta",
+            "line": "Pasta in 10 minutes 🍝",
+            "meta": "1 note · asked 5 min ago",
+            "pill": "In the list"
+          },
+          "empty": "The list is empty. Open a saved post and tap “Add to the list”, or record a note about it."
+        },
+        "postSheet": {
+          "//": "One post (app.js postSheet), URL #<id>",
+          "bar": "← back, @chef.marta, ↗ https://www.instagram.com/reel/DPq7xYzKa1B/ (sets the view to instagram)",
+          "media": "<video src=item.video poster=item.src> | <img>; more items: '3 items · swipe'; ▶ Play on Instagram (not for images)",
+          "caption": "clamped to 4 lines, a tap opens it; '(no caption)'",
+          "status": {
+            "new": {"text":"Not handled yet. Add it to the list…","button":"Add to the list"},
+            "queued": {
+              "text": "In the list since 5 min ago. It goes to GitHub in a few seconds; the agent handles it within a few minutes.",
+              "button": "Take out of the list"
+            },
+            "handled": {"text":"Handled 1 h ago.","button":"Handle again"},
+            "failed": {
+              "text": "The agent could not handle it: The video address expired. Open the post in the app and tap Try again.",
+              "button": "Try again"
+            }
+          },
+          "whatTheVideoSays": "Loading… | the error | result.transcript.text | result.skipped or 'No words in it.' | Show (igResult)",
+          "notes": "each note: date + text or '🎙 Recording: the agent writes it down.' + ✕ (igDropNote); 🎤/⏹ record ('● Recording 0:42 · tap ⏹ to stop (at most 3 min)', 16 kHz mono, ≤180 s, refused when < 1 s or silent) → 'Writing it down…'; a text box (≤4000) + Add (igNote)"
+        },
+        "problemStates": [
+          {
+            "state": "not here",
+            "when": "igState → notHere",
+            "shows": "No Instagram account is connected / Press Connect: the Instagram account signed in here becomes the app’s profile (a new one starts empty)."
+          },
+          {
+            "state": "another account",
+            "when": "me.username ≠ who",
+            "shows": "Instagram is signed in to @other / This app shows @anna.saves. Press Connect to use @other, or sign in to @anna.saves again on Instagram."
+          },
+          {
+            "state": "auto-switched",
+            "when": "siteAccount → switched",
+            "shows": "toast: Instagram is signed in to @x: the app shows @x now (a new profile)."
+          },
+          {
+            "state": "signed out",
+            "when": "me() → LoginNeeded, no username",
+            "shows": "Instagram is signed out / …Sign in on Instagram itself (the Instagram side of the switch), then come back with App. Forces the Instagram view."
+          },
+          {
+            "state": "rate-limited",
+            "when": "LoginNeeded while a username is known",
+            "shows": "Instagram did not give the saved posts of @anna.saves (…). Wait a few minutes, then tap ↻."
+          },
+          {"state":"API / network error","when":"another Error","shows":"the message; sends ig.read automatically"},
+          {
+            "state": "collection failed",
+            "when": "readCollection error",
+            "shows": "… To see its posts, open it on Instagram (the Instagram side of the switch) once."
+          },
+          {
+            "state": "header closed",
+            "when": "igSite.open false (kid mode or locked)",
+            "shows": "no app, no Connect bar, no header"
+          },
+          {"state":"no background answer","when":"igSite undefined","shows":"nothing; asked again every 5 s"},
+          {
+            "state": "microphone",
+            "when": "getUserMedia fails",
+            "shows": "The browser did not give the microphone. Allow it for instagram.com, or type the note."
+          }
+        ],
+        "viewSwitch": {
+          "//": "Which side shows (app.js update, every 700 ms). //shared: the core header's App | site switch (extension.views.header.answer.switch) drives it.",
+          "//shared": "kidtube + instagram (the header switch)",
+          "rule": "app view = sessionStorage view 'app' && on /<user>/saved/ && igSite.open && not signed out",
+          "appSide": "KidTubeHeader.mount(headerBox, { side:'app', siteView })",
+          "siteSide": "KidTubeHeader.mount(topHost, { side:'site', appView }); appView returns true only on the profile's own Saved page, else the header sends openApp",
+          "launch": "https://www.instagram.com/robots.txt?kidtube=app → view 'app' → location.replace('/anna.saves/saved/all-posts/')",
+          "connectBar": "[App] [Instagram] + Connect; offer: 'Signed in as @anna.saves. Switch to the Instagram app now?' Switch to the app | Not now (igOfferDone); signed out: 'Sign in to Instagram here. Then KidTube asks to switch to the Instagram app.'"
+        },
+        "exportFile": {
+          "//": "⤓ Export → instagram-saved-anna.saves-2026-10-21.json (lib/posts.js exportFile). collections as names, status as the label. Toast: 'Saved as …: 1240 posts, 611 with video (not all read from Instagram yet).'",
+          "instagramSaved": 1,
+          "account": "@anna.saves",
+          "exportedAt": "2026-10-21T09:20:00.000Z",
+          "complete": false,
+          "count": 1240,
+          "videos": 611,
+          "collections": [{"id":"17912345678901234","name":"Recipes","count":42}],
+          "posts": [
+            {
+              "id": "3712849506627153920",
+              "code": "DPq7xYzKa1B",
+              "url": "https://www.instagram.com/reel/DPq7xYzKa1B/",
+              "kind": "video",
+              "reel": true,
+              "author": "chef.marta",
+              "caption": "Pasta in 10 minutes 🍝\n#recipe #quickdinner",
+              "takenAt": "2026-10-18T13:42:10.000Z",
+              "duration": 27.4,
+              "savedSeenAt": "2026-10-19T07:01:22.511Z",
+              "collections": ["Recipes"],
+              "status": "Handled",
+              "notes": [{"at":"2026-10-21T09:14:05.120Z","text":"Try this with gluten-free pasta for Sasha."}],
+              "thumb": "https://scontent-ams2-1.cdninstagram.com/v/t51.2885-15/464512345_s320.jpg",
+              "videos": ["https://scontent-ams2-1.cdninstagram.com/o1/v/t16/f2/m86/AQN_example.mp4"],
+              "mediaAt": "2026-10-21T09:14:05.120Z"
+            }
+          ]
+        }
+      },
+      "server": {
+        "//": "agent/instagram.mjs (run by agent/poll.sh every minute when the data repo changed): reads posts.json (due posts: handle.at newer than handled.request), notes/*.wav → writes handled.json, posts/<id>.json. Config IG: perRun 10, maxVideos 5, maxVideoMB 200, models whisper-large-v3 / whisper-large-v3-turbo, config.instagram.enabled.",
+        "statusRulesShared": "the agent imports statusOf/duePosts from extension/apps/instagram/lib/posts.js: one rule on both sides"
+      }
+    }
+  }
+}
